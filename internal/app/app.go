@@ -257,8 +257,9 @@ func (a *App) askOnce(
 		fix := append(
 			msgs,
 			provider.Message{
-				Role:    "user",
-				Content: "Your previous response was invalid JSON. Return ONLY valid JSON matching the required schema. Error: " + err.Error(),
+				Role: "user",
+				Content: "Your previous response was invalid JSON. Return ONLY valid JSON matching the required schema. Error: " +
+					err.Error(),
 			},
 		)
 
@@ -492,8 +493,9 @@ func (a *App) AskPlanned(
 			fixMessages := append(
 				planMessages,
 				provider.Message{
-					Role:    "user",
-					Content: "The planner response was invalid. Return ONLY valid JSON matching the exact project planner schema. Error: " + err.Error(),
+					Role: "user",
+					Content: "The planner response was invalid. Return ONLY valid JSON matching the exact project planner schema. Error: " +
+						err.Error(),
 				},
 			)
 
@@ -724,7 +726,7 @@ func (a *App) compactHistory(
 
 	msgs := []provider.Message{
 		{
-			Role:    "system",
+			Role: "system",
 			Content: `Summarize this older FuzeCLI conversation for future coding context. Preserve decisions, requirements, file names, architecture, unresolved issues, and developer preferences. Return plain text only.`,
 		},
 		{
