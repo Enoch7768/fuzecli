@@ -13,7 +13,7 @@ import (
 	"github.com/Enoch7768/fuzecli/internal/profile"
 )
 
-var version = "dev"
+var version = "Revision 2.0"
 
 func main() {
 	if err := run(os.Args[1:]); err != nil {
