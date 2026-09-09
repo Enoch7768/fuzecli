@@ -1,0 +1,7 @@
+.aicli/
+# Local FuzeCLI configuration/secrets
+%APPDATA%/aicli/config.yaml
+*.exe
+bin/
+dist/
+coverage.out
