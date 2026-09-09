@@ -3,11 +3,13 @@ package gemini
 import (
 	"bufio"
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/Enoch7768/fuzecli/internal/provider"
 )
@@ -18,18 +20,34 @@ type Provider struct {
 	HTTPClient *http.Client
 }
 
-func New(
-	apiKey string,
-	baseURL string,
-) *Provider {
+func New(apiKey string, baseURL string) *Provider {
 	if baseURL == "" {
 		baseURL = "https://generativelanguage.googleapis.com/v1beta"
 	}
 
+	transport := &http.Transport{
+		Proxy:                 http.ProxyFromEnvironment,
+		ForceAttemptHTTP2:     false,
+		MaxIdleConns:          20,
+		MaxIdleConnsPerHost:   10,
+		IdleConnTimeout:       90 * time.Second,
+		TLSHandshakeTimeout:   15 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+		TLSClientConfig: &tls.Config{
+			MinVersion: tls.VersionTLS12,
+			NextProtos: []string{
+				"http/1.1",
+			},
+		},
+	}
+
 	return &Provider{
-		APIKey:     apiKey,
-		BaseURL:    strings.TrimRight(baseURL, "/"),
-		HTTPClient: http.DefaultClient,
+		APIKey:  apiKey,
+		BaseURL: strings.TrimRight(baseURL, "/"),
+		HTTPClient: &http.Client{
+			Transport: transport,
+			Timeout:   120 * time.Second,
+		},
 	}
 }
 
@@ -67,6 +85,86 @@ type modelInfo struct {
 type modelsResponse struct {
 	Models        []modelInfo `json:"models"`
 	NextPageToken string      `json:"nextPageToken"`
+}
+
+func generationJSONSchema() map[string]any {
+	return map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"files": map[string]any{
+				"type": "array",
+				"items": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"path": map[string]any{
+							"type": "string",
+						},
+						"content": map[string]any{
+							"type": "string",
+						},
+						"action": map[string]any{
+							"type": "string",
+							"enum": []string{
+								"create",
+								"modify",
+								"delete",
+							},
+						},
+					},
+					"required": []string{
+						"path",
+						"content",
+						"action",
+					},
+					"propertyOrdering": []string{
+						"path",
+						"content",
+						"action",
+					},
+				},
+			},
+			"explanation": map[string]any{
+				"type": "string",
+			},
+			"commands": map[string]any{
+				"type": "array",
+				"items": map[string]any{
+					"type": "string",
+				},
+			},
+		},
+		"required": []string{
+			"files",
+			"explanation",
+			"commands",
+		},
+		"propertyOrdering": []string{
+			"files",
+			"explanation",
+			"commands",
+		},
+	}
+}
+
+func buildGenerationConfig(
+	opts provider.RequestOptions,
+) map[string]any {
+	config := map[string]any{
+		"temperature":     opts.Temperature,
+		"maxOutputTokens": opts.MaxTokens,
+	}
+
+	if opts.JSONMode {
+		config["responseMimeType"] = "application/json"
+
+		if opts.JSONSchema != nil {
+			config["responseSchema"] = opts.JSONSchema
+		} else {
+			config["responseSchema"] = generationJSONSchema()
+		}
+	}
+
+	return config
 }
 
 func convert(
@@ -136,21 +234,23 @@ func (p *Provider) Send(
 	payload := requestBody{
 		Contents:          contents,
 		SystemInstruction: system,
-		GenerationConfig: map[string]any{
-			"temperature":     opts.Temperature,
-			"maxOutputTokens": opts.MaxTokens,
-		},
+		GenerationConfig: buildGenerationConfig(
+			opts,
+		),
 	}
 
 	var result responseBody
+
+	endpoint := p.BaseURL +
+		"/models/" +
+		url.PathEscape(opts.Model) +
+		":generateContent"
 
 	err := provider.DoJSON(
 		ctx,
 		p.HTTPClient,
 		http.MethodPost,
-		p.BaseURL+"/models/"+url.PathEscape(
-			opts.Model,
-		)+":generateContent",
+		endpoint,
 		map[string]string{
 			"x-goog-api-key": p.APIKey,
 		},
@@ -176,7 +276,10 @@ func (p *Provider) Send(
 	}
 
 	return &provider.Response{
-		Content:      result.Candidates[0].Content.Parts[0].Text,
+		Content: result.Candidates[0].
+			Content.
+			Parts[0].
+			Text,
 		Model:        opts.Model,
 		ProviderName: p.Name(),
 	}, nil
@@ -198,10 +301,9 @@ func (p *Provider) Stream(
 	payload := requestBody{
 		Contents:          contents,
 		SystemInstruction: system,
-		GenerationConfig: map[string]any{
-			"temperature":     opts.Temperature,
-			"maxOutputTokens": opts.MaxTokens,
-		},
+		GenerationConfig: buildGenerationConfig(
+			opts,
+		),
 	}
 
 	data, err := json.Marshal(payload)
@@ -212,12 +314,15 @@ func (p *Provider) Stream(
 		)
 	}
 
+	endpoint := p.BaseURL +
+		"/models/" +
+		url.PathEscape(opts.Model) +
+		":streamGenerateContent?alt=sse"
+
 	request, err := http.NewRequestWithContext(
 		ctx,
 		http.MethodPost,
-		p.BaseURL+"/models/"+url.PathEscape(
-			opts.Model,
-		)+":streamGenerateContent?alt=sse",
+		endpoint,
 		strings.NewReader(string(data)),
 	)
 	if err != nil {
@@ -235,6 +340,11 @@ func (p *Provider) Stream(
 	request.Header.Set(
 		"x-goog-api-key",
 		p.APIKey,
+	)
+
+	request.Header.Set(
+		"Accept",
+		"text/event-stream",
 	)
 
 	response, err := p.HTTPClient.Do(request)
@@ -321,7 +431,11 @@ func (p *Provider) Stream(
 				continue
 			}
 
-			if len(result.Candidates[0].Content.Parts) == 0 {
+			if len(
+				result.Candidates[0].
+					Content.
+					Parts,
+			) == 0 {
 				continue
 			}
 

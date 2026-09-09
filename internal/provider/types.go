@@ -15,6 +15,8 @@ type RequestOptions struct {
 	Model       string
 	Temperature float64
 	MaxTokens   int
+	JSONMode    bool
+	JSONSchema  map[string]any
 }
 
 type Response struct {
@@ -64,19 +66,10 @@ type ProviderError struct {
 
 func (e *ProviderError) Error() string {
 	if e.Err != nil {
-		return fmt.Sprintf(
-			"%s: %s: %v",
-			e.Provider,
-			e.Message,
-			e.Err,
-		)
+		return fmt.Sprintf("%s: %s: %v", e.Provider, e.Message, e.Err)
 	}
 
-	return fmt.Sprintf(
-		"%s: %s",
-		e.Provider,
-		e.Message,
-	)
+	return fmt.Sprintf("%s: %s", e.Provider, e.Message)
 }
 
 func (e *ProviderError) Unwrap() error {
@@ -108,25 +101,11 @@ func ClassifyError(err error) error {
 	if errors.As(err, &providerErr) {
 		switch providerErr.Kind {
 		case ErrorRateLimited:
-			return fmt.Errorf(
-				"%w: %v",
-				ErrRateLimited,
-				err,
-			)
-
+			return fmt.Errorf("%w: %v", ErrRateLimited, err)
 		case ErrorUnauthorized:
-			return fmt.Errorf(
-				"%w: %v",
-				ErrUnauthorized,
-				err,
-			)
-
+			return fmt.Errorf("%w: %v", ErrUnauthorized, err)
 		case ErrorProviderUnavailable:
-			return fmt.Errorf(
-				"%w: %v",
-				ErrProviderUnavailable,
-				err,
-			)
+			return fmt.Errorf("%w: %v", ErrProviderUnavailable, err)
 		}
 	}
 

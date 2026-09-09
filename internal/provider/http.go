@@ -22,20 +22,26 @@ func DoJSON(
 	out any,
 	providerName string,
 ) error {
-	data, err := json.Marshal(body)
-	if err != nil {
-		return fmt.Errorf(
-			"encode %s request: %w",
-			providerName,
-			err,
-		)
+	var reader io.Reader
+
+	if body != nil {
+		data, err := json.Marshal(body)
+		if err != nil {
+			return fmt.Errorf(
+				"encode %s request: %w",
+				providerName,
+				err,
+			)
+		}
+
+		reader = bytes.NewReader(data)
 	}
 
 	request, err := http.NewRequestWithContext(
 		ctx,
 		method,
 		url,
-		bytes.NewReader(data),
+		reader,
 	)
 	if err != nil {
 		return fmt.Errorf(
@@ -45,10 +51,12 @@ func DoJSON(
 		)
 	}
 
-	request.Header.Set(
-		"Content-Type",
-		"application/json",
-	)
+	if body != nil {
+		request.Header.Set(
+			"Content-Type",
+			"application/json",
+		)
+	}
 
 	for key, value := range headers {
 		request.Header.Set(key, value)
