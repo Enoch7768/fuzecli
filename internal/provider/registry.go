@@ -12,96 +12,213 @@ type Registry struct {
 	models    map[string]string
 }
 
-func NewRegistry(fallback []string, defaults map[string]string, providers ...Provider) *Registry {
-	m := map[string]Provider{}
-	for _, p := range providers {
-		m[p.Name()] = p
+func NewRegistry(
+	fallback []string,
+	defaults map[string]string,
+	providers ...Provider,
+) *Registry {
+	registered := map[string]Provider{}
+
+	for _, provider := range providers {
+		registered[provider.Name()] = provider
 	}
-	return &Registry{providers: m, fallback: fallback, models: defaults}
+
+	return &Registry{
+		providers: registered,
+		fallback:  append([]string(nil), fallback...),
+		models:    defaults,
+	}
 }
 
-func (r *Registry) Get(name string) (Provider, error) {
-	p, ok := r.providers[name]
+func (r *Registry) Get(
+	name string,
+) (Provider, error) {
+	provider, ok := r.providers[name]
+
 	if !ok {
-		return nil, fmt.Errorf("provider %q is not configured", name)
+		return nil, fmt.Errorf(
+			"provider %q is not configured",
+			name,
+		)
 	}
-	return p, nil
+
+	return provider, nil
 }
 
-func (r *Registry) Send(ctx context.Context, name string, messages []Message, opts RequestOptions) (*Response, error) {
+func (r *Registry) ListModels(
+	ctx context.Context,
+	name string,
+) ([]string, error) {
+	provider, err := r.Get(name)
+	if err != nil {
+		return nil, err
+	}
+
+	return provider.ListModels(ctx)
+}
+
+func (r *Registry) Send(
+	ctx context.Context,
+	name string,
+	messages []Message,
+	opts RequestOptions,
+) (*Response, error) {
 	if name != "auto" {
-		p, err := r.Get(name)
+		provider, err := r.Get(name)
 		if err != nil {
 			return nil, err
 		}
-		return p.Send(ctx, messages, opts)
+
+		request := opts
+
+		if request.Model == "" {
+			request.Model = r.models[name]
+		}
+
+		if request.Model == "" {
+			return nil, fmt.Errorf(
+				"no default model configured for provider %s",
+				name,
+			)
+		}
+
+		return provider.Send(
+			ctx,
+			messages,
+			request,
+		)
 	}
+
 	var last error
+
 	for _, candidate := range r.fallback {
-		p, err := r.Get(candidate)
+		provider, err := r.Get(candidate)
 		if err != nil {
 			last = err
 			continue
 		}
+
 		request := opts
+
 		if request.Model == "" {
 			request.Model = r.models[candidate]
 		}
+
 		if request.Model == "" {
-			last = fmt.Errorf("no default model configured for provider %s", candidate)
+			last = fmt.Errorf(
+				"no default model configured for provider %s",
+				candidate,
+			)
 			continue
 		}
-		resp, err := p.Send(ctx, messages, request)
+
+		response, err := provider.Send(
+			ctx,
+			messages,
+			request,
+		)
+
 		if err == nil {
-			return resp, nil
+			return response, nil
 		}
-		if errors.Is(err, ErrRateLimited) || errors.Is(err, ErrProviderUnavailable) {
+
+		if errors.Is(err, ErrRateLimited) ||
+			errors.Is(err, ErrProviderUnavailable) {
 			last = err
 			continue
 		}
+
 		return nil, err
 	}
+
 	if last == nil {
-		last = fmt.Errorf("no providers available for auto mode")
+		last = fmt.Errorf(
+			"no providers available for auto mode",
+		)
 	}
+
 	return nil, last
 }
 
-func (r *Registry) Stream(ctx context.Context, name string, messages []Message, opts RequestOptions) (<-chan StreamChunk, error) {
+func (r *Registry) Stream(
+	ctx context.Context,
+	name string,
+	messages []Message,
+	opts RequestOptions,
+) (<-chan StreamChunk, error) {
 	if name != "auto" {
-		p, err := r.Get(name)
+		provider, err := r.Get(name)
 		if err != nil {
 			return nil, err
 		}
-		return p.Stream(ctx, messages, opts)
+
+		request := opts
+
+		if request.Model == "" {
+			request.Model = r.models[name]
+		}
+
+		if request.Model == "" {
+			return nil, fmt.Errorf(
+				"no default model configured for provider %s",
+				name,
+			)
+		}
+
+		return provider.Stream(
+			ctx,
+			messages,
+			request,
+		)
 	}
+
 	var last error
+
 	for _, candidate := range r.fallback {
-		p, err := r.Get(candidate)
+		provider, err := r.Get(candidate)
 		if err != nil {
 			last = err
 			continue
 		}
+
 		request := opts
+
 		if request.Model == "" {
 			request.Model = r.models[candidate]
 		}
+
 		if request.Model == "" {
-			last = fmt.Errorf("no default model configured for provider %s", candidate)
+			last = fmt.Errorf(
+				"no default model configured for provider %s",
+				candidate,
+			)
 			continue
 		}
-		ch, err := p.Stream(ctx, messages, request)
+
+		stream, err := provider.Stream(
+			ctx,
+			messages,
+			request,
+		)
+
 		if err == nil {
-			return ch, nil
+			return stream, nil
 		}
-		if errors.Is(err, ErrRateLimited) || errors.Is(err, ErrProviderUnavailable) {
+
+		if errors.Is(err, ErrRateLimited) ||
+			errors.Is(err, ErrProviderUnavailable) {
 			last = err
 			continue
 		}
+
 		return nil, err
 	}
+
 	if last == nil {
-		last = fmt.Errorf("no providers available for auto mode")
+		last = fmt.Errorf(
+			"no providers available for auto mode",
+		)
 	}
+
 	return nil, last
 }

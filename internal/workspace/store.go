@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"fuzecli/internal/provider"
+	"github.com/Enoch7768/fuzecli/internal/provider"
 	_ "modernc.org/sqlite"
 )
 

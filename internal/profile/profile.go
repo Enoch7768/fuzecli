@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"fuzecli/internal/config"
-	"fuzecli/internal/provider"
+	"github.com/Enoch7768/fuzecli/internal/config"
+	"github.com/Enoch7768/fuzecli/internal/provider"
 )
 
 type Profile struct {

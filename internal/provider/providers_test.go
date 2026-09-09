@@ -7,12 +7,12 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"fuzecli/internal/provider"
-	"fuzecli/internal/provider/anthropic"
-	"fuzecli/internal/provider/gemini"
-	"fuzecli/internal/provider/groq"
-	"fuzecli/internal/provider/llamacpp"
-	"fuzecli/internal/provider/openai"
+	"github.com/Enoch7768/fuzecli/internal/provider"
+	"github.com/Enoch7768/fuzecli/internal/provider/anthropic"
+	"github.com/Enoch7768/fuzecli/internal/provider/gemini"
+	"github.com/Enoch7768/fuzecli/internal/provider/groq"
+	"github.com/Enoch7768/fuzecli/internal/provider/llamacpp"
+	"github.com/Enoch7768/fuzecli/internal/provider/openai"
 )
 
 func TestOpenAISend(t *testing.T) {

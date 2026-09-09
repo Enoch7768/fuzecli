@@ -11,8 +11,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"fuzecli/internal/profile"
-	"fuzecli/internal/provider"
+	"github.com/Enoch7768/fuzecli/internal/profile"
+	"github.com/Enoch7768/fuzecli/internal/provider"
 )
 
 type FileChange struct {
@@ -107,8 +107,11 @@ func ParsePlan(raw string) (Plan, error) {
 }
 
 func Resolve(root, rel string) (string, error) {
+	normalized := filepath.ToSlash(rel)
 	clean := filepath.Clean(rel)
-	if clean == "." || filepath.IsAbs(rel) || strings.Contains(filepath.ToSlash(rel), "../") {
+	volume := filepath.VolumeName(rel)
+	rooted := filepath.IsAbs(rel) || strings.HasPrefix(normalized, "/") || strings.HasPrefix(normalized, "//") || volume != ""
+	if clean == "." || rooted || strings.Contains(normalized, "../") {
 		return "", fmt.Errorf("unsafe workspace path: %q", rel)
 	}
 	base, err := filepath.Abs(root)

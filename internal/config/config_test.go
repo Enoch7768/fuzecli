@@ -21,9 +21,14 @@ func TestDefaultConfigShape(t *testing.T) {
 
 func TestSaveLoadRoundTrip(t *testing.T) {
 	tmp := t.TempDir()
-	old := os.Getenv("XDG_CONFIG_HOME")
+	oldAppData := os.Getenv("APPDATA")
+	oldXDG := os.Getenv("XDG_CONFIG_HOME")
+	_ = os.Setenv("APPDATA", tmp)
 	_ = os.Setenv("XDG_CONFIG_HOME", tmp)
-	defer os.Setenv("XDG_CONFIG_HOME", old)
+	defer func() {
+		_ = os.Setenv("APPDATA", oldAppData)
+		_ = os.Setenv("XDG_CONFIG_HOME", oldXDG)
+	}()
 	c := Default()
 	c.Providers["openai"] = ProviderConfig{APIKey: "secret", DefaultModel: "model"}
 	if err := Save(c); err != nil {

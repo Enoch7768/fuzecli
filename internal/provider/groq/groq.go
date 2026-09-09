@@ -2,8 +2,8 @@ package groq
 
 import (
 	"context"
-	"fuzecli/internal/provider"
-	"fuzecli/internal/provider/openai"
+	"github.com/Enoch7768/fuzecli/internal/provider"
+	"github.com/Enoch7768/fuzecli/internal/provider/openai"
 	"net/http"
 	"strings"
 )

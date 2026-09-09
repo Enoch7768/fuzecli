@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"strings"
 
-	"fuzecli/internal/provider"
+	"github.com/Enoch7768/fuzecli/internal/provider"
 )
 
 type Provider struct {

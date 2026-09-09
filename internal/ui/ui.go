@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"fuzecli/internal/generation"
+	"github.com/Enoch7768/fuzecli/internal/generation"
 )
 
 func Preview(plan generation.Plan, root string) {
