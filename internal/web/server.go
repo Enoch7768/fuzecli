@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -116,6 +117,7 @@ func (s *Server) chat(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+
 	var request struct {
 		Prompt   string `json:"prompt"`
 		Provider string `json:"provider"`
@@ -123,15 +125,18 @@ func (s *Server) chat(w http.ResponseWriter, r *http.Request) {
 		Code     bool   `json:"code"`
 		Yes      bool   `json:"yes"`
 	}
+
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request: " + err.Error()})
 		return
 	}
-	request.Prompt = stringsTrim(request.Prompt)
+
+	request.Prompt = strings.TrimSpace(request.Prompt)
 	if request.Prompt == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "prompt is required"})
 		return
 	}
+
 	s.mu.Lock()
 	if s.busy {
 		s.mu.Unlock()
@@ -140,12 +145,14 @@ func (s *Server) chat(w http.ResponseWriter, r *http.Request) {
 	}
 	s.busy = true
 	s.mu.Unlock()
+
 	go func() {
 		defer func() {
 			s.mu.Lock()
 			s.busy = false
 			s.mu.Unlock()
 		}()
+
 		if request.Provider != "" {
 			s.App.Config.DefaultProvider = request.Provider
 		}
@@ -156,6 +163,7 @@ func (s *Server) chat(w http.ResponseWriter, r *http.Request) {
 				s.App.Config.Providers[request.Provider] = pc
 			}
 		}
+
 		ctx := context.Background()
 		if request.Code {
 			_, err := s.App.Ask(ctx, request.Prompt, request.Provider, request.Model, request.Yes)
@@ -166,6 +174,7 @@ func (s *Server) chat(w http.ResponseWriter, r *http.Request) {
 			s.Progress.Publish(progress.Event{Type: "completed", Status: "completed", Provider: request.Provider, Model: request.Model, Message: "Generation complete"})
 			return
 		}
+
 		s.Progress.Publish(progress.Event{Type: "chat", Status: "generating", Provider: request.Provider, Model: request.Model, Message: "Receiving response"})
 		if err := s.App.ChatRequest(ctx, request.Prompt, request.Provider, request.Model); err != nil {
 			s.Progress.Publish(progress.Event{Type: "error", Status: "failed", Provider: request.Provider, Model: request.Model, Message: err.Error()})
@@ -173,13 +182,18 @@ func (s *Server) chat(w http.ResponseWriter, r *http.Request) {
 		}
 		s.Progress.Publish(progress.Event{Type: "completed", Status: "completed", Provider: request.Provider, Model: request.Model, Message: "Response complete"})
 	}()
+
 	writeJSON(w, http.StatusAccepted, map[string]any{"accepted": true})
 }
 
 func (s *Server) config(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodGet {
 		c := s.App.Config
-		writeJSON(w, http.StatusOK, map[string]any{"default_provider": c.DefaultProvider, "providers": c.Providers, "fallback_order": c.FallbackOrder, "verification": c.Verification})
+		providers := make(map[string]any, len(c.Providers))
+		for name, p := range c.Providers {
+			providers[name] = map[string]any{"default_model": p.DefaultModel, "base_url": p.BaseURL, "configured": p.APIKey != "" || name == "llamacpp"}
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"default_provider": c.DefaultProvider, "providers": providers, "fallback_order": c.FallbackOrder, "verification": c.Verification})
 		return
 	}
 	if r.Method != http.MethodPost {
@@ -187,6 +201,7 @@ func (s *Server) config(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+
 	var request struct {
 		Provider string `json:"provider"`
 		Model    string `json:"model"`
@@ -195,10 +210,13 @@ func (s *Server) config(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid settings request"})
 		return
 	}
+	request.Provider = strings.TrimSpace(request.Provider)
+	request.Model = strings.TrimSpace(request.Model)
 	if request.Provider == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "provider is required"})
 		return
 	}
+
 	pc, ok := s.App.Config.Providers[request.Provider]
 	if !ok {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "unknown provider: " + request.Provider})
@@ -209,15 +227,17 @@ func (s *Server) config(w http.ResponseWriter, r *http.Request) {
 		s.App.Config.Providers[request.Provider] = pc
 	}
 	s.App.Config.DefaultProvider = request.Provider
+
 	if err := config.Save(s.App.Config); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not save settings: " + err.Error()})
 		return
 	}
+
 	writeJSON(w, http.StatusOK, map[string]any{"saved": true, "provider": request.Provider, "model": pc.DefaultModel})
 }
 
 func (s *Server) models(w http.ResponseWriter, r *http.Request) {
-	providerName := r.URL.Query().Get("provider")
+	providerName := strings.TrimSpace(r.URL.Query().Get("provider"))
 	if providerName == "" {
 		providerName = s.App.Config.DefaultProvider
 	}
@@ -225,6 +245,7 @@ func (s *Server) models(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "select a specific provider to load models"})
 		return
 	}
+
 	models, err := s.App.Registry.ListModels(r.Context(), providerName)
 	if err != nil {
 		writeJSON(w, http.StatusBadGateway, map[string]string{"error": "could not load models: " + err.Error()})
@@ -238,11 +259,13 @@ func (s *Server) workspace(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "workspace is not initialized"})
 		return
 	}
+
 	paths, err := s.App.Store.Touched()
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not read workspace files: " + err.Error()})
 		return
 	}
+
 	entries := make([]map[string]any, 0, len(paths))
 	for _, rel := range paths {
 		path := filepath.Join(s.App.Store.Root, filepath.FromSlash(rel))
@@ -252,6 +275,7 @@ func (s *Server) workspace(w http.ResponseWriter, r *http.Request) {
 		}
 		entries = append(entries, map[string]any{"path": rel, "size": info.Size(), "modified": info.ModTime()})
 	}
+
 	writeJSON(w, http.StatusOK, map[string]any{"root": s.App.Store.Root, "files": entries})
 }
 
@@ -260,6 +284,7 @@ func (s *Server) plan(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "workspace is not initialized"})
 		return
 	}
+
 	path := generation.ProjectPlanPath(s.App.Store.Root)
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -270,11 +295,13 @@ func (s *Server) plan(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not read project plan: " + err.Error()})
 		return
 	}
+
 	var plan generation.ProjectPlan
 	if err := json.Unmarshal(data, &plan); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "project plan is invalid: " + err.Error()})
 		return
 	}
+
 	writeJSON(w, http.StatusOK, map[string]any{"exists": true, "plan": plan})
 }
 
@@ -287,30 +314,4 @@ func writeJSON(w http.ResponseWriter, status int, value any) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(value)
-}
-
-func stringsTrim(value string) string {
-	start := 0
-	end := len(value)
-	for start < end {
-		switch value[start] {
-		case ' ', '\t', '\r', '\n':
-			start++
-		default:
-			goto right
-		}
-	}
-right:
-	for end > start {
-		switch value[end-1] {
-		case ' ', '\t', '\r', '\n':
-			end--
-		default:
-			break
-		}
-		if end == start {
-			break
-		}
-	}
-	return value[start:end]
 }
