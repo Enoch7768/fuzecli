@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#0b0e13">
+<title>FuzeCLI</title>
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<div class="shell">
+<aside class="sidebar">
+<div class="brand"><div class="mark">F</div><div><strong>FuzeCLI</strong><span>AI coding workspace</span></div></div>
+<button class="new-chat" id="newChat">＋ New session</button>
+<nav><button class="nav active">⌁ Chat</button><button class="nav">▣ Workspace</button><button class="nav">◈ Project plan</button><button class="nav">⚙ Settings</button></nav>
+<div class="sidebar-bottom"><span class="dot"></span><span>Local workspace</span></div>
+</aside>
+<main class="main">
+<header class="topbar"><div><span class="eyebrow">FUZECLI</span><h1>Workspace assistant</h1></div><div class="connection"><span class="dot"></span> Connected</div></header>
+<section class="content">
+<div class="conversation" id="conversation">
+<div class="welcome"><div class="welcome-icon">F</div><h2>Build calmly. Ship confidently.</h2><p>Ask questions, explore your workspace, or use code generation for complete projects.</p><div class="suggestions"><button data-prompt="Explain this project">Explain this project</button><button data-prompt="Review my workspace for problems">Review my workspace</button><button data-prompt="/code Create a simple landing page">Create a landing page</button></div></div>
+</div>
+<aside class="agent">
+<div class="agent-head"><div><span class="eyebrow">LIVE AGENT</span><h2>Progress</h2></div><span class="status-pill" id="status">Idle</span></div>
+<div class="progress-ring"><div><strong id="percent">0%</strong><span>complete</span></div></div>
+<div class="metrics"><div><strong id="completed">0</strong><span>completed</span></div><div><strong id="total">0</strong><span>planned</span></div></div>
+<div class="current"><span class="label">CURRENT TASK</span><strong id="current">Waiting for a request</strong><span id="message">Ready</span></div>
+<div class="steps"><div class="step" data-step="planning"><i>1</i><span>Planning</span></div><div class="step" data-step="generating"><i>2</i><span>Generating</span></div><div class="step" data-step="verifying"><i>3</i><span>Verifying</span></div><div class="step" data-step="completed"><i>4</i><span>Finalizing</span></div></div>
+</aside>
+</section>
+<footer class="composer"><div class="composer-box"><textarea id="prompt" rows="1" placeholder="Ask FuzeCLI anything…"></textarea><button id="send" aria-label="Send">↑</button></div><div class="composer-meta"><span>Enter to send · Shift+Enter for newline</span><label><input type="checkbox" id="code"> Code generation</label></div></footer>
+</main>
+</div>
+<script src="/static/app.js"></script>
+</body>
+</html>
