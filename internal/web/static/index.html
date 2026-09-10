@@ -144,9 +144,9 @@
       }else{
         try{resetConversationVisual();await loadHistory();}catch{}
       }
-      if(data.welcome)addMessage('assistant',data.welcome,{meta:`${data.model||window.selectedModel||'model'} · ready`});
+      if(data.welcome)addMessage('assistant',data.welcome,{meta:`${data.model||'model'} · ready`});
       ready=true;
-      gate.remove();
+      gate.style.display='none';
       composer.disabled=false;
       sendButton.disabled=false;
       document.querySelectorAll('[data-prompt]').forEach(button=>button.disabled=false);
