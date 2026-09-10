@@ -83,6 +83,8 @@ func (r *Registry) Send(
 			)
 		}
 
+		messages, request = adaptRequest(name, messages, request)
+
 		return provider.Send(
 			ctx,
 			messages,
@@ -113,9 +115,11 @@ func (r *Registry) Send(
 			continue
 		}
 
+		requestMessages, request := adaptRequest(candidate, messages, request)
+
 		response, err := provider.Send(
 			ctx,
-			messages,
+			requestMessages,
 			request,
 		)
 
@@ -147,25 +151,23 @@ func (r *Registry) Stream(
 	messages []Message,
 	opts RequestOptions,
 ) (<-chan StreamChunk, error) {
-	if opts.MaxTokens < 16000 {
-		opts.MaxTokens = 16000
-	}
-
 	if name != "auto" {
-		stream, err := r.streamProvider(ctx, name, messages, opts)
+		streamMessages, streamOptions := adaptRequest(name, messages, opts)
+		stream, err := r.streamProvider(ctx, name, streamMessages, streamOptions)
 		if err != nil {
 			return nil, err
 		}
 
-		return r.continueStream(ctx, name, messages, opts, stream), nil
+		return r.continueStream(ctx, name, streamMessages, streamOptions, stream), nil
 	}
 
 	var last error
 
 	for _, candidate := range r.fallback {
-		stream, err := r.streamProvider(ctx, candidate, messages, opts)
+		streamMessages, streamOptions := adaptRequest(candidate, messages, opts)
+		stream, err := r.streamProvider(ctx, candidate, streamMessages, streamOptions)
 		if err == nil {
-			return r.continueStream(ctx, candidate, messages, opts, stream), nil
+			return r.continueStream(ctx, candidate, streamMessages, streamOptions, stream), nil
 		}
 
 		if errors.Is(err, ErrRateLimited) ||
@@ -217,6 +219,96 @@ func (r *Registry) streamProvider(
 	)
 }
 
+func adaptRequest(
+	name string,
+	messages []Message,
+	opts RequestOptions,
+) ([]Message, RequestOptions) {
+	if name != "groq" {
+		return messages, opts
+	}
+
+	if opts.MaxTokens <= 0 || opts.MaxTokens > 3000 {
+		opts.MaxTokens = 3000
+	}
+
+	return trimProviderMessages(messages, 12000), opts
+}
+
+func trimProviderMessages(messages []Message, maxChars int) []Message {
+	if len(messages) == 0 || maxChars <= 0 {
+		return messages
+	}
+
+	total := 0
+	for _, message := range messages {
+		total += len(message.Content)
+	}
+
+	if total <= maxChars {
+		return messages
+	}
+
+	if len(messages) == 1 {
+		return []Message{truncateMessage(messages[0], maxChars)}
+	}
+
+	first := messages[0]
+	last := messages[len(messages)-1]
+	budget := maxChars - len(first.Content)
+	if budget <= 0 {
+		return []Message{
+			truncateMessage(first, maxChars/2),
+			truncateMessage(last, maxChars-maxChars/2),
+		}
+	}
+
+	if len(last.Content) >= budget {
+		firstBudget := maxChars / 4
+		lastBudget := maxChars - firstBudget
+		return []Message{
+			truncateMessage(first, firstBudget),
+			truncateMessage(last, lastBudget),
+		}
+	}
+
+	result := []Message{first}
+	used := len(first.Content) + len(last.Content)
+
+	for i := len(messages) - 2; i >= 1; i-- {
+		remaining := maxChars - used
+		if remaining <= 0 {
+			break
+		}
+		if len(messages[i].Content) <= remaining {
+			result = append([]Message{messages[i]}, result...)
+			used += len(messages[i].Content)
+			continue
+		}
+		result = append([]Message{truncateMessage(messages[i], remaining)}, result...)
+		used = maxChars
+		break
+	}
+
+	result = append(result, last)
+	return result
+}
+
+func truncateMessage(message Message, maxChars int) Message {
+	if maxChars <= 0 {
+		return Message{Role: message.Role}
+	}
+	if len(message.Content) <= maxChars {
+		return message
+	}
+	content := message.Content[:maxChars]
+	if maxChars > 96 {
+		content = content[:maxChars-96] + "\n\n[Earlier content trimmed by FuzeCLI to respect the provider token limit.]"
+	}
+	message.Content = content
+	return message
+}
+
 func (r *Registry) continueStream(
 	ctx context.Context,
 	name string,
@@ -233,8 +325,8 @@ func (r *Registry) continueStream(
 		combined := strings.Builder{}
 		continuations := 0
 		limit := opts.MaxTokens * 4
-		if limit < 16000 {
-			limit = 16000
+		if limit < 12000 {
+			limit = 12000
 		}
 		threshold := int(float64(limit) * 0.84)
 
@@ -278,8 +370,9 @@ func (r *Registry) continueStream(
 				Message{Role: "user", Content: "Continue the previous response exactly from where it stopped. Do not repeat any text. Output only the missing continuation. Preserve the same format and complete the response."},
 			)
 
+			continuationMessages, continuationOptions := adaptRequest(name, continuationMessages, opts)
 			var err error
-			current, err = r.streamProvider(ctx, name, continuationMessages, opts)
+			current, err = r.streamProvider(ctx, name, continuationMessages, continuationOptions)
 			if err != nil {
 				out <- StreamChunk{Error: err}
 				return
