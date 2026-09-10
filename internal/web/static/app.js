@@ -13,6 +13,7 @@ let selectedProvider='';
 let selectedModel='';
 let jobRunning=false;
 let activeAssistant=null;
+let thinkingAssistant=null;
 let lastPrompt='';
 
 function escapeHTML(value){return String(value??'').replace(/[&<>\"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[c]));}
@@ -72,7 +73,33 @@ function addMessage(role,text,options={}){
   return content;
 }
 
+function ensureThinking(message='Thinking…',meta='working'){
+  if(!thinkingAssistant){
+    thinkingAssistant=addMessage('assistant',message,{meta});
+    thinkingAssistant.classList.add('thinking-content');
+    const group=thinkingAssistant.closest('.message-group');
+    if(group)group.classList.add('thinking-group');
+  }else{
+    thinkingAssistant.dataset.raw=message;
+    thinkingAssistant.innerHTML=renderMessageText(message);
+    const group=thinkingAssistant.closest('.message-group');
+    if(group){
+      const metaNode=group.querySelector('.message-head small');
+      if(metaNode)metaNode.textContent=meta;
+    }
+  }
+  conversation.scrollTop=conversation.scrollHeight;
+}
+
+function clearThinking(){
+  if(!thinkingAssistant)return;
+  const group=thinkingAssistant.closest('.message-group');
+  if(group)group.remove();
+  thinkingAssistant=null;
+}
+
 function ensureAssistant(){
+  clearThinking();
   if(!activeAssistant){
     activeAssistant=addMessage('assistant','',{meta:`${selectedModel||'model'} · streaming`});
     activeAssistant.classList.add('streaming-content');
@@ -81,6 +108,7 @@ function ensureAssistant(){
 }
 
 function finishAssistant(){
+  clearThinking();
   if(activeAssistant){
     activeAssistant.classList.remove('streaming-content');
     const group=activeAssistant.closest('.message-group');
@@ -93,6 +121,7 @@ function finishAssistant(){
 }
 
 function appendAssistantDelta(delta){
+  if(!delta)return;
   const node=ensureAssistant();
   node.dataset.raw=(node.dataset.raw||'')+delta;
   node.innerHTML=renderMessageText(node.dataset.raw);
@@ -100,7 +129,8 @@ function appendAssistantDelta(delta){
 }
 
 function showGeneratedSummary(files,message){
-  if(!activeAssistant)return;
+  clearThinking();
+  if(!activeAssistant){activeAssistant=addMessage('assistant','',{meta:selectedModel||'model'});}
   const content=activeAssistant;
   content.dataset.raw=message||'';
   const list=(files||[]).slice(0,24).map(path=>`<div class="generation-file">${escapeHTML(path)}</div>`).join('');
@@ -168,7 +198,7 @@ function setProgress(e){
 }
 
 function prettyStatus(value){
-  const map={idle:'Idle',planning:'Planning',planned:'Planned',generating:'Generating',writing:'Writing',verifying:'Verifying',correcting:'Correcting',streaming:'Streaming',completed:'Complete',failed:'Failed'};
+  const map={idle:'Idle',planning:'Thinking',planned:'Planned',generating:'Generating',writing:'Writing',verifying:'Checking',correcting:'Correcting',streaming:'Responding',completed:'Complete',failed:'Failed'};
   return map[value]||value;
 }
 
@@ -305,12 +335,13 @@ async function loadPlan(){
 }
 
 function formatBytes(n){if(n<1024)return`${n} B`;if(n<1048576)return`${(n/1024).toFixed(1)} KB`;return`${(n/1048576).toFixed(1)} MB`;}
-function resetConversationVisual(){conversation.innerHTML='';activeAssistant=null;}
+function resetConversationVisual(){conversation.innerHTML='';activeAssistant=null;thinkingAssistant=null;}
 
 function addFriendlyErrorMessage(data){
   const title=data.title||'Request failed';
   const text=data.error||data.message||'The request could not be completed.';
   const meta=[data.provider,data.model,data.status_code?`HTTP ${data.status_code}`:''].filter(Boolean).join(' · ');
+  clearThinking();
   const content=addMessage('assistant','',{meta});
   content.innerHTML=`<div class="inline-error"><div class="inline-error-top"><span class="inline-error-icon">!</span><div><strong>${escapeHTML(title)}</strong><p>${escapeHTML(text)}</p></div></div>${data.recovery?`<div class="inline-error-recovery">${escapeHTML(data.recovery)}</div>`:''}${data.retry_after?`<div class="inline-error-meta">Retry delay: about ${escapeHTML(data.retry_after)} seconds</div>`:''}${data.technical?`<details><summary>Technical details</summary><pre>${escapeHTML(data.technical)}</pre></details>`:''}</div>`;
   return content;
@@ -340,6 +371,15 @@ function handleProgress(event){
     setProgress(data);
     if(data.provider)$('providerLabel').textContent=data.provider;
     if(data.model)$('modelLabel').textContent=data.model;
+    if(data.status==='planning'&&!activeAssistant&&!thinkingAssistant){
+      ensureThinking('Thinking through your request…',`${data.provider||selectedProvider||'provider'} · planning`);
+    }else if(data.status==='planning'&&thinkingAssistant){
+      ensureThinking(data.message||'Thinking through your request…',`${data.provider||selectedProvider||'provider'} · planning`);
+    }else if(data.status==='generating'&&!activeAssistant){
+      ensureThinking(data.message||'Generating a response…',`${data.provider||selectedProvider||'provider'} · working`);
+    }else if(data.status==='verifying'&&!activeAssistant){
+      ensureThinking(data.message||'Checking the result…',`${data.provider||selectedProvider||'provider'} · checking`);
+    }
     if(data.status==='completed'){
       if(data.generated_files?.length)showGeneratedSummary(data.generated_files,data.message);
       jobRunning=false;
@@ -367,7 +407,20 @@ function handleGenerated(event){
 }
 
 function handleChatToken(event){
-  try{if(!event.data)return;const data=JSON.parse(event.data);setProgress(data);appendAssistantDelta(data.message||'');}catch{}
+  try{
+    if(!event.data)return;
+    const data=JSON.parse(event.data);
+    setProgress(data);
+    if(data.status==='streaming'){
+      clearThinking();
+      appendAssistantDelta(data.message||'');
+    }else if(data.status==='planning'||data.status==='generating'||data.status==='verifying'){
+      if(!activeAssistant)ensureThinking(data.message||'Working…',`${data.provider||selectedProvider||'provider'} · ${prettyStatus(data.status).toLowerCase()}`);
+    }else if(data.status==='completed'){
+      clearThinking();
+      if(data.message&&!activeAssistant){activeAssistant=addMessage('assistant',data.message,{meta:selectedModel||'model'});}
+    }
+  }catch{}
 }
 
 function handleJobError(event){
@@ -399,13 +452,15 @@ async function submit(){
   lastPrompt=clean;
   addMessage('user',clean,{meta:isCode?'code generation':'message'});
   activeAssistant=null;
+  clearThinking();
   prompt.value='';
   prompt.style.height='auto';
   jobRunning=true;
   document.body.classList.add('busy');
   send.disabled=true;
   clearError();
-  setProgress({status:isCode?'planning':'generating',message:isCode?'Starting project planning…':'Connecting to provider…',provider:selectedProvider,model:selectedModel});
+  ensureThinking(isCode?'Thinking through the project and dependencies…':'Thinking through your request…',`${selectedProvider||'provider'} · preparing`);
+  setProgress({status:isCode?'planning':'generating',message:isCode?'Starting project planning…':'Preparing the request…',provider:selectedProvider,model:selectedModel});
   try{
     const result=await fetchJSON('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt:clean,provider:selectedProvider,model:selectedModel,code:isCode,yes:true})});
     if(result?.accepted!==true)throw Object.assign(new Error('The server did not accept the chat request.'),{payload:{title:'Request was not accepted',error:'FuzeCLI did not start the requested chat job.',recovery:'Retry the message.'}});
