@@ -136,7 +136,7 @@ func (a *App) terminalStream(ctx context.Context, prompt, providerName, model st
 	if err != nil {
 		return err
 	}
-	system := "You are FuzeCLI, a practical coding assistant. Answer clearly and concisely. Do not modify files in chat mode."
+	system := "You are FuzeCLI, a practical coding assistant. For ordinary questions, answer naturally in plain text. When the user asks you to create, modify, or delete files and the response can be represented by the FuzeCLI generation schema, return ONLY that valid generation JSON so FuzeCLI can apply it safely. Never use markdown fences for generation JSON."
 	if a.Profile.Condensed() != "" {
 		system += "\nDeveloper profile:\n" + a.Profile.Condensed()
 	}
@@ -154,18 +154,49 @@ func (a *App) terminalStream(ctx context.Context, prompt, providerName, model st
 	if err != nil {
 		return err
 	}
-	fmt.Println("\n\x1b[38;5;111mFuzeCLI\x1b[0m")
 	var response strings.Builder
 	for chunk := range stream {
 		if chunk.Error != nil {
 			return chunk.Error
 		}
 		if chunk.Delta != "" {
-			fmt.Print(chunk.Delta)
 			response.WriteString(chunk.Delta)
 		}
 	}
-	fmt.Println()
+	text := strings.TrimSpace(response.String())
+	if text == "" {
+		return context.Canceled
+	}
+
+	if plan, parseErr := generation.ParsePlan(response.String()); parseErr == nil {
+		written, applyErr := generation.Apply(a.Store.Root, plan)
+		if applyErr != nil {
+			return applyErr
+		}
+		if err := a.Store.MarkTouched(written); err != nil {
+			return err
+		}
+		st, _ := a.Store.LoadState()
+		st.ActiveProvider = name
+		st.ActiveModel = mdl
+		_ = a.Store.SaveState(st)
+		_ = a.Store.RefreshHashes(written)
+		fmt.Println("\n\x1b[38;5;111mFuzeCLI\x1b[0m")
+		if len(written) == 1 {
+			fmt.Printf("Generated 1 file: %s\n", written[0])
+		} else {
+			fmt.Printf("Generated %d files:\n", len(written))
+			for _, path := range written {
+				fmt.Printf("  ✓ %s\n", path)
+			}
+		}
+		if plan.Explanation != "" {
+			fmt.Printf("\n%s\n", plan.Explanation)
+		}
+	} else {
+		fmt.Println("\n\x1b[38;5;111mFuzeCLI\x1b[0m")
+		fmt.Println(response.String())
+	}
 	return a.Store.AddMessage(provider.Message{Role: "assistant", Content: response.String()})
 }
 
