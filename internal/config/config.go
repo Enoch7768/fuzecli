@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/Enoch7768/fuzecli/internal/provider"
 )
 
 type ProviderConfig struct {
@@ -28,17 +30,23 @@ type VerificationConfig struct {
 }
 
 func Default() Config {
+	providers := map[string]ProviderConfig{
+		"openai": {DefaultModel: "gpt-4o"},
+		"gemini": {DefaultModel: "gemini-2.5-flash"},
+		"groq": {DefaultModel: "openai/gpt-oss-20b"},
+		"anthropic": {DefaultModel: "claude-sonnet-4-6"},
+		"llamacpp": {BaseURL: "http://localhost:8080", DefaultModel: "local"},
+	}
+	for _, name := range provider.CompatibleProviderNames() {
+		if _, ok := providers[name]; !ok {
+			providers[name] = ProviderConfig{DefaultModel: "auto"}
+		}
+	}
 	return Config{
 		DefaultProvider: "groq",
-		Providers: map[string]ProviderConfig{
-			"openai": {DefaultModel: "gpt-4o"},
-			"gemini": {DefaultModel: "gemini-2.5-flash"},
-			"groq": {DefaultModel: "openai/gpt-oss-20b"},
-			"anthropic": {DefaultModel: "claude-sonnet-4-6"},
-			"llamacpp": {BaseURL: "http://localhost:8080", DefaultModel: "local"},
-		},
-		FallbackOrder: []string{"gemini", "groq", "openai", "llamacpp"},
-		Verification: VerificationConfig{SelfCorrectionAttempts: 2},
+		Providers:       providers,
+		FallbackOrder:   []string{"gemini", "groq", "openai", "llamacpp"},
+		Verification:    VerificationConfig{SelfCorrectionAttempts: 2},
 	}
 }
 
@@ -65,6 +73,7 @@ func Load() (Config, error) {
 		if err := Save(c); err != nil {
 			return Config{}, err
 		}
+		syncProviderConfiguration(c)
 		return c, nil
 	}
 	if err != nil {
@@ -74,7 +83,14 @@ func Load() (Config, error) {
 	if err := parseYAML(string(b), &c); err != nil {
 		return Config{}, fmt.Errorf("parse config: %w", err)
 	}
+	syncProviderConfiguration(c)
 	return c, nil
+}
+
+func syncProviderConfiguration(c Config) {
+	for name, cfg := range c.Providers {
+		provider.Configure(name, cfg.APIKey, cfg.BaseURL)
+	}
 }
 
 func Save(c Config) error {
@@ -90,6 +106,7 @@ func Save(c Config) error {
 		_ = os.Remove(tempPath)
 		return fmt.Errorf("replace config: %w", err)
 	}
+	syncProviderConfiguration(c)
 	return nil
 }
 
@@ -116,7 +133,7 @@ func Set(key, value string) error {
 		field := parts[2]
 		p, ok := c.Providers[name]
 		if !ok {
-			return fmt.Errorf("unknown provider %q", name)
+			p = ProviderConfig{}
 		}
 		switch field {
 		case "api_key":
@@ -178,10 +195,15 @@ func renderYAML(c Config) string {
 			fmt.Fprintf(&b, "    base_url: %s\n", yamlScalar(p.BaseURL))
 		}
 	}
-	for name, p := range c.Providers {
-		if seen[name] {
-			continue
+	otherNames := make([]string, 0, len(c.Providers))
+	for name := range c.Providers {
+		if !seen[name] {
+			otherNames = append(otherNames, name)
 		}
+	}
+	sort.Strings(otherNames)
+	for _, name := range otherNames {
+		p := c.Providers[name]
 		fmt.Fprintf(&b, "  %s:\n", name)
 		if p.APIKey != "" {
 			fmt.Fprintf(&b, "    api_key: %s\n", yamlScalar(p.APIKey))
