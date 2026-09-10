@@ -1,9 +1,6 @@
 package provider
 
-import (
-	"context"
-	"testing"
-)
+import "testing"
 
 func TestCompatibleCatalogHasAtLeastFiftyProviders(t *testing.T) {
 	if len(CompatibleProviderNames()) < 50 {
@@ -24,5 +21,4 @@ func TestDynamicCompatibleProviderRegistration(t *testing.T) {
 	if _, err := r.Get("unknown-provider"); err == nil {
 		t.Fatal("expected unknown provider error")
 	}
-	_ = context.Background()
 }
