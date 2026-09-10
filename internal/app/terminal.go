@@ -159,17 +159,14 @@ func (a *App) terminalStream(ctx context.Context, prompt, providerName, model st
 		return err
 	}
 	phase = "Assembling workspace context"
-	system := "You are FuzeCLI, a practical coding assistant. For ordinary questions, answer naturally in plain text. When the user asks you to create, modify, or delete files and the response can be represented by the FuzeCLI generation schema, return ONLY that valid generation JSON so FuzeCLI can apply it safely. Never use markdown fences for generation JSON."
+	system := generation.StrictExecutionMode + "\n\nYou are FuzeCLI, a practical coding assistant. For ordinary questions, answer naturally in plain text. When the user asks you to create, modify, or delete files and the response can be represented by the FuzeCLI generation schema, return ONLY that valid generation JSON so FuzeCLI can apply it safely. Never use markdown fences for generation JSON."
 	if a.Profile.Condensed() != "" {
 		system += "\nDeveloper profile:\n" + a.Profile.Condensed()
 	}
 	if workspaceContext != "" {
 		system += "\nRelevant workspace files:\n" + workspaceContext
 	}
-	msgs := []provider.Message{
-		{Role: "system", Content: generation.StrictExecutionMode},
-		{Role: "system", Content: system},
-	}
+	msgs := []provider.Message{{Role: "system", Content: system}}
 	msgs = append(msgs, history...)
 	msgs = append(msgs, provider.Message{Role: "user", Content: prompt})
 	msgs = generationTrim(msgs, 120000)
