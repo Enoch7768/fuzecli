@@ -15,17 +15,17 @@ let jobRunning=false;
 let activeAssistant=null;
 let lastPrompt='';
 
-function escapeHTML(value){return String(value??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));}
+function escapeHTML(value){return String(value??'').replace(/[&<>\"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[c]));}
 
 function renderMessageText(text){
   const safe=escapeHTML(text||'');
-  const parts=safe.split(/(```[\s\S]*?```)/g);
+  const parts=safe.split(/(```[\\s\\S]*?```)/g);
   return parts.map(part=>{
     if(part.startsWith('```')){
-      const raw=part.slice(3,-3).replace(/^\s*[a-zA-Z0-9_-]+\s*\n/,'');
+      const raw=part.slice(3,-3).replace(/^\\s*[a-zA-Z0-9_-]+\\s*\\n/,'');
       return `<pre><code>${raw}</code></pre>`;
     }
-    return part.replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>').replace(/`([^`]+)`/g,'<code>$1</code>').replace(/\n/g,'<br>');
+    return part.replace(/\\*\\*(.+?)\\*\\*/g,'<strong>$1</strong>').replace(/`([^`]+)`/g,'<code>$1</code>').replace(/\\n/g,'<br>');
   }).join('');
 }
 
@@ -49,6 +49,7 @@ function addMessage(role,text,options={}){
   }
   const content=document.createElement('div');
   content.className='message-content';
+  content.dataset.raw=text||'';
   content.innerHTML=role==='assistant'?renderMessageText(text):escapeHTML(text).replace(/\n/g,'<br>');
   body.appendChild(head);
   body.appendChild(content);
@@ -59,7 +60,7 @@ function addMessage(role,text,options={}){
     copy.type='button';
     copy.textContent='Copy';
     copy.addEventListener('click',async()=>{
-      try{await navigator.clipboard.writeText(content.textContent||'');copy.textContent='Copied';setTimeout(()=>copy.textContent='Copy',1200);}catch{copy.textContent='Copy failed';setTimeout(()=>copy.textContent='Copy',1200);}
+      try{await navigator.clipboard.writeText(content.dataset.raw||content.textContent||'');copy.textContent='Copied';setTimeout(()=>copy.textContent='Copy',1200);}catch{copy.textContent='Copy failed';setTimeout(()=>copy.textContent='Copy',1200);}
     });
     actions.appendChild(copy);
     body.appendChild(actions);
@@ -73,7 +74,7 @@ function addMessage(role,text,options={}){
 
 function ensureAssistant(){
   if(!activeAssistant){
-    activeAssistant=addMessage('assistant','', {meta:`${selectedModel||'model'} · streaming`});
+    activeAssistant=addMessage('assistant','',{meta:`${selectedModel||'model'} · streaming`});
     activeAssistant.classList.add('streaming-content');
   }
   return activeAssistant;
@@ -82,18 +83,29 @@ function ensureAssistant(){
 function finishAssistant(){
   if(activeAssistant){
     activeAssistant.classList.remove('streaming-content');
-    const message=activeAssistant.closest('.message-group');
-    if(message){const meta=message.querySelector('.message-head small');if(meta)meta.textContent=`${selectedModel||'model'}`;}
+    const group=activeAssistant.closest('.message-group');
+    if(group){
+      const meta=group.querySelector('.message-head small');
+      if(meta)meta.textContent=selectedModel||'model';
+    }
   }
   activeAssistant=null;
 }
 
 function appendAssistantDelta(delta){
   const node=ensureAssistant();
-  const existing=node.dataset.raw||'';
-  node.dataset.raw=existing+delta;
+  node.dataset.raw=(node.dataset.raw||'')+delta;
   node.innerHTML=renderMessageText(node.dataset.raw);
   conversation.scrollTop=conversation.scrollHeight;
+}
+
+function showGeneratedSummary(files,message){
+  if(!activeAssistant)return;
+  const content=activeAssistant;
+  content.dataset.raw=message||'';
+  const list=(files||[]).slice(0,24).map(path=>`<div class="generation-file">${escapeHTML(path)}</div>`).join('');
+  const more=(files||[]).length>24?`<div class="inline-error-meta">${files.length-24} more files are in the workspace.</div>`:'';
+  content.innerHTML=`<div class="generation-card"><strong>Code generated successfully</strong><p>${escapeHTML(message||`Generated ${files.length} file${files.length===1?'':'s'} and saved them to the workspace.`)}</p>${list?`<div class="generation-files">${list}</div>`:''}${more}<a class="generation-download" href="/api/download">Download code</a></div>`;
 }
 
 function showError(payload){
@@ -236,6 +248,8 @@ async function loadModels(){
     modelInput.value=configured;
     $('providerLabel').textContent=provider;
     $('modelLabel').textContent=configured||'Unavailable';
+    $('agentProvider').textContent=provider;
+    $('agentModel').textContent=configured||'—';
     showError(error.payload||error.message);
   }finally{modelInput.disabled=false;}
 }
@@ -291,7 +305,6 @@ async function loadPlan(){
 }
 
 function formatBytes(n){if(n<1024)return`${n} B`;if(n<1048576)return`${(n/1024).toFixed(1)} KB`;return`${(n/1048576).toFixed(1)} MB`;}
-
 function resetConversationVisual(){conversation.innerHTML='';activeAssistant=null;}
 
 function addFriendlyErrorMessage(data){
@@ -304,8 +317,9 @@ function addFriendlyErrorMessage(data){
 }
 
 const source=new EventSource('/api/events');
-source.addEventListener('progress',event=>handleProgress(event));
+source.addEventListener('progress',handleProgress);
 source.addEventListener('chat_token',handleChatToken);
+source.addEventListener('generated',handleGenerated);
 source.addEventListener('job_error',handleJobError);
 source.onmessage=handleProgress;
 source.onerror=()=>{
@@ -320,11 +334,41 @@ source.onopen=()=>{
 };
 
 function handleProgress(event){
-  try{if(!event.data)return;const data=JSON.parse(event.data);setProgress(data);if(data.provider)$('providerLabel').textContent=data.provider;if(data.model)$('modelLabel').textContent=data.model;if(data.status==='completed'){jobRunning=false;send.disabled=false;document.body.classList.remove('busy');finishAssistant();loadWorkspace();loadPlan();}else if(data.status==='failed'){jobRunning=false;send.disabled=false;document.body.classList.remove('busy');}}catch{}
+  try{
+    if(!event.data)return;
+    const data=JSON.parse(event.data);
+    setProgress(data);
+    if(data.provider)$('providerLabel').textContent=data.provider;
+    if(data.model)$('modelLabel').textContent=data.model;
+    if(data.status==='completed'){
+      if(data.generated_files?.length)showGeneratedSummary(data.generated_files,data.message);
+      jobRunning=false;
+      send.disabled=false;
+      document.body.classList.remove('busy');
+      finishAssistant();
+      loadWorkspace();
+      loadPlan();
+    }else if(data.status==='failed'){
+      jobRunning=false;
+      send.disabled=false;
+      document.body.classList.remove('busy');
+      finishAssistant();
+    }
+  }catch{}
+}
+
+function handleGenerated(event){
+  try{
+    if(!event.data)return;
+    const data=JSON.parse(event.data);
+    setProgress(data);
+    if(data.generated_files?.length)showGeneratedSummary(data.generated_files,data.message);
+  }catch{}
 }
 
 function handleChatToken(event){
-  try{if(!event.data)return;const data=JSON.parse(event.data);setProgress(data);appendAssistantDelta(data.message||'');}catch{}}
+  try{if(!event.data)return;const data=JSON.parse(event.data);setProgress(data);appendAssistantDelta(data.message||'');}catch{}
+}
 
 function handleJobError(event){
   try{
@@ -345,12 +389,15 @@ async function submit(){
   if(jobRunning)return;
   const text=prompt.value.trim();
   if(!text)return;
-  const isCode=code.checked||text.startsWith('/code ');
-  const clean=text.startsWith('/code ')?text.slice(6).trim():text;
-  if(!clean)return;
+  const isCode=code.checked||/^\/code(?:\s|$)/i.test(text);
+  const clean=text.replace(/^\/code(?:\s|$)/i,'').trim();
+  if(!clean){
+    showError({title:'Tell FuzeCLI what to build',error:'The /code command needs a description of the code or project you want generated.',recovery:'Example: /code create a modern PHP landing page'});
+    return;
+  }
   if(conversation.querySelector('.welcome'))conversation.innerHTML='';
   lastPrompt=clean;
-  addMessage('user',clean);
+  addMessage('user',clean,{meta:isCode?'code generation':'message'});
   activeAssistant=null;
   prompt.value='';
   prompt.style.height='auto';
@@ -374,7 +421,8 @@ async function submit(){
 }
 
 $('retryError').addEventListener('click',()=>{clearError();prompt.value=lastPrompt;submit();});
-$('attachInfo').addEventListener('click',()=>{showError({title:'Workspace context',error:'FuzeCLI automatically includes tracked workspace context where the current request needs it.',recovery:'Use /code for project generation or ask a normal question for streamed chat.'});});
+$('attachInfo').addEventListener('click',()=>{showError({title:'Workspace context',error:'FuzeCLI automatically includes tracked workspace context where the current request needs it.',recovery:'Normal chat can answer questions. Code requests can be generated automatically when the model returns valid FuzeCLI generation JSON.'});});
+$('downloadCode').addEventListener('click',()=>{window.location.href='/api/download';});
 send.addEventListener('click',submit);
 prompt.addEventListener('keydown',event=>{if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();submit();}});
 prompt.addEventListener('input',()=>{prompt.style.height='auto';prompt.style.height=Math.min(prompt.scrollHeight,220)+'px';});
@@ -382,6 +430,8 @@ document.querySelectorAll('[data-prompt]').forEach(button=>button.addEventListen
 $('newChat').addEventListener('click',()=>{if(jobRunning)return;resetConversationVisual();clearError();setProgress({status:'idle',message:'Ready',completed_files:0,total_files:0,provider:selectedProvider,model:selectedModel});openTab('chat');prompt.focus();});
 $('refreshWorkspace').addEventListener('click',loadWorkspace);
 $('refreshPlan').addEventListener('click',loadPlan);
+conversation.addEventListener('scroll',()=>{const distance=conversation.scrollHeight-conversation.scrollTop-conversation.clientHeight;$('scrollBottom').classList.toggle('visible',distance>220);});
+$('scrollBottom').addEventListener('click',()=>conversation.scrollTo({top:conversation.scrollHeight,behavior:'smooth'}));
 document.addEventListener('keydown',event=>{if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='k'){event.preventDefault();if(!jobRunning)prompt.focus();}});
 
 async function loadHistory(){
