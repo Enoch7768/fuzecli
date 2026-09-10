@@ -166,7 +166,10 @@ func (a *App) terminalStream(ctx context.Context, prompt, providerName, model st
 	if workspaceContext != "" {
 		system += "\nRelevant workspace files:\n" + workspaceContext
 	}
-	msgs := []provider.Message{{Role: "system", Content: system}}
+	msgs := []provider.Message{
+		{Role: "system", Content: generation.StrictExecutionMode},
+		{Role: "system", Content: system},
+	}
 	msgs = append(msgs, history...)
 	msgs = append(msgs, provider.Message{Role: "user", Content: prompt})
 	msgs = generationTrim(msgs, 120000)
