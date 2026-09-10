@@ -37,8 +37,8 @@ func (a *App) SessionWelcome(ctx context.Context, providerName, model string) (s
 	msgs := []provider.Message{{Role: "system", Content: generation.StrictExecutionMode}}
 	msgs = append(msgs, history...)
 	msgs = append(msgs, provider.Message{Role: "user", Content: welcomePrompt})
-	msgs = generationTrim(msgs, 120000)
-	stream, err := a.Registry.Stream(ctx, name, msgs, provider.RequestOptions{Model: mdl, Temperature: 0.2, MaxTokens: 500})
+	msgs = generationTrim(msgs, 18000)
+	stream, err := a.Registry.Stream(ctx, name, msgs, provider.RequestOptions{Model: mdl, Temperature: 0.2, MaxTokens: 300})
 	if err != nil {
 		return "", err
 	}
