@@ -20,6 +20,9 @@ func (a *App) TerminalChat(ctx context.Context, yes bool) error {
 		return fmt.Errorf("workspace not initialized; run aicli init")
 	}
 	providerName, model, _ := a.ProviderAndModel("", "")
+	if err := a.terminalSessionPreflight(ctx, providerName, model); err != nil {
+		return err
+	}
 	printTerminalHeader(providerName, model, a.Store.Root)
 	scanner := bufio.NewScanner(os.Stdin)
 	scanner.Buffer(make([]byte, 4096), 1024*1024)
@@ -83,6 +86,65 @@ func (a *App) TerminalChat(ctx context.Context, yes bool) error {
 	}
 	go a.RunProfileExtraction(context.Background())
 	return scanner.Err()
+}
+
+func (a *App) terminalSessionPreflight(ctx context.Context, providerName, model string) error {
+	fmt.Println("\n\x1b[1;38;5;117mFuzeCLI SESSION PREFLIGHT\x1b[0m")
+	fmt.Println("\x1b[38;5;244m────────────────────────────────────────────────────────────\x1b[0m")
+	fmt.Println("Choose how this session should handle conversation memory.")
+	fmt.Println("Your prompt will remain locked during the 60-second preflight timer.")
+	fmt.Println()
+
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+	remaining := 60
+	for remaining > 0 {
+		fmt.Printf("\r\x1b[K\x1b[38;5;111mSession unlocks in %02d seconds\x1b[0m", remaining)
+		select {
+		case <-ctx.Done():
+			fmt.Println()
+			return ctx.Err()
+		case <-ticker.C:
+			remaining--
+		}
+	}
+	fmt.Print("\r\x1b[K")
+
+	fmt.Println("\n\x1b[1mMemory mode\x1b[0m")
+	fmt.Println("  [M] Continue with memory")
+	fmt.Println("  [F] Start fresh and clear memory")
+	fmt.Print("\n\x1b[38;5;111mChoice\x1b[0m: ")
+
+	scanner := bufio.NewScanner(os.Stdin)
+	scanner.Buffer(make([]byte, 128), 4096)
+	for scanner.Scan() {
+		choice := strings.ToLower(strings.TrimSpace(scanner.Text()))
+		switch choice {
+		case "m", "memory", "continue":
+			fmt.Println("\x1b[38;5;244mMemory retained.\x1b[0m")
+		case "f", "fresh", "clear", "new":
+			if err := a.Store.ClearMemory(); err != nil {
+				return err
+			}
+			fmt.Println("\x1b[38;5;244mConversation memory cleared.\x1b[0m")
+		default:
+			fmt.Print("\x1b[38;5;214mChoose M or F:\x1b[0m ")
+			continue
+		}
+		break
+	}
+	if err := scanner.Err(); err != nil {
+		return err
+	}
+
+	fmt.Println("\n\x1b[38;5;111mFuzeCLI\x1b[0m is preparing your session…")
+	welcome, err := a.SessionWelcome(ctx, providerName, model)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("\n\x1b[38;5;111mFuzeCLI\x1b[0m\n%s\n", welcome)
+	fmt.Println("\n\x1b[38;5;244mSession ready. Your next input will be sent as your request.\x1b[0m")
+	return nil
 }
 
 func splitTerminalCommand(line string) (string, string) {
@@ -166,7 +228,10 @@ func (a *App) terminalStream(ctx context.Context, prompt, providerName, model st
 	if workspaceContext != "" {
 		system += "\nRelevant workspace files:\n" + workspaceContext
 	}
-	msgs := []provider.Message{{Role: "system", Content: system}}
+	msgs := []provider.Message{
+		{Role: "system", Content: generation.StrictExecutionMode},
+		{Role: "system", Content: system},
+	}
 	msgs = append(msgs, history...)
 	msgs = append(msgs, provider.Message{Role: "user", Content: prompt})
 	msgs = generationTrim(msgs, 120000)
