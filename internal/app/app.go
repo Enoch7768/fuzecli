@@ -947,7 +947,7 @@ func (a *App) chatTurn(
 		provider.RequestOptions{
 			Model:       model,
 			Temperature: 0.3,
-			MaxTokens:   4000,
+			MaxTokens:   16000,
 		},
 	)
 	if err != nil {
