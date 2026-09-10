@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="theme-color" content="#0a0c10">
+<meta name="theme-color" content="#0b0d10">
 <meta name="description" content="FuzeCLI local AI coding workspace">
 <title>FuzeCLI</title>
 <link rel="stylesheet" href="/static/app.css">
@@ -13,17 +13,17 @@
 <aside class="sidebar">
 <div class="brand">
 <div class="logo-mark" aria-hidden="true"><svg viewBox="0 0 48 48"><path d="M13 8h24v7H21v6h13v7H21v12h-8V8Z"/><path d="m29 31 7-7 5 5-7 7-5-5Z"/></svg></div>
-<div class="brand-copy"><strong>FuzeCLI</strong><span>Local coding workspace</span></div>
+<div class="brand-copy"><strong>FuzeCLI</strong><span>Private coding workspace</span></div>
 </div>
-<button class="new-session" id="newChat"><span>＋</span><span>New session</span><kbd>Ctrl K</kbd></button>
+<button class="new-session" id="newChat"><span>＋</span><span>New chat</span><kbd>Ctrl K</kbd></button>
 <nav class="nav-list" aria-label="Workspace">
 <button class="nav active" data-tab="chat"><span>⌁</span><b>Chat</b></button>
 <button class="nav" data-tab="workspace"><span>□</span><b>Workspace</b></button>
 <button class="nav" data-tab="plan"><span>◇</span><b>Project plan</b></button>
 <button class="nav" data-tab="settings"><span>⚙</span><b>Settings</b></button>
 </nav>
-<div class="sidebar-card"><span class="eyebrow">RUNTIME</span><strong id="sideRuntime">Ready</strong><small>Local-only interface</small></div>
-<div class="sidebar-foot"><span class="online" id="connectionDot"></span><div><strong>FuzeCLI online</strong><small>127.0.0.1</small></div></div>
+<div class="sidebar-card"><span class="eyebrow">RUNTIME</span><strong id="sideRuntime">Ready</strong><small>Local interface · localhost only</small></div>
+<div class="sidebar-foot"><span class="online" id="connectionDot"></span><div><strong id="connectionText">Connected</strong><small>127.0.0.1:8787</small></div></div>
 </aside>
 <main class="main">
 <header class="topbar">
@@ -38,8 +38,8 @@
 <div class="welcome" id="welcome">
 <div class="welcome-logo"><svg viewBox="0 0 48 48"><path d="M13 8h24v7H21v6h13v7H21v12h-8V8Z"/><path d="m29 31 7-7 5 5-7 7-5-5Z"/></svg></div>
 <span class="kicker">PRIVATE · LOCAL · FOCUSED</span>
-<h2>Build calmly.<br><em>Ship confidently.</em></h2>
-<p>Think, code, verify and resume long-running projects from one quiet workspace.</p>
+<h2>What are we<br><em>building today?</em></h2>
+<p>Ask questions, write code, inspect your workspace, or run a long project through FuzeCLI's resumable planner.</p>
 <div class="suggestions">
 <button data-prompt="Explain this project">Explain this project</button>
 <button data-prompt="Review my workspace for problems">Review workspace</button>
@@ -49,8 +49,9 @@
 </div>
 <footer class="composer">
 <div class="composer-box">
-<textarea id="prompt" rows="1" placeholder="Ask FuzeCLI anything…" aria-label="Prompt"></textarea>
-<button id="send" aria-label="Send request">↑</button>
+<button class="composer-tool" id="attachInfo" aria-label="Workspace context">⌁</button>
+<textarea id="prompt" rows="1" placeholder="Message FuzeCLI…" aria-label="Prompt"></textarea>
+<button id="send" aria-label="Send message">↑</button>
 </div>
 <div class="composer-meta"><span>Enter to send · Shift+Enter for newline</span><label><input type="checkbox" id="code"> Code generation</label></div>
 </footer>
@@ -62,13 +63,13 @@
 <div class="task"><span>CURRENT TASK</span><strong id="current">Waiting for a request</strong><small id="message">Ready</small></div>
 <div class="agent-meta"><span>Provider <b id="agentProvider">—</b></span><span>Model <b id="agentModel">—</b></span><span>Elapsed <b id="elapsed">0s</b></span></div>
 <div class="steps"><div class="step" data-step="planning"><i>1</i><span>Planning</span></div><div class="step" data-step="generating"><i>2</i><span>Generating</span></div><div class="step" data-step="verifying"><i>3</i><span>Verifying</span></div><div class="step" data-step="completed"><i>4</i><span>Finalizing</span></div></div>
-<div class="error-box hidden" id="errorBox"><div class="error-icon">!</div><div><strong id="errorTitle">Something went wrong</strong><p id="errorText"></p><small id="errorRecovery"></small></div></div>
+<div class="error-box hidden" id="errorBox"><div class="error-icon">!</div><div class="error-content"><div class="error-head"><strong id="errorTitle">Something went wrong</strong><button id="retryError" class="error-retry hidden">Retry</button></div><p id="errorText"></p><div class="error-meta" id="errorMeta"></div><small id="errorRecovery"></small><details id="errorTechnicalWrap"><summary>Technical details</summary><pre id="errorTechnical"></pre></details></div></div>
 </aside>
 </div>
 </section>
 <section class="view" id="view-workspace"><div class="page-scroll"><div class="section-heading"><div><span class="kicker">WORKSPACE</span><h2>Files touched by FuzeCLI</h2><p>Generated and tracked files in this local workspace.</p></div><button class="ghost" id="refreshWorkspace">Refresh</button></div><div class="path-card" id="workspaceRoot">Loading workspace…</div><div class="file-list" id="fileList"></div></div></section>
 <section class="view" id="view-plan"><div class="page-scroll"><div class="section-heading"><div><span class="kicker">PROJECT PLAN</span><h2>Implementation map</h2><p>Large projects are split into resumable, dependency-aware batches.</p></div><button class="ghost" id="refreshPlan">Refresh</button></div><div id="planContent" class="plan-content"><div class="empty-state">No project plan is active.</div></div></div></section>
-<section class="view" id="view-settings"><div class="page-scroll settings-page"><div class="section-heading"><div><span class="kicker">SETTINGS</span><h2>Runtime preferences</h2><p>Choose the provider and edit the exact model name used by FuzeCLI.</p></div></div><div class="settings-card"><label>Provider<select id="providerSelect"></select></label><label>Model<input id="modelInput" list="modelOptions" autocomplete="off" spellcheck="false" placeholder="Enter a model name"><datalist id="modelOptions"></datalist><small>Choose a discovered model or enter a valid model identifier manually.</small></label><div class="settings-actions"><button class="primary" id="saveSettings">Save changes</button><span id="settingsState"></span></div></div><div class="settings-card info-card"><div class="setting-row"><div><strong>Workspace server</strong><span>Bound to localhost only</span></div><b>127.0.0.1:8787</b></div><div class="setting-row"><div><strong>Large project planner</strong><span>Dependency-aware resumable batches</span></div><b>Enabled</b></div><div class="setting-row"><div><strong>JSON recovery</strong><span>Structured parsing and safe retries</span></div><b>Enabled</b></div></div></div></section>
+<section class="view" id="view-settings"><div class="page-scroll settings-page"><div class="section-heading"><div><span class="kicker">SETTINGS</span><h2>Runtime preferences</h2><p>Choose a provider and edit the exact model identifier used by FuzeCLI.</p></div></div><div class="settings-card"><label>Provider<select id="providerSelect"></select></label><label>Model<input id="modelInput" list="modelOptions" autocomplete="off" spellcheck="false" placeholder="Enter a model name"><datalist id="modelOptions"></datalist><small>Choose a discovered model or enter a valid provider model identifier.</small></label><div class="settings-actions"><button class="primary" id="saveSettings">Save changes</button><span id="settingsState"></span></div></div><div class="settings-card info-card"><div class="setting-row"><div><strong>Web server</strong><span>Bound to localhost only</span></div><b>127.0.0.1:8787</b></div><div class="setting-row"><div><strong>Live streaming</strong><span>Token-by-token responses and job progress</span></div><b>Enabled</b></div><div class="setting-row"><div><strong>Long-project planner</strong><span>Dependency-aware resumable batches</span></div><b>Enabled</b></div><div class="setting-row"><div><strong>Error diagnostics</strong><span>Provider-aware rate-limit and overload messages</span></div><b>Enabled</b></div></div></div></section>
 </div>
 </main>
 </div>
