@@ -180,16 +180,18 @@ func normalizePaths(paths []string) []string {
 
 func NewProjectPlan(prompt string, plan ProjectPlan) ProjectPlan {
 	for i := range plan.Files {
-		plan.Files[i].Status = "pending"
+		plan.Files[i].Path = filepath.ToSlash(plan.Files[i].Path)
+		plan.Files[i].Dependencies = normalizePaths(plan.Files[i].Dependencies)
+		if plan.Files[i].Status == "" {
+			plan.Files[i].Status = "pending"
+		}
 	}
-	return ProjectPlan{
-		PromptHash: PromptHash(prompt),
-		Prompt:     prompt,
-		Project:    plan.Project,
-		Summary:    plan.Summary,
-		Files:      plan.Files,
-		CreatedAt:  time.Now().UTC().Format(time.RFC3339),
+	plan.Prompt = prompt
+	plan.PromptHash = PromptHash(prompt)
+	if plan.CreatedAt == "" {
+		plan.CreatedAt = time.Now().UTC().Format(time.RFC3339)
 	}
+	return plan
 }
 
 func ProjectPlanPath(root string) string {
@@ -197,21 +199,22 @@ func ProjectPlanPath(root string) string {
 }
 
 func SaveProjectPlan(root string, plan ProjectPlan) error {
-	path := ProjectPlanPath(root)
-	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+	dir := filepath.Join(root, ".aicli")
+	if err := os.MkdirAll(dir, 0755); err != nil {
 		return err
 	}
 	data, err := json.MarshalIndent(plan, "", "  ")
 	if err != nil {
-		return err
+		return fmt.Errorf("encode project plan: %w", err)
 	}
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0644); err != nil {
-		return err
+	path := ProjectPlanPath(root)
+	temp := path + ".tmp"
+	if err := os.WriteFile(temp, data, 0644); err != nil {
+		return fmt.Errorf("write project plan: %w", err)
 	}
-	if err := os.Rename(tmp, path); err != nil {
-		_ = os.Remove(tmp)
-		return err
+	if err := os.Rename(temp, path); err != nil {
+		_ = os.Remove(temp)
+		return fmt.Errorf("save project plan: %w", err)
 	}
 	return nil
 }
@@ -226,7 +229,7 @@ func LoadProjectPlan(root, prompt string) (*ProjectPlan, error) {
 	}
 	var plan ProjectPlan
 	if err := json.Unmarshal(data, &plan); err != nil {
-		return nil, fmt.Errorf("read project plan: %w", err)
+		return nil, fmt.Errorf("decode existing project plan: %w", err)
 	}
 	if plan.PromptHash != PromptHash(prompt) {
 		return nil, nil
@@ -248,7 +251,7 @@ func NextBatch(plan ProjectPlan) []PlannedFile {
 	completed := map[string]struct{}{}
 	for _, file := range plan.Files {
 		if file.Status == "completed" {
-			completed[file.Path] = struct{}{}
+			completed[filepath.ToSlash(file.Path)] = struct{}{}
 		}
 	}
 	batch := make([]PlannedFile, 0, PlannerBatchSize)
@@ -257,8 +260,8 @@ func NextBatch(plan ProjectPlan) []PlannedFile {
 			continue
 		}
 		ready := true
-		for _, dependency := range file.Dependencies {
-			if _, ok := completed[dependency]; !ok {
+		for _, dep := range file.Dependencies {
+			if _, ok := completed[filepath.ToSlash(dep)]; !ok {
 				ready = false
 				break
 			}
@@ -271,26 +274,93 @@ func NextBatch(plan ProjectPlan) []PlannedFile {
 			break
 		}
 	}
-	return batch
+	if len(batch) > 0 {
+		return batch
+	}
+	pending := PendingFiles(plan)
+	if len(pending) <= PlannerBatchSize {
+		return pending
+	}
+	return pending[:PlannerBatchSize]
 }
 
-func BuildBatchPrompt(plan ProjectPlan, batch []PlannedFile, workspaceContext string) string {
-	data, _ := json.Marshal(batch)
-	return fmt.Sprintf(`Generate the next implementation batch for the project.
-Project: %s
-Project summary: %s
-Batch manifest: %s
-Existing workspace context:
-%s
-Return ONLY valid generation JSON using the FuzeCLI file schema. Generate ONLY the files in this batch. Use the exact planned paths. Provide complete file contents for every create or modify action. Do not invent additional files.`, plan.Project, plan.Summary, string(data), workspaceContext)
-}
-
-func MarkBatchCompleted(plan *ProjectPlan, batch []PlannedFile) {
+func MarkBatchCompleted(plan *ProjectPlan, paths []string) {
+	completed := make(map[string]struct{}, len(paths))
+	for _, path := range paths {
+		completed[filepath.ToSlash(path)] = struct{}{}
+	}
 	for i := range plan.Files {
-		for _, file := range batch {
-			if plan.Files[i].Path == file.Path {
-				plan.Files[i].Status = "completed"
-			}
+		if _, ok := completed[filepath.ToSlash(plan.Files[i].Path)]; ok {
+			plan.Files[i].Status = "completed"
 		}
 	}
+}
+
+func BuildBatchPrompt(originalPrompt string, plan ProjectPlan, batch []PlannedFile) string {
+	type batchFile struct {
+		Path         string   `json:"path"`
+		Purpose      string   `json:"purpose"`
+		Dependencies []string `json:"dependencies"`
+	}
+	files := make([]batchFile, 0, len(batch))
+	for _, file := range batch {
+		files = append(files, batchFile{Path: file.Path, Purpose: file.Purpose, Dependencies: file.Dependencies})
+	}
+	data, _ := json.MarshalIndent(files, "", "  ")
+	return fmt.Sprintf(`Implement the next generation batch for this project.
+
+Original project request:
+%s
+
+Project:
+%s
+
+Project summary:
+%s
+
+Generate ONLY these planned files:
+%s
+
+Rules:
+- Return ONLY one valid JSON object using the FuzeCLI file-generation schema.
+- Do not return markdown or commentary outside the JSON object.
+- Return every requested path exactly once and no other path.
+- Use full content for create and modify actions.
+- For delete, content must be empty.
+- Keep existing valid workspace code intact.
+- Read relevant existing workspace files before deciding how the files integrate.
+- Never use absolute paths or '..' path segments.
+- Keep the response compact but complete.
+- If the batch cannot fit safely, prioritize a complete valid JSON response and do not start another file.
+`, originalPrompt, plan.Project, plan.Summary, string(data))
+}
+
+func BatchPaths(batch []PlannedFile) map[string]struct{} {
+	result := make(map[string]struct{}, len(batch))
+	for _, file := range batch {
+		result[filepath.ToSlash(file.Path)] = struct{}{}
+	}
+	return result
+}
+
+func ValidateBatch(plan Plan, batch []PlannedFile) error {
+	expected := BatchPaths(batch)
+	seen := make(map[string]struct{}, len(plan.Files))
+	for _, file := range plan.Files {
+		path := filepath.ToSlash(file.Path)
+		if _, ok := expected[path]; !ok {
+			return fmt.Errorf("generation returned unexpected file %q", file.Path)
+		}
+		if _, ok := seen[path]; ok {
+			return fmt.Errorf("generation returned duplicate file %q", file.Path)
+		}
+		seen[path] = struct{}{}
+	}
+	for _, file := range batch {
+		path := filepath.ToSlash(file.Path)
+		if _, ok := seen[path]; !ok {
+			return fmt.Errorf("generation omitted planned file %q", file.Path)
+		}
+	}
+	return nil
 }
