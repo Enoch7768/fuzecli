@@ -41,6 +41,7 @@ func (s *Server) ListenAndServe(ctx context.Context) error {
 	mux.HandleFunc("/api/state", s.state)
 	mux.HandleFunc("/api/events", s.events)
 	mux.HandleFunc("/api/chat", s.chat)
+	mux.HandleFunc("/api/history", s.history)
 	mux.HandleFunc("/api/config", s.config)
 	mux.HandleFunc("/api/models", s.models)
 	mux.HandleFunc("/api/workspace", s.workspace)
@@ -95,7 +96,7 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	last := s.Progress.Last()
 	if !last.Timestamp.IsZero() {
-		writeSSE(w, "progress", last)
+		writeSSE(w, last.Type, last)
 		flusher.Flush()
 	}
 	for {
@@ -155,6 +156,24 @@ func (s *Server) chat(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusAccepted, map[string]any{"accepted": true, "job_id": job})
 }
 
+func (s *Server) history(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.Header().Set("Allow", http.MethodGet)
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "GET is required for history"})
+		return
+	}
+	if s.App.Store == nil {
+		writeUserError(w, http.StatusInternalServerError, diagnostics.Interpret(fmt.Errorf("workspace not initialized; run aicli init"), "", ""))
+		return
+	}
+	messages, err := s.App.Store.History(200)
+	if err != nil {
+		writeUserError(w, http.StatusInternalServerError, diagnostics.Interpret(err, "", ""))
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"messages": messages})
+}
+
 func (s *Server) runChatJob(job, prompt, providerName, model string, code, yes bool) {
 	defer func() {
 		s.mu.Lock()
@@ -180,7 +199,7 @@ func (s *Server) runChatJob(job, prompt, providerName, model string, code, yes b
 	})
 	if err != nil {
 		u := diagnostics.Interpret(err, providerName, model)
-		s.Progress.Publish(progress.Event{Type: "error", Status: "failed", Provider: u.Provider, Model: u.Model, Message: errorMessage(u), ElapsedMillis: time.Since(start).Milliseconds()})
+		s.publishError(start, u)
 		return
 	}
 	s.Progress.Publish(progress.Event{Type: "completed", Status: "completed", Provider: providerName, Model: model, Message: "Response complete", ElapsedMillis: time.Since(start).Milliseconds()})
@@ -194,7 +213,7 @@ func (s *Server) monitorProjectPlan(start time.Time, providerName, model string,
 		case err := <-result:
 			if err != nil {
 				u := diagnostics.Interpret(err, providerName, model)
-				s.Progress.Publish(progress.Event{Type: "error", Status: "failed", Provider: u.Provider, Model: u.Model, Message: errorMessage(u), ElapsedMillis: time.Since(start).Milliseconds()})
+				s.publishError(start, u)
 				return
 			}
 			s.Progress.Publish(progress.Event{Type: "completed", Status: "completed", Message: "Generation complete", Provider: providerName, Model: model, ElapsedMillis: time.Since(start).Milliseconds()})
@@ -204,6 +223,23 @@ func (s *Server) monitorProjectPlan(start time.Time, providerName, model string,
 			s.Progress.Publish(event)
 		}
 	}
+}
+
+func (s *Server) publishError(start time.Time, u diagnostics.UserError) {
+	s.Progress.Publish(progress.Event{
+		Type: "job_error",
+		Status: "failed",
+		Provider: u.Provider,
+		Model: u.Model,
+		Message: u.Message,
+		ErrorTitle: u.Title,
+		ErrorMessage: u.Message,
+		ErrorRecovery: u.Recovery,
+		ErrorTechnical: u.Technical,
+		RetryAfter: u.RetryAfter,
+		HTTPStatus: u.StatusCode,
+		ElapsedMillis: time.Since(start).Milliseconds(),
+	})
 }
 
 func (s *Server) projectProgressEvent(start time.Time, providerName, model string) progress.Event {
@@ -361,13 +397,8 @@ func writeSSE(w http.ResponseWriter, eventType string, event progress.Event) {
 	fmt.Fprintf(w, "event: %s\ndata: %s\n\n", eventType, data)
 }
 
-func errorMessage(e diagnostics.UserError) string {
-	data, _ := json.Marshal(e)
-	return string(data)
-}
-
 func writeUserError(w http.ResponseWriter, status int, err diagnostics.UserError) {
-	writeJSON(w, status, map[string]any{"error": err.Message, "title": err.Title, "recovery": err.Recovery, "retryable": err.Retryable, "provider": err.Provider, "model": err.Model})
+	writeJSON(w, status, map[string]any{"error": err.Message, "title": err.Title, "recovery": err.Recovery, "retryable": err.Retryable, "provider": err.Provider, "model": err.Model, "retry_after": err.RetryAfter, "status_code": err.StatusCode, "technical": err.Technical})
 }
 
 func writeJSON(w http.ResponseWriter, status int, value any) {
