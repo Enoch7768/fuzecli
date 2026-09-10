@@ -14,15 +14,15 @@ import (
 )
 
 type UserError struct {
-	Title       string `json:"title"`
-	Message     string `json:"message"`
-	Recovery    string `json:"recovery"`
-	Technical   string `json:"technical,omitempty"`
-	Provider    string `json:"provider,omitempty"`
-	Model       string `json:"model,omitempty"`
-	RetryAfter  int    `json:"retry_after,omitempty"`
-	StatusCode  int    `json:"status_code,omitempty"`
-	Retryable   bool   `json:"retryable"`
+	Title      string `json:"title"`
+	Message    string `json:"message"`
+	Recovery   string `json:"recovery"`
+	Technical  string `json:"technical,omitempty"`
+	Provider   string `json:"provider,omitempty"`
+	Model      string `json:"model,omitempty"`
+	RetryAfter int    `json:"retry_after,omitempty"`
+	StatusCode int    `json:"status_code,omitempty"`
+	Retryable  bool   `json:"retryable"`
 }
 
 func (e UserError) Error() string {
@@ -93,16 +93,21 @@ func interpretProvider(err *provider.ProviderError, providerName, model string) 
 		base.Message = "The provider rejected the API credentials before it could process the request."
 		base.Recovery = "Check the API key and provider configuration, then retry."
 		return base
+	case provider.ErrorQuotaExceeded:
+		base.Title = "Provider quota exhausted"
+		base.Message = "The provider reports that this API account has reached its current usage or billing quota."
+		base.Recovery = "Check your provider usage and billing limits, or switch to another configured provider."
+		return base
 	case provider.ErrorRateLimited:
 		base.Title = "Too many requests"
 		base.Message = "The provider is rate-limiting this API key or account right now."
-		base.Recovery = "" + wait + " Reduce request frequency or switch to another configured provider."
+		base.Recovery = wait + " Reduce request frequency or switch to another configured provider."
 		base.Retryable = true
 		return base
 	case provider.ErrorOverloaded:
 		base.Title = "Model is busy"
-		base.Message = "The provider accepted the request path, but the selected model is temporarily overloaded or unavailable."
-		base.Recovery = "" + wait + " Retry shortly, or choose another model/provider."
+		base.Message = "The selected model is temporarily overloaded or unavailable for new work."
+		base.Recovery = wait + " Retry shortly, or choose another model/provider."
 		base.Retryable = true
 		return base
 	case provider.ErrorBadRequest:
@@ -114,7 +119,7 @@ func interpretProvider(err *provider.ProviderError, providerName, model string) 
 	case provider.ErrorProviderUnavailable:
 		base.Title = "Provider temporarily unavailable"
 		base.Message = "The selected AI service could not complete the request because its service or connection is temporarily unavailable."
-		base.Recovery = "" + wait + " Retry, check the provider status, or switch to another configured provider."
+		base.Recovery = wait + " Retry, check the provider status, or switch to another configured provider."
 		base.Retryable = true
 		return base
 	default:
