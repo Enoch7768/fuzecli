@@ -14,6 +14,7 @@ type Registry struct {
 	fallback   []string
 	models     map[string]string
 	limitMu    sync.Mutex
+	requestMu  map[string]*sync.Mutex
 	lastCall   map[string]time.Time
 	retryUntil map[string]time.Time
 	attempts   map[string]int
@@ -25,15 +26,18 @@ func NewRegistry(
 	providers ...Provider,
 ) *Registry {
 	registered := map[string]Provider{}
+	requestMu := map[string]*sync.Mutex{}
 
 	for _, provider := range providers {
 		registered[provider.Name()] = provider
+		requestMu[provider.Name()] = &sync.Mutex{}
 	}
 
 	return &Registry{
 		providers:  registered,
 		fallback:   append([]string(nil), fallback...),
 		models:     defaults,
+		requestMu:  requestMu,
 		lastCall:   map[string]time.Time{},
 		retryUntil: map[string]time.Time{},
 		attempts:   map[string]int{},
@@ -92,6 +96,10 @@ func (r *Registry) Send(ctx context.Context, name string, messages []Message, op
 }
 
 func (r *Registry) sendWithRetry(ctx context.Context, name string, messages []Message, opts RequestOptions) (*Response, error) {
+	lock := r.providerLock(name)
+	lock.Lock()
+	defer lock.Unlock()
+
 	var last error
 	for attempt := 0; attempt < 3; attempt++ {
 		if err := r.wait(ctx, name); err != nil {
@@ -154,6 +162,10 @@ func (r *Registry) Stream(ctx context.Context, name string, messages []Message, 
 }
 
 func (r *Registry) streamWithRetry(ctx context.Context, name string, messages []Message, opts RequestOptions) (<-chan StreamChunk, error) {
+	lock := r.providerLock(name)
+	lock.Lock()
+	defer lock.Unlock()
+
 	var last error
 	for attempt := 0; attempt < 3; attempt++ {
 		if err := r.wait(ctx, name); err != nil {
@@ -174,6 +186,17 @@ func (r *Registry) streamWithRetry(ctx context.Context, name string, messages []
 		}
 	}
 	return nil, last
+}
+
+func (r *Registry) providerLock(name string) *sync.Mutex {
+	r.limitMu.Lock()
+	defer r.limitMu.Unlock()
+	lock, ok := r.requestMu[name]
+	if !ok {
+		lock = &sync.Mutex{}
+		r.requestMu[name] = lock
+	}
+	return lock
 }
 
 func isRetryableProviderError(err error) bool {
@@ -237,10 +260,13 @@ func (r *Registry) observe(name string, err error) {
 		if delay <= 0 {
 			delay = time.Duration(1<<uint(step-1)) * time.Second
 		}
-		if delay > 90*time.Second {
-			delay = 90 * time.Second
+		if delay < providerMinInterval(name) {
+			delay = providerMinInterval(name)
 		}
-		delay += time.Duration(time.Now().UnixNano()%500) * time.Millisecond
+		if delay > 120*time.Second {
+			delay = 120 * time.Second
+		}
+		delay += time.Duration(time.Now().UnixNano()%1500) * time.Millisecond
 		r.retryUntil[name] = time.Now().Add(delay)
 	case ErrorProviderUnavailable, ErrorOverloaded:
 		r.attempts[name]++
@@ -249,7 +275,10 @@ func (r *Registry) observe(name string, err error) {
 			step = 5
 		}
 		delay := time.Duration(1<<uint(step-1)) * time.Second
-		delay += time.Duration(time.Now().UnixNano()%400) * time.Millisecond
+		if delay < providerMinInterval(name) {
+			delay = providerMinInterval(name)
+		}
+		delay += time.Duration(time.Now().UnixNano()%1200) * time.Millisecond
 		r.retryUntil[name] = time.Now().Add(delay)
 	default:
 		r.attempts[name] = 0
@@ -259,15 +288,15 @@ func (r *Registry) observe(name string, err error) {
 func providerMinInterval(name string) time.Duration {
 	switch strings.ToLower(name) {
 	case "groq":
-		return 2500 * time.Millisecond
+		return 10 * time.Second
 	case "gemini":
-		return 2000 * time.Millisecond
+		return 7 * time.Second
 	case "openai":
-		return 1500 * time.Millisecond
+		return 4 * time.Second
 	case "anthropic":
-		return 1500 * time.Millisecond
+		return 4 * time.Second
 	default:
-		return 1000 * time.Millisecond
+		return 3 * time.Second
 	}
 }
 
@@ -292,15 +321,15 @@ type requestBudget struct {
 func providerBudget(name string) requestBudget {
 	switch strings.ToLower(name) {
 	case "groq":
-		return requestBudget{maxInputChars: 10000, maxOutputTokens: 2200, jsonOutputTokens: 1800}
+		return requestBudget{maxInputChars: 6000, maxOutputTokens: 1400, jsonOutputTokens: 1200}
 	case "gemini":
-		return requestBudget{maxInputChars: 36000, maxOutputTokens: 4500, jsonOutputTokens: 4000}
+		return requestBudget{maxInputChars: 12000, maxOutputTokens: 2200, jsonOutputTokens: 2000}
 	case "openai":
-		return requestBudget{maxInputChars: 40000, maxOutputTokens: 6000, jsonOutputTokens: 5000}
+		return requestBudget{maxInputChars: 24000, maxOutputTokens: 3500, jsonOutputTokens: 3000}
 	case "anthropic":
-		return requestBudget{maxInputChars: 50000, maxOutputTokens: 7000, jsonOutputTokens: 6000}
+		return requestBudget{maxInputChars: 24000, maxOutputTokens: 4000, jsonOutputTokens: 3500}
 	default:
-		return requestBudget{maxInputChars: 40000, maxOutputTokens: 6000, jsonOutputTokens: 5000}
+		return requestBudget{maxInputChars: 20000, maxOutputTokens: 3000, jsonOutputTokens: 2500}
 	}
 }
 
@@ -319,7 +348,7 @@ func trimProviderMessages(messages []Message, maxChars int) []Message {
 
 	first := messages[0]
 	last := messages[len(messages)-1]
-	firstBudget := maxChars / 4
+	firstBudget := maxChars / 5
 	if first.Role != "system" {
 		firstBudget = 0
 	}
@@ -331,27 +360,27 @@ func trimProviderMessages(messages []Message, maxChars int) []Message {
 		used = len(first.Content)
 	}
 
-	remainingLast := maxChars - used
-	if remainingLast <= 0 {
+	lastBudget := maxChars - used
+	if lastBudget <= 0 {
 		return result
 	}
+	if len(last.Content) > lastBudget {
+		last = truncateMessage(last, lastBudget)
+	}
+	used += len(last.Content)
 
 	for i := len(messages) - 2; i >= 1; i-- {
-		remaining := maxChars - used - minInt(len(last.Content), remainingLast)
+		remaining := maxChars - used
 		if remaining <= 0 {
 			break
 		}
-		if len(messages[i].Content) > remaining {
-			continue
+		if len(messages[i].Content) <= remaining {
+			result = append([]Message{messages[i]}, result...)
+			used += len(messages[i].Content)
 		}
-		result = append([]Message{messages[i]}, result...)
-		used += len(messages[i].Content)
 	}
 
-	lastMax := maxChars - used
-	if lastMax > 0 {
-		result = append(result, truncateMessage(last, lastMax))
-	}
+	result = append(result, last)
 	return result
 }
 
@@ -382,7 +411,7 @@ func (r *Registry) continueStream(ctx context.Context, name string, messages []M
 		current := initial
 		combined := strings.Builder{}
 		continuations := 0
-		threshold := int(float64(opts.MaxTokens*4) * 0.84)
+		threshold := int(float64(opts.MaxTokens*4) * 0.92)
 		if threshold < 5000 {
 			threshold = 5000
 		}
@@ -404,7 +433,7 @@ func (r *Registry) continueStream(ctx context.Context, name string, messages []M
 			}
 
 			partial := strings.TrimSpace(combined.String())
-			if !finished || continuations >= 3 || combined.Len() < threshold || !needsContinuation(partial) {
+			if !finished || continuations >= 2 || combined.Len() < threshold || !needsContinuation(partial) {
 				out <- StreamChunk{Done: true}
 				return
 			}
