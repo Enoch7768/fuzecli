@@ -4,7 +4,6 @@ import (
 	"context"
 	"strings"
 
-	"github.com/Enoch7768/fuzecli/internal/generation"
 	"github.com/Enoch7768/fuzecli/internal/provider"
 )
 
@@ -89,6 +88,11 @@ func (a *App) ChatStreamRequest(ctx context.Context, prompt, providerName, model
 		if onDelta != nil {
 			onDelta(chunk.Delta)
 		}
+	}
+
+	text := strings.TrimSpace(response.String())
+	if text == "" {
+		return context.Canceled
 	}
 
 	return a.Store.AddMessage(provider.Message{Role: "assistant", Content: response.String()})
