@@ -1,17 +1,352 @@
-const $=id=>document.getElementById(id);const conversation=$('conversation');const prompt=$('prompt');const send=$('send');const code=$('code');const providerSelect=$('providerSelect');const modelSelect=$('modelSelect');const settingsState=$('settingsState');const tabs=[...document.querySelectorAll('.nav[data-tab]')];let settings=null;let selectedProvider='';let selectedModel='';
-function addMessage(role,text){const el=document.createElement('div');el.className=`message ${role}`;el.textContent=text;conversation.appendChild(el);conversation.scrollTop=conversation.scrollHeight;return el}
-function showError(text){$('errorText').textContent=text;$('errorBox').classList.remove('hidden')}
-function clearError(){$('errorBox').classList.add('hidden');$('errorText').textContent=''}
-function setProgress(e){const total=Number(e.total_files||0),completed=Number(e.completed_files||0);const pct=total?Math.round(completed/total*100):e.status==='completed'?100:0;$('percent').textContent=`${pct}%`;$('completed').textContent=completed;$('total').textContent=total;$('current').textContent=e.current_file||e.project||'Working';$('message').textContent=e.message||'Working';$('status').textContent=e.status||'Working';$('progressRing').style.setProperty('--progress',`${pct*3.6}deg`);const order=['planning','generating','verifying','completed'];document.querySelectorAll('.step').forEach(s=>{s.classList.remove('active','done');const n=s.dataset.step,i=order.indexOf(n),cur=order.indexOf(e.status);if(e.status==='completed'||(cur>=0&&i<cur))s.classList.add('done');if(n===e.status)s.classList.add('active')})}
-function openTab(name){tabs.forEach(t=>t.classList.toggle('active',t.dataset.tab===name));document.querySelectorAll('.view').forEach(v=>v.classList.toggle('active',v.id===`view-${name}`));const titles={chat:'Chat',workspace:'Workspace',plan:'Project plan',settings:'Settings'};$('pageTitle').textContent=titles[name]||'Chat';if(name==='workspace')loadWorkspace();if(name==='plan')loadPlan();if(name==='settings')loadSettings()}
+const $=id=>document.getElementById(id);
+const conversation=$('conversation');
+const prompt=$('prompt');
+const send=$('send');
+const code=$('code');
+const providerSelect=$('providerSelect');
+const modelInput=$('modelInput');
+const modelOptions=$('modelOptions');
+const settingsState=$('settingsState');
+const tabs=[...document.querySelectorAll('.nav[data-tab]')];
+let settings=null;
+let selectedProvider='';
+let selectedModel='';
+let jobRunning=false;
+let activeAssistant=null;
+
+function addMessage(role,text){
+  const el=document.createElement('div');
+  el.className=`message ${role}`;
+  el.textContent=text;
+  conversation.appendChild(el);
+  conversation.scrollTop=conversation.scrollHeight;
+  return el;
+}
+
+function ensureAssistant(){
+  if(!activeAssistant) activeAssistant=addMessage('assistant','');
+  return activeAssistant;
+}
+
+function showError(payload){
+  const data=typeof payload==='string'?parseErrorPayload(payload):payload;
+  $('errorTitle').textContent=data.title||'Something went wrong';
+  $('errorText').textContent=data.error||data.message||'The request could not be completed.';
+  $('errorRecovery').textContent=data.recovery?`Next: ${data.recovery}`:'';
+  $('errorBox').classList.remove('hidden');
+}
+
+function parseErrorPayload(value){
+  try{
+    const parsed=JSON.parse(value);
+    if(parsed&&typeof parsed==='object') return parsed;
+  }catch{}
+  return {message:String(value)};
+}
+
+function clearError(){
+  $('errorBox').classList.add('hidden');
+  $('errorText').textContent='';
+  $('errorRecovery').textContent='';
+}
+
+function setProgress(e){
+  const total=Number(e.total_files||0);
+  const completed=Number(e.completed_files||0);
+  const pct=total?Math.min(100,Math.round(completed/total*100)):e.status==='completed'?100:0;
+  $('percent').textContent=`${pct}%`;
+  $('completed').textContent=completed;
+  $('total').textContent=total;
+  $('current').textContent=e.current_file||e.project||'Working';
+  $('message').textContent=e.message||'Working';
+  $('status').textContent=prettyStatus(e.status||'idle');
+  $('progressRing').style.setProperty('--progress',`${pct*3.6}deg`);
+  $('agentProvider').textContent=e.provider||selectedProvider||'—';
+  $('agentModel').textContent=e.model||selectedModel||'—';
+  $('elapsed').textContent=formatElapsed(Number(e.elapsed_millis||0));
+  $('sideRuntime').textContent=e.status==='failed'?'Needs attention':e.status==='completed'?'Ready':e.status&&e.status!=='idle'?'Working':'Ready';
+  const order=['planning','generating','verifying','completed'];
+  document.querySelectorAll('.step').forEach(step=>{
+    step.classList.remove('active','done');
+    const name=step.dataset.step;
+    const i=order.indexOf(name);
+    const current=order.indexOf(e.status);
+    if(e.status==='completed'||(current>=0&&i<current))step.classList.add('done');
+    if(name===e.status)step.classList.add('active');
+  });
+}
+
+function prettyStatus(value){
+  const map={idle:'Idle',planning:'Planning',planned:'Planned',generating:'Generating',writing:'Writing',verifying:'Verifying',correcting:'Correcting',streaming:'Streaming',completed:'Complete',failed:'Failed'};
+  return map[value]||value;
+}
+
+function formatElapsed(ms){
+  const seconds=Math.max(0,Math.floor(ms/1000));
+  if(seconds<60)return `${seconds}s`;
+  const minutes=Math.floor(seconds/60);
+  const remainder=seconds%60;
+  return `${minutes}m ${String(remainder).padStart(2,'0')}s`;
+}
+
+function openTab(name){
+  tabs.forEach(t=>t.classList.toggle('active',t.dataset.tab===name));
+  document.querySelectorAll('.view').forEach(v=>v.classList.toggle('active',v.id===`view-${name}`));
+  const titles={chat:'Chat',workspace:'Workspace',plan:'Project plan',settings:'Settings'};
+  $('pageTitle').textContent=titles[name]||'Chat';
+  if(name==='workspace')loadWorkspace();
+  if(name==='plan')loadPlan();
+  if(name==='settings')loadSettings();
+}
+
 tabs.forEach(t=>t.addEventListener('click',()=>openTab(t.dataset.tab)));
-async function loadSettings(){try{const r=await fetch('/api/config');const d=await r.json();if(!r.ok)throw new Error(d.error||'Could not load settings');settings=d;providerSelect.innerHTML='';Object.keys(d.providers||{}).forEach(name=>{const o=document.createElement('option');o.value=name;o.textContent=name==='llamacpp'?'llama.cpp':name[0].toUpperCase()+name.slice(1);providerSelect.appendChild(o)});selectedProvider=d.default_provider||'';providerSelect.value=selectedProvider;await loadModels()}catch(e){settingsState.textContent=e.message}}
-async function loadModels(){const p=providerSelect.value;modelSelect.innerHTML='<option>Loading models…</option>';try{const r=await fetch(`/api/models?provider=${encodeURIComponent(p)}`);const d=await r.json();if(!r.ok)throw new Error(d.error||'Could not load models');const configured=settings?.providers?.[p]?.default_model||'';modelSelect.innerHTML='';(d.models||[]).forEach(m=>{const o=document.createElement('option');o.value=m;o.textContent=m;modelSelect.appendChild(o)});if(configured&&![...modelSelect.options].some(o=>o.value===configured)){const o=document.createElement('option');o.value=configured;o.textContent=configured;modelSelect.appendChild(o)}if(configured)modelSelect.value=configured;selectedModel=modelSelect.value}catch(e){modelSelect.innerHTML='<option>Unable to load models</option>';settingsState.textContent=e.message}}
-providerSelect.addEventListener('change',loadModels);$('saveSettings').addEventListener('click',async()=>{const provider=providerSelect.value,model=modelSelect.value;if(!provider||!model)return;settingsState.textContent='Saving…';try{const r=await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({provider,model})});const d=await r.json();if(!r.ok)throw new Error(d.error||'Could not save settings');selectedProvider=provider;selectedModel=model;$('providerLabel').textContent=provider;$('modelLabel').textContent=model;settingsState.textContent='Saved';setTimeout(()=>settingsState.textContent='',1800)}catch(e){settingsState.textContent=e.message}});
-async function loadWorkspace(){const list=$('fileList');list.innerHTML='<div class="loading">Loading workspace…</div>';try{const r=await fetch('/api/workspace');const d=await r.json();if(!r.ok)throw new Error(d.error||'Could not load workspace');$('workspaceRoot').textContent=d.root||'Workspace';list.innerHTML='';if(!d.files?.length){list.innerHTML='<div class="empty-state">No generated files are being tracked yet.</div>';return}d.files.forEach(f=>{const row=document.createElement('div');row.className='file-row';row.innerHTML=`<span class="file-icon">□</span><div><strong>${escapeHTML(f.path)}</strong><small>${formatBytes(f.size)} · ${new Date(f.modified).toLocaleString()}</small></div>`;list.appendChild(row)})}catch(e){list.innerHTML=`<div class="error-box"><strong>Workspace unavailable</strong><p>${escapeHTML(e.message)}</p></div>`}}
-async function loadPlan(){const box=$('planContent');box.innerHTML='<div class="loading">Loading project plan…</div>';try{const r=await fetch('/api/plan');const d=await r.json();if(!r.ok)throw new Error(d.error||'Could not load project plan');if(!d.exists){box.innerHTML='<div class="empty-state">No project plan is active. Start a larger /code request to create one.</div>';return}const p=d.plan,files=p.files||[],done=files.filter(f=>f.status==='completed').length;box.innerHTML=`<div class="plan-summary"><span class="kicker">${escapeHTML(p.project)}</span><h3>${escapeHTML(p.summary)}</h3><div class="plan-progress"><span style="width:${files.length?done/files.length*100:0}%"></span></div><div class="plan-count">${done} of ${files.length} files complete</div></div><div class="file-list">${files.map(f=>`<div class="file-row ${f.status==='completed'?'complete':''}"><span class="file-status">${f.status==='completed'?'✓':'○'}</span><div><strong>${escapeHTML(f.path)}</strong><small>${escapeHTML(f.purpose||'Planned file')}</small></div></div>`).join('')}</div>`}catch(e){box.innerHTML=`<div class="error-box"><strong>Project plan unavailable</strong><p>${escapeHTML(e.message)}</p></div>`}}
-function formatBytes(n){if(n<1024)return `${n} B`;if(n<1048576)return `${(n/1024).toFixed(1)} KB`;return `${(n/1048576).toFixed(1)} MB`}
-function escapeHTML(s){return String(s??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))}
-const source=new EventSource('/api/events');source.addEventListener('progress',ev=>{try{const e=JSON.parse(ev.data);setProgress(e);if(e.status==='failed')showError(e.message||'The request failed.');else if(e.status!=='failed')clearError();if(e.provider)$('providerLabel').textContent=e.provider;if(e.model)$('modelLabel').textContent=e.model;if(e.status==='completed'&&e.message)addMessage('assistant',e.message)}catch{}});source.onerror=()=>{document.querySelector('.runtime').classList.add('disconnected')};
-async function submit(){const text=prompt.value.trim();if(!text)return;const isCode=code.checked||text.startsWith('/code ');const clean=text.startsWith('/code ')?text.slice(6).trim():text;addMessage('user',clean);prompt.value='';prompt.style.height='auto';document.body.classList.add('busy');send.disabled=true;clearError();setProgress({status:isCode?'planning':'generating',message:'Starting request…'});try{const r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt:clean,provider:selectedProvider,model:selectedModel,code:isCode,yes:true})});const d=await r.json();if(!r.ok)throw new Error(d.error||'Request could not be started.')}catch(e){showError(e.message);addMessage('assistant',`Error: ${e.message}`);setProgress({status:'failed',message:e.message})}finally{document.body.classList.remove('busy');send.disabled=false}}
-send.addEventListener('click',submit);prompt.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();submit()}});prompt.addEventListener('input',()=>{prompt.style.height='auto';prompt.style.height=Math.min(prompt.scrollHeight,180)+'px'});document.querySelectorAll('[data-prompt]').forEach(b=>b.addEventListener('click',()=>{prompt.value=b.dataset.prompt;code.checked=b.dataset.code==='true';prompt.focus()}));$('newChat').addEventListener('click',()=>{conversation.innerHTML='';clearError();setProgress({status:'idle',message:'Ready',completed_files:0,total_files:0});openTab('chat');prompt.focus()});$('refreshWorkspace').addEventListener('click',loadWorkspace);$('refreshPlan').addEventListener('click',loadPlan);loadSettings();fetch('/api/state').then(r=>r.json()).then(setProgress).catch(()=>{});
+
+async function fetchJSON(url,options){
+  const response=await fetch(url,options);
+  let data={};
+  try{data=await response.json();}catch{}
+  if(!response.ok){
+    const error=new Error(data.error||data.message||`Request failed with HTTP ${response.status}`);
+    error.payload=data;
+    throw error;
+  }
+  return data;
+}
+
+async function loadSettings(){
+  try{
+    const d=await fetchJSON('/api/config');
+    settings=d;
+    providerSelect.innerHTML='';
+    Object.keys(d.providers||{}).forEach(name=>{
+      const option=document.createElement('option');
+      option.value=name;
+      option.textContent=name==='llamacpp'?'llama.cpp':name[0].toUpperCase()+name.slice(1);
+      providerSelect.appendChild(option);
+    });
+    selectedProvider=d.default_provider||providerSelect.value||'';
+    providerSelect.value=selectedProvider;
+    await loadModels();
+    settingsState.textContent='';
+    $('providerLabel').textContent=selectedProvider||'No provider';
+  }catch(error){
+    showError(error.payload||error.message);
+    settingsState.textContent='Settings unavailable';
+  }
+}
+
+async function loadModels(){
+  const provider=providerSelect.value;
+  if(!provider)return;
+  modelOptions.innerHTML='';
+  modelInput.value='Loading…';
+  modelInput.disabled=true;
+  try{
+    const d=await fetchJSON(`/api/models?provider=${encodeURIComponent(provider)}`);
+    const discovered=[...(d.models||[])];
+    discovered.forEach(model=>{
+      const option=document.createElement('option');
+      option.value=model;
+      modelOptions.appendChild(option);
+    });
+    const configured=settings?.providers?.[provider]?.default_model||'';
+    selectedProvider=provider;
+    selectedModel=configured||discovered[0]||'';
+    modelInput.value=selectedModel;
+    $('providerLabel').textContent=provider;
+    $('modelLabel').textContent=selectedModel||'No model';
+  }catch(error){
+    const configured=settings?.providers?.[provider]?.default_model||'';
+    selectedProvider=provider;
+    selectedModel=configured;
+    modelInput.value=configured;
+    showError(error.payload||error.message);
+    $('modelLabel').textContent=configured||'Unavailable';
+  }finally{
+    modelInput.disabled=false;
+  }
+}
+
+providerSelect.addEventListener('change',loadModels);
+modelInput.addEventListener('input',()=>{
+  selectedModel=modelInput.value.trim();
+  $('modelLabel').textContent=selectedModel||'No model';
+});
+
+$('saveSettings').addEventListener('click',async()=>{
+  const provider=providerSelect.value;
+  const model=modelInput.value.trim();
+  if(!provider||!model){
+    showError({title:'Settings need a provider and model',error:'Select a provider and enter a model name.',recovery:'Choose a discovered model or enter the exact model identifier supported by the provider.'});
+    return;
+  }
+  settingsState.textContent='Saving…';
+  clearError();
+  try{
+    const d=await fetchJSON('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({provider,model})});
+    selectedProvider=d.provider;
+    selectedModel=d.model;
+    $('providerLabel').textContent=selectedProvider;
+    $('modelLabel').textContent=selectedModel;
+    settingsState.textContent='Saved';
+    setTimeout(()=>settingsState.textContent='',1800);
+  }catch(error){
+    settingsState.textContent='Could not save';
+    showError(error.payload||error.message);
+  }
+});
+
+async function loadWorkspace(){
+  const list=$('fileList');
+  list.innerHTML='<div class="loading">Loading workspace…</div>';
+  try{
+    const d=await fetchJSON('/api/workspace');
+    $('workspaceRoot').textContent=d.root||'Workspace';
+    list.innerHTML='';
+    if(!d.files?.length){list.innerHTML='<div class="empty-state">No generated files are being tracked yet.</div>';return;}
+    d.files.forEach(file=>{
+      const row=document.createElement('div');
+      row.className='file-row';
+      row.innerHTML=`<span class="file-icon">□</span><div><strong>${escapeHTML(file.path)}</strong><small>${formatBytes(file.size)} · ${new Date(file.modified).toLocaleString()}</small></div>`;
+      list.appendChild(row);
+    });
+  }catch(error){
+    list.innerHTML='';
+    const box=document.createElement('div');
+    box.className='error-box';
+    box.innerHTML=`<div class="error-icon">!</div><div><strong>${escapeHTML(error.payload?.title||'Workspace unavailable')}</strong><p>${escapeHTML(error.payload?.error||error.message)}</p><small>${escapeHTML(error.payload?.recovery||'')}</small></div>`;
+    list.appendChild(box);
+  }
+}
+
+async function loadPlan(){
+  const box=$('planContent');
+  box.innerHTML='<div class="loading">Loading project plan…</div>';
+  try{
+    const d=await fetchJSON('/api/plan');
+    if(!d.exists){box.innerHTML='<div class="empty-state">No project plan is active. Start a larger /code request to create one.</div>';return;}
+    const p=d.plan;
+    const files=p.files||[];
+    const done=files.filter(file=>file.status==='completed').length;
+    const pct=files.length?Math.round(done/files.length*100):0;
+    box.innerHTML=`<div class="plan-summary"><span class="kicker">${escapeHTML(p.project)}</span><h3>${escapeHTML(p.summary)}</h3><div class="plan-progress"><span style="width:${pct}%"></span></div><div class="plan-count">${done} of ${files.length} files complete</div></div><div class="file-list">${files.map(file=>`<div class="file-row ${file.status==='completed'?'complete':''}"><span class="file-status">${file.status==='completed'?'✓':'○'}</span><div><strong>${escapeHTML(file.path)}</strong><small>${escapeHTML(file.purpose||'Planned file')}</small></div></div>`).join('')}</div>`;
+  }catch(error){
+    box.innerHTML=`<div class="error-box"><div class="error-icon">!</div><div><strong>${escapeHTML(error.payload?.title||'Project plan unavailable')}</strong><p>${escapeHTML(error.payload?.error||error.message)}</p><small>${escapeHTML(error.payload?.recovery||'')}</small></div></div>`;
+  }
+}
+
+function formatBytes(n){
+  if(n<1024)return `${n} B`;
+  if(n<1048576)return `${(n/1024).toFixed(1)} KB`;
+  return `${(n/1048576).toFixed(1)} MB`;
+}
+
+function escapeHTML(s){return String(s??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));}
+
+const source=new EventSource('/api/events');
+source.addEventListener('progress',event=>handleProgress(event));
+source.addEventListener('chat_token',event=>handleChatToken(event));
+source.addEventListener('error',event=>handleProgress(event));
+source.onerror=()=>{
+  $('runtime').classList.add('disconnected');
+  $('connectionDot').style.background='var(--warn)';
+};
+
+function handleProgress(event){
+  try{
+    const data=JSON.parse(event.data);
+    setProgress(data);
+    if(data.provider)$('providerLabel').textContent=data.provider;
+    if(data.model)$('modelLabel').textContent=data.model;
+    if(data.status==='failed'){
+      showError(data.message||'The request failed.');
+      jobRunning=false;
+      send.disabled=false;
+      document.body.classList.remove('busy');
+      activeAssistant=null;
+    }else if(data.status==='completed'){
+      clearError();
+      jobRunning=false;
+      send.disabled=false;
+      document.body.classList.remove('busy');
+      activeAssistant=null;
+      loadWorkspace();
+      loadPlan();
+    }
+  }catch{}
+}
+
+function handleChatToken(event){
+  try{
+    const data=JSON.parse(event.data);
+    setProgress(data);
+    const node=ensureAssistant();
+    node.textContent+=data.message||'';
+    conversation.scrollTop=conversation.scrollHeight;
+  }catch{}
+}
+
+async function submit(){
+  if(jobRunning)return;
+  const text=prompt.value.trim();
+  if(!text)return;
+  const isCode=code.checked||text.startsWith('/code ');
+  const clean=text.startsWith('/code ')?text.slice(6).trim():text;
+  addMessage('user',clean);
+  activeAssistant=null;
+  prompt.value='';
+  prompt.style.height='auto';
+  jobRunning=true;
+  document.body.classList.add('busy');
+  send.disabled=true;
+  clearError();
+  setProgress({status:isCode?'planning':'generating',message:isCode?'Starting project planning…':'Connecting to provider…',provider:selectedProvider,model:selectedModel});
+  try{
+    await fetchJSON('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt:clean,provider:selectedProvider,model:selectedModel,code:isCode,yes:true})});
+  }catch(error){
+    jobRunning=false;
+    send.disabled=false;
+    document.body.classList.remove('busy');
+    showError(error.payload||error.message);
+    addMessage('assistant',error.payload?.message||error.message);
+    setProgress({status:'failed',message:error.payload?.message||error.message,provider:selectedProvider,model:selectedModel});
+  }
+}
+
+send.addEventListener('click',submit);
+prompt.addEventListener('keydown',event=>{
+  if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();submit();}
+});
+prompt.addEventListener('input',()=>{
+  prompt.style.height='auto';
+  prompt.style.height=Math.min(prompt.scrollHeight,220)+'px';
+});
+
+document.querySelectorAll('[data-prompt]').forEach(button=>button.addEventListener('click',()=>{
+  prompt.value=button.dataset.prompt;
+  code.checked=button.dataset.code==='true';
+  prompt.focus();
+}));
+
+$('newChat').addEventListener('click',()=>{
+  if(jobRunning)return;
+  conversation.innerHTML='';
+  clearError();
+  activeAssistant=null;
+  setProgress({status:'idle',message:'Ready',completed_files:0,total_files:0,provider:selectedProvider,model:selectedModel});
+  openTab('chat');
+  prompt.focus();
+});
+
+$('refreshWorkspace').addEventListener('click',loadWorkspace);
+$('refreshPlan').addEventListener('click',loadPlan);
+
+document.addEventListener('keydown',event=>{
+  if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='k'){
+    event.preventDefault();
+    if(!jobRunning){prompt.focus();}
+  }
+});
+
+loadSettings();
+fetch('/api/state').then(response=>response.json()).then(setProgress).catch(()=>{});
