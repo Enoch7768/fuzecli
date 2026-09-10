@@ -17,6 +17,12 @@ type Event struct {
 	Provider        string    `json:"provider"`
 	Model           string    `json:"model"`
 	Message         string    `json:"message"`
+	ErrorTitle      string    `json:"error_title,omitempty"`
+	ErrorMessage    string    `json:"error_message,omitempty"`
+	ErrorRecovery  string    `json:"error_recovery,omitempty"`
+	ErrorTechnical string    `json:"error_technical,omitempty"`
+	RetryAfter      int       `json:"retry_after,omitempty"`
+	HTTPStatus      int       `json:"http_status,omitempty"`
 	ElapsedMillis   int64     `json:"elapsed_millis"`
 	Timestamp       time.Time `json:"timestamp"`
 }
