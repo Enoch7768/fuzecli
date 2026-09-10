@@ -20,12 +20,12 @@ func (a *App) TerminalChat(ctx context.Context, yes bool) error {
 		return fmt.Errorf("workspace not initialized; run aicli init")
 	}
 	providerName, model, _ := a.ProviderAndModel("", "")
-	if err := a.terminalSessionPreflight(ctx, providerName, model); err != nil {
+	scanner := bufio.NewScanner(os.Stdin)
+	scanner.Buffer(make([]byte, 4096), 1024*1024)
+	if err := a.terminalSessionPreflight(ctx, providerName, model, scanner); err != nil {
 		return err
 	}
 	printTerminalHeader(providerName, model, a.Store.Root)
-	scanner := bufio.NewScanner(os.Stdin)
-	scanner.Buffer(make([]byte, 4096), 1024*1024)
 	for {
 		fmt.Print("\n\x1b[38;5;111m❯\x1b[0m ")
 		if !scanner.Scan() {
@@ -88,35 +88,16 @@ func (a *App) TerminalChat(ctx context.Context, yes bool) error {
 	return scanner.Err()
 }
 
-func (a *App) terminalSessionPreflight(ctx context.Context, providerName, model string) error {
+func (a *App) terminalSessionPreflight(ctx context.Context, providerName, model string, scanner *bufio.Scanner) error {
 	fmt.Println("\n\x1b[1;38;5;117mFuzeCLI SESSION PREFLIGHT\x1b[0m")
 	fmt.Println("\x1b[38;5;244m────────────────────────────────────────────────────────────\x1b[0m")
 	fmt.Println("Choose how this session should handle conversation memory.")
-	fmt.Println("Your prompt will remain locked during the 60-second preflight timer.")
 	fmt.Println()
-
-	ticker := time.NewTicker(time.Second)
-	defer ticker.Stop()
-	remaining := 60
-	for remaining > 0 {
-		fmt.Printf("\r\x1b[K\x1b[38;5;111mSession unlocks in %02d seconds\x1b[0m", remaining)
-		select {
-		case <-ctx.Done():
-			fmt.Println()
-			return ctx.Err()
-		case <-ticker.C:
-			remaining--
-		}
-	}
-	fmt.Print("\r\x1b[K")
-
 	fmt.Println("\n\x1b[1mMemory mode\x1b[0m")
 	fmt.Println("  [M] Continue with memory")
 	fmt.Println("  [F] Start fresh and clear memory")
 	fmt.Print("\n\x1b[38;5;111mChoice\x1b[0m: ")
 
-	scanner := bufio.NewScanner(os.Stdin)
-	scanner.Buffer(make([]byte, 128), 4096)
 	for scanner.Scan() {
 		choice := strings.ToLower(strings.TrimSpace(scanner.Text()))
 		switch choice {
@@ -137,7 +118,25 @@ func (a *App) terminalSessionPreflight(ctx context.Context, providerName, model 
 		return err
 	}
 
-	fmt.Println("\n\x1b[38;5;111mFuzeCLI\x1b[0m is preparing your session…")
+	fmt.Println("\n\x1b[1mPreflight\x1b[0m")
+	fmt.Println("\x1b[38;5;244mYour request stays locked while FuzeCLI prepares the strict briefing and selected memory.\x1b[0m")
+
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+	remaining := 60
+	for remaining > 0 {
+		fmt.Printf("\r\x1b[K\x1b[38;5;111mSession prepares in %02d seconds\x1b[0m", remaining)
+		select {
+		case <-ctx.Done():
+			fmt.Println()
+			return ctx.Err()
+		case <-ticker.C:
+			remaining--
+		}
+	}
+	fmt.Print("\r\x1b[K")
+
+	fmt.Println("\n\x1b[38;5;111mFuzeCLI\x1b[0m is sending the strict execution briefing with your selected memory…")
 	welcome, err := a.SessionWelcome(ctx, providerName, model)
 	if err != nil {
 		return err
