@@ -346,30 +346,20 @@ func trimProviderMessages(messages []Message, maxChars int) []Message {
 		return messages
 	}
 
-	first := messages[0]
-	last := messages[len(messages)-1]
-	firstBudget := maxChars / 5
-	if first.Role != "system" {
-		firstBudget = 0
-	}
+	prefixEnd := 0
 	used := 0
-	result := make([]Message, 0, len(messages))
-	if firstBudget > 0 {
-		first = truncateMessage(first, firstBudget)
-		result = append(result, first)
-		used = len(first.Content)
+	for prefixEnd < len(messages) && messages[prefixEnd].Role == "system" {
+		used += len(messages[prefixEnd].Content)
+		prefixEnd++
+	}
+	result := append([]Message(nil), messages[:prefixEnd]...)
+	last := messages[len(messages)-1]
+	lastIsUser := last.Role == "user"
+	if lastIsUser {
+		used += len(last.Content)
 	}
 
-	lastBudget := maxChars - used
-	if lastBudget <= 0 {
-		return result
-	}
-	if len(last.Content) > lastBudget {
-		last = truncateMessage(last, lastBudget)
-	}
-	used += len(last.Content)
-
-	for i := len(messages) - 2; i >= 1; i-- {
+	for i := len(messages) - 2; i >= prefixEnd; i-- {
 		remaining := maxChars - used
 		if remaining <= 0 {
 			break
@@ -380,7 +370,9 @@ func trimProviderMessages(messages []Message, maxChars int) []Message {
 		}
 	}
 
-	result = append(result, last)
+	if lastIsUser {
+		result = append(result, last)
+	}
 	return result
 }
 
