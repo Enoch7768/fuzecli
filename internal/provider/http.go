@@ -72,6 +72,9 @@ func ParseHTTPResponseError(response *http.Response, providerName string) error 
 		kind = ErrorBadRequest
 	}
 
+	if strings.Contains(lower, "tokens per minute") || strings.Contains(lower, "tpm") || strings.Contains(lower, "rate limit") || strings.Contains(lower, "rate_limit") {
+		kind = ErrorRateLimited
+	}
 	if strings.Contains(lower, "insufficient_quota") || strings.Contains(lower, "quota exceeded") || strings.Contains(lower, "quota has been exceeded") || strings.Contains(lower, "billing hard limit") || strings.Contains(lower, "exceeded your current quota") {
 		kind = ErrorQuotaExceeded
 	}
