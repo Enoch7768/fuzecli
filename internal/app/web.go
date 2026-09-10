@@ -55,9 +55,6 @@ func (a *App) SessionWelcome(ctx context.Context, providerName, model string) (s
 	if text == "" {
 		return "", context.Canceled
 	}
-	if err := a.Store.AddMessage(provider.Message{Role: "assistant", Content: text}); err != nil {
-		return "", err
-	}
 	st, _ := a.Store.LoadState()
 	st.ActiveProvider = name
 	st.ActiveModel = mdl
