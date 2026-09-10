@@ -13,26 +13,103 @@ let selectedProvider='';
 let selectedModel='';
 let jobRunning=false;
 let activeAssistant=null;
+let lastPrompt='';
 
-function addMessage(role,text){
-  const el=document.createElement('div');
-  el.className=`message ${role}`;
-  el.textContent=text||'';
-  conversation.appendChild(el);
+function escapeHTML(value){return String(value??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));}
+
+function renderMessageText(text){
+  const safe=escapeHTML(text||'');
+  const parts=safe.split(/(```[\s\S]*?```)/g);
+  return parts.map(part=>{
+    if(part.startsWith('```')){
+      const raw=part.slice(3,-3).replace(/^\s*[a-zA-Z0-9_-]+\s*\n/,'');
+      return `<pre><code>${raw}</code></pre>`;
+    }
+    return part.replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>').replace(/`([^`]+)`/g,'<code>$1</code>').replace(/\n/g,'<br>');
+  }).join('');
+}
+
+function addMessage(role,text,options={}){
+  const wrap=document.createElement('article');
+  wrap.className=`message-group ${role}`;
+  const avatar=document.createElement('div');
+  avatar.className='message-avatar';
+  avatar.textContent=role==='user'?'You':'F';
+  const body=document.createElement('div');
+  body.className='message-body';
+  const head=document.createElement('div');
+  head.className='message-head';
+  const name=document.createElement('span');
+  name.textContent=role==='user'?'You':'FuzeCLI';
+  head.appendChild(name);
+  if(options.meta){
+    const meta=document.createElement('small');
+    meta.textContent=options.meta;
+    head.appendChild(meta);
+  }
+  const content=document.createElement('div');
+  content.className='message-content';
+  content.innerHTML=role==='assistant'?renderMessageText(text):escapeHTML(text).replace(/\n/g,'<br>');
+  body.appendChild(head);
+  body.appendChild(content);
+  if(role==='assistant'){
+    const actions=document.createElement('div');
+    actions.className='message-actions';
+    const copy=document.createElement('button');
+    copy.type='button';
+    copy.textContent='Copy';
+    copy.addEventListener('click',async()=>{
+      try{await navigator.clipboard.writeText(content.textContent||'');copy.textContent='Copied';setTimeout(()=>copy.textContent='Copy',1200);}catch{copy.textContent='Copy failed';setTimeout(()=>copy.textContent='Copy',1200);}
+    });
+    actions.appendChild(copy);
+    body.appendChild(actions);
+  }
+  wrap.appendChild(avatar);
+  wrap.appendChild(body);
+  conversation.appendChild(wrap);
   conversation.scrollTop=conversation.scrollHeight;
-  return el;
+  return content;
 }
 
 function ensureAssistant(){
-  if(!activeAssistant)activeAssistant=addMessage('assistant','');
+  if(!activeAssistant){
+    activeAssistant=addMessage('assistant','', {meta:`${selectedModel||'model'} · streaming`});
+    activeAssistant.classList.add('streaming-content');
+  }
   return activeAssistant;
+}
+
+function finishAssistant(){
+  if(activeAssistant){
+    activeAssistant.classList.remove('streaming-content');
+    const message=activeAssistant.closest('.message-group');
+    if(message){const meta=message.querySelector('.message-head small');if(meta)meta.textContent=`${selectedModel||'model'}`;}
+  }
+  activeAssistant=null;
+}
+
+function appendAssistantDelta(delta){
+  const node=ensureAssistant();
+  const existing=node.dataset.raw||'';
+  node.dataset.raw=existing+delta;
+  node.innerHTML=renderMessageText(node.dataset.raw);
+  conversation.scrollTop=conversation.scrollHeight;
 }
 
 function showError(payload){
   const data=typeof payload==='string'?parseErrorPayload(payload):payload||{};
   $('errorTitle').textContent=data.title||'Something went wrong';
   $('errorText').textContent=data.error||data.message||'The request could not be completed.';
-  $('errorRecovery').textContent=data.recovery?`Next: ${data.recovery}`:'';
+  const bits=[];
+  if(data.provider)bits.push(data.provider);
+  if(data.model)bits.push(data.model);
+  if(data.status_code)bits.push(`HTTP ${data.status_code}`);
+  if(data.retry_after)bits.push(`retry in ~${data.retry_after}s`);
+  $('errorMeta').textContent=bits.join(' · ');
+  $('errorRecovery').textContent=data.recovery||'';
+  $('errorTechnical').textContent=data.technical||'';
+  $('errorTechnicalWrap').classList.toggle('hidden',!data.technical);
+  $('retryError').classList.toggle('hidden',!data.retryable||!lastPrompt);
   $('errorBox').classList.remove('hidden');
 }
 
@@ -45,7 +122,11 @@ function clearError(){
   $('errorBox').classList.add('hidden');
   $('errorTitle').textContent='Something went wrong';
   $('errorText').textContent='';
+  $('errorMeta').textContent='';
   $('errorRecovery').textContent='';
+  $('errorTechnical').textContent='';
+  $('retryError').classList.add('hidden');
+  $('errorTechnicalWrap').classList.add('hidden');
 }
 
 function setProgress(e){
@@ -55,8 +136,8 @@ function setProgress(e){
   $('percent').textContent=`${pct}%`;
   $('completed').textContent=completed;
   $('total').textContent=total;
-  $('current').textContent=e.current_file||e.project||'Working';
-  $('message').textContent=e.message||'Working';
+  $('current').textContent=e.current_file||e.project||'Waiting for a request';
+  $('message').textContent=e.message||'Ready';
   $('status').textContent=prettyStatus(e.status||'idle');
   $('progressRing').style.setProperty('--progress',`${pct*3.6}deg`);
   $('agentProvider').textContent=e.provider||selectedProvider||'—';
@@ -123,8 +204,6 @@ async function loadSettings(){
     selectedProvider=d.default_provider||providerSelect.value||'';
     providerSelect.value=selectedProvider;
     await loadModels();
-    settingsState.textContent='';
-    $('providerLabel').textContent=selectedProvider||'No provider';
   }catch(error){
     showError(error.payload||error.message);
     settingsState.textContent='Settings unavailable';
@@ -140,54 +219,47 @@ async function loadModels(){
   try{
     const d=await fetchJSON(`/api/models?provider=${encodeURIComponent(provider)}`);
     const discovered=[...(d.models||[])];
-    discovered.forEach(model=>{
-      const option=document.createElement('option');
-      option.value=model;
-      modelOptions.appendChild(option);
-    });
+    discovered.forEach(model=>{const option=document.createElement('option');option.value=model;modelOptions.appendChild(option);});
     const configured=settings?.providers?.[provider]?.default_model||'';
     selectedProvider=provider;
     selectedModel=configured||discovered[0]||'';
     modelInput.value=selectedModel;
     $('providerLabel').textContent=provider;
     $('modelLabel').textContent=selectedModel||'No model';
+    $('agentProvider').textContent=provider;
+    $('agentModel').textContent=selectedModel||'—';
+    clearError();
   }catch(error){
     const configured=settings?.providers?.[provider]?.default_model||'';
     selectedProvider=provider;
     selectedModel=configured;
     modelInput.value=configured;
-    showError(error.payload||error.message);
+    $('providerLabel').textContent=provider;
     $('modelLabel').textContent=configured||'Unavailable';
+    showError(error.payload||error.message);
   }finally{modelInput.disabled=false;}
 }
 
 providerSelect.addEventListener('change',loadModels);
-modelInput.addEventListener('input',()=>{
-  selectedModel=modelInput.value.trim();
-  $('modelLabel').textContent=selectedModel||'No model';
-});
+modelInput.addEventListener('input',()=>{selectedModel=modelInput.value.trim();$('modelLabel').textContent=selectedModel||'No model';$('agentModel').textContent=selectedModel||'—';});
 
 $('saveSettings').addEventListener('click',async()=>{
   const provider=providerSelect.value;
   const model=modelInput.value.trim();
-  if(!provider||!model){
-    showError({title:'Settings need a provider and model',error:'Select a provider and enter a model name.',recovery:'Choose a discovered model or enter the exact model identifier supported by the provider.'});
-    return;
-  }
+  if(!provider||!model){showError({title:'Settings need a provider and model',error:'Select a provider and enter a model name.',recovery:'Choose a discovered model or enter the exact model identifier supported by the provider.'});return;}
   settingsState.textContent='Saving…';
-  clearError();
   try{
     const d=await fetchJSON('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({provider,model})});
     selectedProvider=d.provider;
     selectedModel=d.model;
     $('providerLabel').textContent=selectedProvider;
     $('modelLabel').textContent=selectedModel;
+    $('agentProvider').textContent=selectedProvider;
+    $('agentModel').textContent=selectedModel;
     settingsState.textContent='Saved';
     setTimeout(()=>settingsState.textContent='',1800);
-  }catch(error){
-    settingsState.textContent='Could not save';
-    showError(error.payload||error.message);
-  }
+    clearError();
+  }catch(error){settingsState.textContent='Could not save';showError(error.payload||error.message);}
 });
 
 async function loadWorkspace(){
@@ -198,18 +270,9 @@ async function loadWorkspace(){
     $('workspaceRoot').textContent=d.root||'Workspace';
     list.innerHTML='';
     if(!d.files?.length){list.innerHTML='<div class="empty-state">No generated files are being tracked yet.</div>';return;}
-    d.files.forEach(file=>{
-      const row=document.createElement('div');
-      row.className='file-row';
-      row.innerHTML=`<span class="file-icon">□</span><div><strong>${escapeHTML(file.path)}</strong><small>${formatBytes(file.size)} · ${new Date(file.modified).toLocaleString()}</small></div>`;
-      list.appendChild(row);
-    });
+    d.files.forEach(file=>{const row=document.createElement('div');row.className='file-row';row.innerHTML=`<span class="file-icon">□</span><div><strong>${escapeHTML(file.path)}</strong><small>${formatBytes(file.size)} · ${new Date(file.modified).toLocaleString()}</small></div>`;list.appendChild(row);});
   }catch(error){
-    list.innerHTML='';
-    const box=document.createElement('div');
-    box.className='error-box';
-    box.innerHTML=`<div class="error-icon">!</div><div><strong>${escapeHTML(error.payload?.title||'Workspace unavailable')}</strong><p>${escapeHTML(error.payload?.error||error.message)}</p><small>${escapeHTML(error.payload?.recovery||'')}</small></div>`;
-    list.appendChild(box);
+    list.innerHTML=`<div class="error-box"><div class="error-icon">!</div><div class="error-content"><strong>${escapeHTML(error.payload?.title||'Workspace unavailable')}</strong><p>${escapeHTML(error.payload?.error||error.message)}</p><small>${escapeHTML(error.payload?.recovery||'')}</small></div></div>`;
   }
 }
 
@@ -224,61 +287,57 @@ async function loadPlan(){
     const done=files.filter(file=>file.status==='completed').length;
     const pct=files.length?Math.round(done/files.length*100):0;
     box.innerHTML=`<div class="plan-summary"><span class="kicker">${escapeHTML(p.project)}</span><h3>${escapeHTML(p.summary)}</h3><div class="plan-progress"><span style="width:${pct}%"></span></div><div class="plan-count">${done} of ${files.length} files complete</div></div><div class="file-list">${files.map(file=>`<div class="file-row ${file.status==='completed'?'complete':''}"><span class="file-status">${file.status==='completed'?'✓':'○'}</span><div><strong>${escapeHTML(file.path)}</strong><small>${escapeHTML(file.purpose||'Planned file')}</small></div></div>`).join('')}</div>`;
-  }catch(error){
-    box.innerHTML=`<div class="error-box"><div class="error-icon">!</div><div><strong>${escapeHTML(error.payload?.title||'Project plan unavailable')}</strong><p>${escapeHTML(error.payload?.error||error.message)}</p><small>${escapeHTML(error.payload?.recovery||'')}</small></div></div>`;
-  }
+  }catch(error){box.innerHTML=`<div class="error-box"><div class="error-icon">!</div><div class="error-content"><strong>${escapeHTML(error.payload?.title||'Project plan unavailable')}</strong><p>${escapeHTML(error.payload?.error||error.message)}</p><small>${escapeHTML(error.payload?.recovery||'')}</small></div></div>`;}
 }
 
-function formatBytes(n){
-  if(n<1024)return`${n} B`;
-  if(n<1048576)return`${(n/1024).toFixed(1)} KB`;
-  return`${(n/1048576).toFixed(1)} MB`;
-}
+function formatBytes(n){if(n<1024)return`${n} B`;if(n<1048576)return`${(n/1024).toFixed(1)} KB`;return`${(n/1048576).toFixed(1)} MB`;}
 
-function escapeHTML(s){return String(s??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));}
+function resetConversationVisual(){conversation.innerHTML='';activeAssistant=null;}
+
+function addFriendlyErrorMessage(data){
+  const title=data.title||'Request failed';
+  const text=data.error||data.message||'The request could not be completed.';
+  const meta=[data.provider,data.model,data.status_code?`HTTP ${data.status_code}`:''].filter(Boolean).join(' · ');
+  const content=addMessage('assistant','',{meta});
+  content.innerHTML=`<div class="inline-error"><div class="inline-error-top"><span class="inline-error-icon">!</span><div><strong>${escapeHTML(title)}</strong><p>${escapeHTML(text)}</p></div></div>${data.recovery?`<div class="inline-error-recovery">${escapeHTML(data.recovery)}</div>`:''}${data.retry_after?`<div class="inline-error-meta">Retry delay: about ${escapeHTML(data.retry_after)} seconds</div>`:''}${data.technical?`<details><summary>Technical details</summary><pre>${escapeHTML(data.technical)}</pre></details>`:''}</div>`;
+  return content;
+}
 
 const source=new EventSource('/api/events');
-source.addEventListener('progress',handleProgress);
+source.addEventListener('progress',event=>handleProgress(event));
 source.addEventListener('chat_token',handleChatToken);
-source.addEventListener('error',handleProgress);
+source.addEventListener('job_error',handleJobError);
 source.onmessage=handleProgress;
 source.onerror=()=>{
   $('runtime').classList.add('disconnected');
+  $('connectionText').textContent='Connection interrupted';
   $('connectionDot').style.background='var(--warn)';
+};
+source.onopen=()=>{
+  $('runtime').classList.remove('disconnected');
+  $('connectionText').textContent='Connected';
+  $('connectionDot').style.background='';
 };
 
 function handleProgress(event){
-  try{
-    if(!event.data)return;
-    const data=JSON.parse(event.data);
-    setProgress(data);
-    if(data.provider)$('providerLabel').textContent=data.provider;
-    if(data.model)$('modelLabel').textContent=data.model;
-    if(data.status==='failed'){
-      showError(parseErrorPayload(data.message||'The request failed.'));
-      jobRunning=false;
-      send.disabled=false;
-      document.body.classList.remove('busy');
-      activeAssistant=null;
-    }else if(data.status==='completed'){
-      jobRunning=false;
-      send.disabled=false;
-      document.body.classList.remove('busy');
-      activeAssistant=null;
-      loadWorkspace();
-      loadPlan();
-    }
-  }catch{}
+  try{if(!event.data)return;const data=JSON.parse(event.data);setProgress(data);if(data.provider)$('providerLabel').textContent=data.provider;if(data.model)$('modelLabel').textContent=data.model;if(data.status==='completed'){jobRunning=false;send.disabled=false;document.body.classList.remove('busy');finishAssistant();loadWorkspace();loadPlan();}else if(data.status==='failed'){jobRunning=false;send.disabled=false;document.body.classList.remove('busy');}}catch{}
 }
 
 function handleChatToken(event){
+  try{if(!event.data)return;const data=JSON.parse(event.data);setProgress(data);appendAssistantDelta(data.message||'');}catch{}}
+
+function handleJobError(event){
   try{
     if(!event.data)return;
     const data=JSON.parse(event.data);
     setProgress(data);
-    const node=ensureAssistant();
-    node.textContent+=data.message||'';
-    conversation.scrollTop=conversation.scrollHeight;
+    const payload={title:data.error_title||'Request failed',error:data.error_message||data.message,recovery:data.error_recovery,technical:data.error_technical,provider:data.provider,model:data.model,retry_after:data.retry_after,status_code:data.http_status,retryable:true};
+    finishAssistant();
+    showError(payload);
+    addFriendlyErrorMessage(payload);
+    jobRunning=false;
+    send.disabled=false;
+    document.body.classList.remove('busy');
   }catch{}
 }
 
@@ -290,6 +349,7 @@ async function submit(){
   const clean=text.startsWith('/code ')?text.slice(6).trim():text;
   if(!clean)return;
   if(conversation.querySelector('.welcome'))conversation.innerHTML='';
+  lastPrompt=clean;
   addMessage('user',clean);
   activeAssistant=null;
   prompt.value='';
@@ -301,51 +361,41 @@ async function submit(){
   setProgress({status:isCode?'planning':'generating',message:isCode?'Starting project planning…':'Connecting to provider…',provider:selectedProvider,model:selectedModel});
   try{
     const result=await fetchJSON('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt:clean,provider:selectedProvider,model:selectedModel,code:isCode,yes:true})});
-    if(result?.accepted!==true)throw new Error('The server did not accept the chat request.');
+    if(result?.accepted!==true)throw Object.assign(new Error('The server did not accept the chat request.'),{payload:{title:'Request was not accepted',error:'FuzeCLI did not start the requested chat job.',recovery:'Retry the message.'}});
   }catch(error){
     jobRunning=false;
     send.disabled=false;
     document.body.classList.remove('busy');
-    showError(error.payload||error.message);
-    addMessage('assistant',error.payload?.error||error.message);
-    setProgress({status:'failed',message:JSON.stringify(error.payload||{message:error.message}),provider:selectedProvider,model:selectedModel});
+    const payload=error.payload||{title:'Could not send message',error:error.message,recovery:'Check that FuzeCLI web server is running and retry.'};
+    showError(payload);
+    addFriendlyErrorMessage(payload);
+    setProgress({status:'failed',message:payload.error||error.message,provider:selectedProvider,model:selectedModel});
   }
 }
 
+$('retryError').addEventListener('click',()=>{clearError();prompt.value=lastPrompt;submit();});
+$('attachInfo').addEventListener('click',()=>{showError({title:'Workspace context',error:'FuzeCLI automatically includes tracked workspace context where the current request needs it.',recovery:'Use /code for project generation or ask a normal question for streamed chat.'});});
 send.addEventListener('click',submit);
-prompt.addEventListener('keydown',event=>{
-  if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();submit();}
-});
-prompt.addEventListener('input',()=>{
-  prompt.style.height='auto';
-  prompt.style.height=Math.min(prompt.scrollHeight,220)+'px';
-});
-
-document.querySelectorAll('[data-prompt]').forEach(button=>button.addEventListener('click',()=>{
-  prompt.value=button.dataset.prompt;
-  code.checked=button.dataset.code==='true';
-  prompt.focus();
-}));
-
-$('newChat').addEventListener('click',()=>{
-  if(jobRunning)return;
-  conversation.innerHTML='';
-  clearError();
-  activeAssistant=null;
-  setProgress({status:'idle',message:'Ready',completed_files:0,total_files:0,provider:selectedProvider,model:selectedModel});
-  openTab('chat');
-  prompt.focus();
-});
-
+prompt.addEventListener('keydown',event=>{if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();submit();}});
+prompt.addEventListener('input',()=>{prompt.style.height='auto';prompt.style.height=Math.min(prompt.scrollHeight,220)+'px';});
+document.querySelectorAll('[data-prompt]').forEach(button=>button.addEventListener('click',()=>{prompt.value=button.dataset.prompt;code.checked=button.dataset.code==='true';prompt.focus();}));
+$('newChat').addEventListener('click',()=>{if(jobRunning)return;resetConversationVisual();clearError();setProgress({status:'idle',message:'Ready',completed_files:0,total_files:0,provider:selectedProvider,model:selectedModel});openTab('chat');prompt.focus();});
 $('refreshWorkspace').addEventListener('click',loadWorkspace);
 $('refreshPlan').addEventListener('click',loadPlan);
+document.addEventListener('keydown',event=>{if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='k'){event.preventDefault();if(!jobRunning)prompt.focus();}});
 
-document.addEventListener('keydown',event=>{
-  if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='k'){
-    event.preventDefault();
-    if(!jobRunning)prompt.focus();
-  }
-});
+async function loadHistory(){
+  try{
+    const d=await fetchJSON('/api/history');
+    const messages=d.messages||[];
+    if(!messages.length)return;
+    if(conversation.querySelector('.welcome'))conversation.innerHTML='';
+    const rendered=[...conversation.querySelectorAll('.message-group')].length;
+    if(rendered>0)return;
+    messages.forEach(message=>addMessage(message.role,message.content));
+  }catch{}
+}
 
 loadSettings();
+loadHistory();
 fetch('/api/state').then(response=>response.json()).then(setProgress).catch(()=>{});
