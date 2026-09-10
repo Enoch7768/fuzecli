@@ -153,8 +153,6 @@ func (s *Store) RefreshHashes(paths []string) error {
 	return s.SaveState(st)
 }
 func (s *Store) WorkspaceContext() (string, error) {
-	const maxContextChars = 8000
-
 	touched, err := s.Touched()
 	if err != nil {
 		return "", err
@@ -204,12 +202,9 @@ func (s *Store) WorkspaceContext() (string, error) {
 	paths = append(paths, discovered...)
 
 	var b strings.Builder
-	b.WriteString("Workspace access is available to FuzeCLI through this local context. The following files were read directly from the workspace on disk. Use these files to inspect, analyze, and modify the project. Do not ask the user to paste files that are present here.\n")
+	b.WriteString("Workspace access is available to FuzeCLI through this local context. Every discovered text source file in the workspace is included below in full. Use these files to inspect, analyze, and modify the project. Do not ask the user to paste files that are present here. Binary files and generated/dependency directories are intentionally excluded.\n")
 
 	for _, rel := range paths {
-		if b.Len() >= maxContextChars {
-			break
-		}
 		path, err := filepath.Abs(filepath.Join(s.Root, filepath.FromSlash(rel)))
 		if err != nil {
 			continue
@@ -218,19 +213,7 @@ func (s *Store) WorkspaceContext() (string, error) {
 		if err != nil || !workspaceContextTextData(data) {
 			continue
 		}
-		remaining := maxContextChars - b.Len()
-		entry := fmt.Sprintf("\n--- %s ---\n", rel)
-		if len(entry) >= remaining {
-			break
-		}
-		b.WriteString(entry)
-		remaining = maxContextChars - b.Len()
-		if len(data) > remaining {
-			data = data[:remaining]
-			if index := bytes.LastIndexByte(data, '\n'); index > 0 {
-				data = data[:index]
-			}
-		}
+		b.WriteString(fmt.Sprintf("\n--- %s ---\n", rel))
 		b.Write(data)
 		b.WriteByte('\n')
 	}

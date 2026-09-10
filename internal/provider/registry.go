@@ -329,17 +329,6 @@ func adaptRequest(name string, messages []Message, opts RequestOptions) ([]Messa
 	if request.JSONMode && request.MaxTokens > budget.jsonOutputTokens {
 		request.MaxTokens = budget.jsonOutputTokens
 	}
-	if strings.EqualFold(name, "groq") {
-		chars := 0
-		for _, message := range messages {
-			chars += len(message.Content)
-		}
-		estimatedInputTokens := (chars + 2) / 3
-		available := 7600 - estimatedInputTokens
-		if available > 0 && request.MaxTokens > available {
-			request.MaxTokens = available
-		}
-	}
 	return trimProviderMessages(messages, budget.maxInputChars), request
 }
 
@@ -400,25 +389,6 @@ func trimProviderMessages(messages []Message, maxChars int) []Message {
 }
 
 func validateRequestBudget(name string, messages []Message, opts RequestOptions) error {
-	if !strings.EqualFold(name, "groq") {
-		return nil
-	}
-	budget := providerBudget(name)
-	chars := 0
-	for _, message := range messages {
-		chars += len(message.Content)
-	}
-	estimatedInputTokens := (chars + 2) / 3
-	estimatedTotal := estimatedInputTokens + opts.MaxTokens
-	if chars > budget.maxInputChars || estimatedTotal > 7600 {
-		return &ProviderError{
-			Kind:       ErrorBadRequest,
-			Provider:   name,
-			StatusCode: 413,
-			Message:    fmt.Sprintf("request exceeds the safe Groq request budget: about %d input tokens plus %d output tokens; FuzeCLI preserves the strict execution briefing and complete user prompt", estimatedInputTokens, opts.MaxTokens),
-			Err:        ErrRequestTooLarge,
-		}
-	}
 	return nil
 }
 
