@@ -136,8 +136,12 @@ func (s *Server) chat(w http.ResponseWriter, r *http.Request) {
 	request.Prompt = strings.TrimSpace(request.Prompt)
 	request.Provider = strings.TrimSpace(request.Provider)
 	request.Model = strings.TrimSpace(request.Model)
+	if request.Prompt == "/code" || strings.HasPrefix(request.Prompt, "/code ") {
+		request.Code = true
+		request.Prompt = strings.TrimSpace(strings.TrimPrefix(request.Prompt, "/code"))
+	}
 	if request.Prompt == "" {
-		writeUserError(w, http.StatusBadRequest, diagnostics.Interpret(fmt.Errorf("prompt is required"), request.Provider, request.Model))
+		writeUserError(w, http.StatusBadRequest, diagnostics.Interpret(fmt.Errorf("prompt is required; for code generation use /code followed by what you want to build"), request.Provider, request.Model))
 		return
 	}
 
