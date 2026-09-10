@@ -46,9 +46,9 @@ func Interpret(err error, providerName, model string) UserError {
 	lower := strings.ToLower(message)
 	switch {
 	case errors.Is(err, io.EOF) || strings.Contains(lower, "unexpected end of json input") || strings.Contains(lower, "unexpected eof") || (strings.Contains(lower, "invalid character") && strings.Contains(lower, "json")):
-		return UserError{Title: "The AI response was cut off or invalid", Message: "The model returned a response that ended before FuzeCLI could read the required JSON.", Recovery: "FuzeCLI will use a smaller generation batch on the next retry. For a very large file, generate that file on its own.", Technical: message, Provider: providerName, Model: model, Retryable: true}
+		return UserError{Title: "The AI response was cut off or invalid", Message: "The model returned a response that ended before FuzeCLI could read the required JSON.", Recovery: "FuzeCLI already uses small resumable project batches. Retry the request or narrow the affected file/task.", Technical: message, Provider: providerName, Model: model, Retryable: true}
 	case strings.Contains(lower, "response contains incomplete json") || strings.Contains(lower, "response was truncated"):
-		return UserError{Title: "The model output was too large", Message: "The structured response was truncated before all file content could be returned.", Recovery: "Use smaller project batches or narrow the request. FuzeCLI now splits large projects into resumable batches.", Technical: message, Provider: providerName, Model: model, Retryable: true}
+		return UserError{Title: "The model output was too large", Message: "The structured response was truncated before all file content could be returned.", Recovery: "Use smaller project scope or generate a large file by itself. FuzeCLI will preserve the completed planner files so you can resume.", Technical: message, Provider: providerName, Model: model, Retryable: true}
 	case strings.Contains(lower, "workspace not initialized"):
 		return UserError{Title: "Workspace not initialized", Message: "FuzeCLI is not attached to a workspace yet.", Recovery: "Run aicli init in the project directory, then try again.", Technical: message, Provider: providerName, Model: model}
 	case strings.Contains(lower, "no model configured") || strings.Contains(lower, "model is required"):
@@ -68,7 +68,7 @@ func Interpret(err error, providerName, model string) UserError {
 	case strings.Contains(lower, "context deadline exceeded") || strings.Contains(lower, "timeout"):
 		return UserError{Title: "The request timed out", Message: "The provider did not finish responding within the allowed time.", Recovery: "Try a smaller request, a smaller project batch, or another provider/model.", Technical: message, Provider: providerName, Model: model, Retryable: true}
 	case isNetworkError(err):
-		return UserError{Title: "The AI provider could not be reached", Message: "FuzeCLI could not maintain a connection to the selected provider.", Recovery: "Check your internet connection or provider endpoint, then retry.", Technical: message, Provider: providerName, Model: model, Retryable: true}
+		return UserError{Title: "The AI provider could not be reached", Message: "FuzeCLI could not maintain a connection to the selected provider.", Recovery: "Check your internet connection or provider endpoint and retry.", Technical: message, Provider: providerName, Model: model, Retryable: true}
 	default:
 		return UserError{Title: "Request failed", Message: compact(message), Recovery: "Retry the request. If it keeps failing, narrow the request and check the selected provider and model.", Technical: message, Provider: providerName, Model: model, Retryable: true}
 	}
