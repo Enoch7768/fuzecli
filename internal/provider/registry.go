@@ -40,8 +40,7 @@ func (r *Registry) Get(name string) (Provider, error) {
 	if !ok {
 		return nil, fmt.Errorf("provider %q is not configured", name)
 	}
-	cfg := configuredFor(name)
-	p := newCompatibleProvider(spec, cfg)
+	p := newCompatibleProvider(spec, configuredFor(name))
 	r.limitMu.Lock()
 	if existing, exists := r.providers[name]; exists {
 		r.limitMu.Unlock()
@@ -345,6 +344,12 @@ func providerBudget(name string) requestBudget {
 
 var workspaceBlockPattern = regexp.MustCompile(`(?ms)^--- (.+?) ---\n(.*?)(?=^--- .+? ---\n|\z)`)
 
+type workspaceBlock struct {
+	path  string
+	body  string
+	score int
+}
+
 func trimProviderMessages(messages []Message, maxChars int) []Message {
 	if len(messages) == 0 || maxChars <= 0 {
 		return messages
@@ -359,22 +364,18 @@ func trimProviderMessages(messages []Message, maxChars int) []Message {
 	first := messages[0]
 	last := messages[len(messages)-1]
 	if first.Role != "system" || last.Role != "user" {
-		return messages
+		return trimHistory(messages, maxChars)
 	}
 	if strings.Contains(first.Content, "--- ") {
 		first = trimWorkspaceMessage(first, last.Content, maxChars)
-		total = len(first.Content) + len(last.Content)
-		if total <= maxChars {
-			result := make([]Message, 0, len(messages))
-			result = append(result, first)
-			for i := 1; i < len(messages)-1; i++ {
-				result = append(result, messages[i])
-			}
-			result = append(result, last)
-			return trimHistory(result, maxChars)
-		}
 	}
-	return trimHistory(messages, maxChars)
+	result := make([]Message, 0, len(messages))
+	result = append(result, first)
+	for i := 1; i < len(messages)-1; i++ {
+		result = append(result, messages[i])
+	}
+	result = append(result, last)
+	return trimHistory(result, maxChars)
 }
 
 func trimHistory(messages []Message, maxChars int) []Message {
@@ -404,13 +405,12 @@ func trimWorkspaceMessage(message Message, prompt string, maxChars int) Message 
 	if len(matches) == 0 {
 		return truncateMessage(message, maxChars/2)
 	}
-	prefix := message.Content[:strings.Index(message.Content, "--- ")]
-	type block struct {
-		path string
-		body string
-		score int
+	marker := strings.Index(message.Content, "--- ")
+	prefix := message.Content
+	if marker >= 0 {
+		prefix = message.Content[:marker]
 	}
-	blocks := make([]block, 0, len(matches))
+	blocks := make([]workspaceBlock, 0, len(matches))
 	terms := contextTerms(prompt)
 	for _, match := range matches {
 		path := strings.TrimSpace(match[1])
@@ -421,7 +421,7 @@ func trimWorkspaceMessage(message Message, prompt string, maxChars int) Message 
 				score++
 			}
 		}
-		blocks = append(blocks, block{path: path, body: body, score: score})
+		blocks = append(blocks, workspaceBlock{path: path, body: body, score: score})
 	}
 	sort.SliceStable(blocks, func(i, j int) bool {
 		if blocks[i].score == blocks[j].score {
@@ -430,11 +430,14 @@ func trimWorkspaceMessage(message Message, prompt string, maxChars int) Message 
 		return blocks[i].score > blocks[j].score
 	})
 	manifest := prefix + "Workspace files available locally. The full workspace remains on disk; only relevant files are loaded into this request.\n"
-	for _, b := range blocks {
-		manifest += "- " + b.path + "\n"
+	for _, item := range blocks {
+		manifest += "- " + item.path + "\n"
+		if len(manifest) >= maxChars/3 {
+			break
+		}
 	}
 	if len(manifest)+len(prompt)+512 >= maxChars {
-		manifest = prefix + truncateString("Workspace file index:\n"+strings.Join(blockPaths(blocks), "\n"), maxChars/3) + "\n"
+		return Message{Role: message.Role, Content: truncateString(manifest, maxChars-len(prompt)-32)}
 	}
 	budget := maxChars - len(manifest) - len(prompt) - 256
 	if budget < 1200 {
@@ -480,21 +483,15 @@ func pathScore(path string, terms []string) int {
 		}
 	}
 	for _, marker := range []string{"main", "app", "index", "readme", "config", "route", "server", "package"} {
-		for _, term := range terms {
-			if term == marker && strings.Contains(lower, marker) {
-				score += 5
+		if strings.Contains(lower, marker) {
+			for _, term := range terms {
+				if term == marker {
+					score += 5
+				}
 			}
 		}
 	}
 	return score
-}
-
-func blockPaths(blocks []struct{ path, body string; score int }) []string {
-	out := make([]string, 0, len(blocks))
-	for _, b := range blocks {
-		out = append(out, b.path)
-	}
-	return out
 }
 
 func truncateString(value string, max int) string {
