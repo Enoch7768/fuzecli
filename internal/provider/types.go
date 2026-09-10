@@ -49,6 +49,7 @@ type ErrorKind string
 
 const (
 	ErrorRateLimited         ErrorKind = "rate_limited"
+	ErrorQuotaExceeded       ErrorKind = "quota_exceeded"
 	ErrorUnauthorized        ErrorKind = "unauthorized"
 	ErrorProviderUnavailable ErrorKind = "provider_unavailable"
 	ErrorBadRequest          ErrorKind = "bad_request"
@@ -69,7 +70,6 @@ func (e *ProviderError) Error() string {
 	if e.Err != nil {
 		return fmt.Sprintf("%s: %s: %v", e.Provider, e.Message, e.Err)
 	}
-
 	return fmt.Sprintf("%s: %s", e.Provider, e.Message)
 }
 
@@ -98,7 +98,6 @@ var (
 
 func ClassifyError(err error) error {
 	var providerErr *ProviderError
-
 	if errors.As(err, &providerErr) {
 		switch providerErr.Kind {
 		case ErrorRateLimited:
@@ -109,6 +108,5 @@ func ClassifyError(err error) error {
 			return fmt.Errorf("%w: %v", ErrProviderUnavailable, err)
 		}
 	}
-
 	return err
 }
