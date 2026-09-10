@@ -63,16 +63,7 @@ func (r *Registry) Send(ctx context.Context, name string, messages []Message, op
 		if request.Model == "" {
 			return nil, fmt.Errorf("no default model configured for provider %s", name)
 		}
-		if err := r.wait(ctx, name); err != nil {
-			return nil, err
-		}
-		provider, err := r.Get(name)
-		if err != nil {
-			return nil, err
-		}
-		response, err := provider.Send(ctx, requestMessages, request)
-		r.observe(name, err)
-		return response, err
+		return r.sendWithRetry(ctx, name, requestMessages, request)
 	}
 
 	var last error
@@ -83,17 +74,7 @@ func (r *Registry) Send(ctx context.Context, name string, messages []Message, op
 			last = fmt.Errorf("no default model configured for provider %s", candidate)
 			continue
 		}
-		if err := r.wait(ctx, candidate); err != nil {
-			last = err
-			continue
-		}
-		provider, err := r.Get(candidate)
-		if err != nil {
-			last = err
-			continue
-		}
-		response, err := provider.Send(ctx, requestMessages, request)
-		r.observe(candidate, err)
+		response, err := r.sendWithRetry(ctx, candidate, requestMessages, request)
 		if err == nil {
 			return response, nil
 		}
@@ -110,6 +91,29 @@ func (r *Registry) Send(ctx context.Context, name string, messages []Message, op
 	return nil, last
 }
 
+func (r *Registry) sendWithRetry(ctx context.Context, name string, messages []Message, opts RequestOptions) (*Response, error) {
+	var last error
+	for attempt := 0; attempt < 3; attempt++ {
+		if err := r.wait(ctx, name); err != nil {
+			return nil, err
+		}
+		provider, err := r.Get(name)
+		if err != nil {
+			return nil, err
+		}
+		response, err := provider.Send(ctx, messages, opts)
+		r.observe(name, err)
+		if err == nil {
+			return response, nil
+		}
+		last = err
+		if !isRetryableProviderError(err) {
+			return nil, err
+		}
+	}
+	return nil, last
+}
+
 func (r *Registry) Stream(ctx context.Context, name string, messages []Message, opts RequestOptions) (<-chan StreamChunk, error) {
 	if name != "auto" {
 		streamMessages, streamOptions := adaptRequest(name, messages, opts)
@@ -117,11 +121,7 @@ func (r *Registry) Stream(ctx context.Context, name string, messages []Message, 
 		if streamOptions.Model == "" {
 			return nil, fmt.Errorf("no default model configured for provider %s", name)
 		}
-		if err := r.wait(ctx, name); err != nil {
-			return nil, err
-		}
-		stream, err := r.streamProvider(ctx, name, streamMessages, streamOptions)
-		r.observe(name, err)
+		stream, err := r.streamWithRetry(ctx, name, streamMessages, streamOptions)
 		if err != nil {
 			return nil, err
 		}
@@ -136,12 +136,7 @@ func (r *Registry) Stream(ctx context.Context, name string, messages []Message, 
 			last = fmt.Errorf("no default model configured for provider %s", candidate)
 			continue
 		}
-		if err := r.wait(ctx, candidate); err != nil {
-			last = err
-			continue
-		}
-		stream, err := r.streamProvider(ctx, candidate, streamMessages, streamOptions)
-		r.observe(candidate, err)
+		stream, err := r.streamWithRetry(ctx, candidate, streamMessages, streamOptions)
 		if err == nil {
 			return r.continueStream(ctx, candidate, streamMessages, streamOptions, stream), nil
 		}
@@ -158,12 +153,31 @@ func (r *Registry) Stream(ctx context.Context, name string, messages []Message, 
 	return nil, last
 }
 
-func (r *Registry) streamProvider(ctx context.Context, name string, messages []Message, opts RequestOptions) (<-chan StreamChunk, error) {
-	provider, err := r.Get(name)
-	if err != nil {
-		return nil, err
+func (r *Registry) streamWithRetry(ctx context.Context, name string, messages []Message, opts RequestOptions) (<-chan StreamChunk, error) {
+	var last error
+	for attempt := 0; attempt < 3; attempt++ {
+		if err := r.wait(ctx, name); err != nil {
+			return nil, err
+		}
+		provider, err := r.Get(name)
+		if err != nil {
+			return nil, err
+		}
+		stream, err := provider.Stream(ctx, messages, opts)
+		r.observe(name, err)
+		if err == nil {
+			return stream, nil
+		}
+		last = err
+		if !isRetryableProviderError(err) {
+			return nil, err
+		}
 	}
-	return provider.Stream(ctx, messages, opts)
+	return nil, last
+}
+
+func isRetryableProviderError(err error) bool {
+	return errors.Is(err, ErrRateLimited) || errors.Is(err, ErrProviderUnavailable)
 }
 
 func (r *Registry) model(name, requested string) string {
@@ -260,7 +274,6 @@ func providerMinInterval(name string) time.Duration {
 func adaptRequest(name string, messages []Message, opts RequestOptions) ([]Message, RequestOptions) {
 	budget := providerBudget(name)
 	request := opts
-
 	if request.MaxTokens <= 0 || request.MaxTokens > budget.maxOutputTokens {
 		request.MaxTokens = budget.maxOutputTokens
 	}
@@ -310,16 +323,21 @@ func trimProviderMessages(messages []Message, maxChars int) []Message {
 	if first.Role != "system" {
 		firstBudget = 0
 	}
-	lastBudget := maxChars - firstBudget
-
+	used := 0
 	result := make([]Message, 0, len(messages))
 	if firstBudget > 0 {
-		result = append(result, truncateMessage(first, firstBudget))
+		first = truncateMessage(first, firstBudget)
+		result = append(result, first)
+		used = len(first.Content)
 	}
 
-	used := firstBudget
+	remainingLast := maxChars - used
+	if remainingLast <= 0 {
+		return result
+	}
+
 	for i := len(messages) - 2; i >= 1; i-- {
-		remaining := maxChars - used - minInt(len(last.Content), lastBudget)
+		remaining := maxChars - used - minInt(len(last.Content), remainingLast)
 		if remaining <= 0 {
 			break
 		}
@@ -398,12 +416,7 @@ func (r *Registry) continueStream(ctx context.Context, name string, messages []M
 				Message{Role: "user", Content: "Continue the previous response exactly from where it stopped. Do not repeat any text. Output only the missing continuation. Preserve the same format and complete the response."},
 			)
 			continuationMessages, continuationOptions := adaptRequest(name, continuationMessages, opts)
-			if err := r.wait(ctx, name); err != nil {
-				out <- StreamChunk{Error: err}
-				return
-			}
-			current, err := r.streamProvider(ctx, name, continuationMessages, continuationOptions)
-			r.observe(name, err)
+			current, err := r.streamWithRetry(ctx, name, continuationMessages, continuationOptions)
 			if err != nil {
 				out <- StreamChunk{Error: err}
 				return
