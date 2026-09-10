@@ -14,6 +14,7 @@ import (
 
 	"github.com/Enoch7768/fuzecli/internal/app"
 	"github.com/Enoch7768/fuzecli/internal/config"
+	"github.com/Enoch7768/fuzecli/internal/diagnostics"
 	"github.com/Enoch7768/fuzecli/internal/generation"
 	"github.com/Enoch7768/fuzecli/internal/progress"
 )
@@ -69,7 +70,7 @@ func (s *Server) index(w http.ResponseWriter, r *http.Request) {
 	}
 	data, err := assets.ReadFile("static/index.html")
 	if err != nil {
-		http.Error(w, "UI unavailable", http.StatusInternalServerError)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "FuzeCLI web interface could not be loaded"})
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -83,18 +84,18 @@ func (s *Server) state(w http.ResponseWriter, r *http.Request) {
 func (s *Server) events(w http.ResponseWriter, r *http.Request) {
 	flusher, ok := w.(http.Flusher)
 	if !ok {
-		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "live updates are not supported by this connection"})
 		return
 	}
 	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Cache-Control", "no-cache, no-transform")
 	w.Header().Set("Connection", "keep-alive")
 	w.Header().Set("X-Accel-Buffering", "no")
 	ch, cancel := s.Progress.Subscribe()
 	defer cancel()
 	last := s.Progress.Last()
 	if !last.Timestamp.IsZero() {
-		writeSSE(w, last)
+		writeSSE(w, "progress", last)
 		flusher.Flush()
 	}
 	for {
@@ -105,7 +106,7 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request) {
 			if !ok {
 				return
 			}
-			writeSSE(w, event)
+			writeSSE(w, event.Type, event)
 			flusher.Flush()
 		}
 	}
@@ -114,7 +115,7 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request) {
 func (s *Server) chat(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		w.Header().Set("Allow", http.MethodPost)
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "POST is required for chat requests"})
 		return
 	}
 
@@ -125,65 +126,120 @@ func (s *Server) chat(w http.ResponseWriter, r *http.Request) {
 		Code     bool   `json:"code"`
 		Yes      bool   `json:"yes"`
 	}
-
-	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request: " + err.Error()})
+	decoder := json.NewDecoder(r.Body)
+	if err := decoder.Decode(&request); err != nil {
+		writeUserError(w, http.StatusBadRequest, diagnostics.Interpret(fmt.Errorf("invalid chat request: %w", err), request.Provider, request.Model))
 		return
 	}
 
 	request.Prompt = strings.TrimSpace(request.Prompt)
+	request.Provider = strings.TrimSpace(request.Provider)
+	request.Model = strings.TrimSpace(request.Model)
 	if request.Prompt == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "prompt is required"})
+		writeUserError(w, http.StatusBadRequest, diagnostics.Interpret(fmt.Errorf("prompt is required"), request.Provider, request.Model))
 		return
 	}
 
 	s.mu.Lock()
 	if s.busy {
 		s.mu.Unlock()
-		writeJSON(w, http.StatusConflict, map[string]string{"error": "FuzeCLI is already working on another request"})
+		writeUserError(w, http.StatusConflict, diagnostics.Interpret(fmt.Errorf("FuzeCLI is already working on another request"), request.Provider, request.Model))
 		return
 	}
 	s.busy = true
 	s.mu.Unlock()
 
-	go func() {
-		defer func() {
-			s.mu.Lock()
-			s.busy = false
-			s.mu.Unlock()
-		}()
+	job := fmt.Sprintf("job-%d", time.Now().UnixNano())
+	go s.runChatJob(job, request.Prompt, request.Provider, request.Model, request.Code, request.Yes)
 
-		if request.Provider != "" {
-			s.App.Config.DefaultProvider = request.Provider
-		}
-		if request.Provider != "" && request.Model != "" {
-			pc, ok := s.App.Config.Providers[request.Provider]
-			if ok {
-				pc.DefaultModel = request.Model
-				s.App.Config.Providers[request.Provider] = pc
-			}
-		}
+	writeJSON(w, http.StatusAccepted, map[string]any{"accepted": true, "job_id": job})
+}
 
-		ctx := context.Background()
-		if request.Code {
-			_, err := s.App.Ask(ctx, request.Prompt, request.Provider, request.Model, request.Yes)
-			if err != nil {
-				s.Progress.Publish(progress.Event{Type: "error", Status: "failed", Provider: request.Provider, Model: request.Model, Message: err.Error()})
-				return
-			}
-			s.Progress.Publish(progress.Event{Type: "completed", Status: "completed", Provider: request.Provider, Model: request.Model, Message: "Generation complete"})
-			return
-		}
-
-		s.Progress.Publish(progress.Event{Type: "chat", Status: "generating", Provider: request.Provider, Model: request.Model, Message: "Receiving response"})
-		if err := s.App.ChatRequest(ctx, request.Prompt, request.Provider, request.Model); err != nil {
-			s.Progress.Publish(progress.Event{Type: "error", Status: "failed", Provider: request.Provider, Model: request.Model, Message: err.Error()})
-			return
-		}
-		s.Progress.Publish(progress.Event{Type: "completed", Status: "completed", Provider: request.Provider, Model: request.Model, Message: "Response complete"})
+func (s *Server) runChatJob(job, prompt, providerName, model string, code, yes bool) {
+	defer func() {
+		s.mu.Lock()
+		s.busy = false
+		s.mu.Unlock()
 	}()
 
-	writeJSON(w, http.StatusAccepted, map[string]any{"accepted": true})
+	start := time.Now()
+	if code {
+		s.Progress.Publish(progress.Event{Type: "progress", Status: "planning", Message: "Analyzing the request and building a resumable project plan", Provider: providerName, Model: model, ElapsedMillis: 0})
+		result := make(chan error, 1)
+		go func() {
+			_, err := s.App.Ask(context.Background(), prompt, providerName, model, yes)
+			result <- err
+		}()
+		s.monitorProjectPlan(start, providerName, model, result)
+		return
+	}
+
+	s.Progress.Publish(progress.Event{Type: "progress", Status: "generating", Message: "Receiving response", Provider: providerName, Model: model, ElapsedMillis: 0})
+	err := s.App.ChatStreamRequest(context.Background(), prompt, providerName, model, func(delta string) {
+		s.Progress.Publish(progress.Event{Type: "chat_token", Status: "streaming", Message: delta, Provider: providerName, Model: model, ElapsedMillis: time.Since(start).Milliseconds()})
+	})
+	if err != nil {
+		u := diagnostics.Interpret(err, providerName, model)
+		s.Progress.Publish(progress.Event{Type: "error", Status: "failed", Provider: u.Provider, Model: u.Model, Message: errorMessage(u), ElapsedMillis: time.Since(start).Milliseconds()})
+		return
+	}
+	s.Progress.Publish(progress.Event{Type: "completed", Status: "completed", Provider: providerName, Model: model, Message: "Response complete", ElapsedMillis: time.Since(start).Milliseconds()})
+}
+
+func (s *Server) monitorProjectPlan(start time.Time, providerName, model string, result <-chan error) {
+	ticker := time.NewTicker(250 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		select {
+		case err := <-result:
+			if err != nil {
+				u := diagnostics.Interpret(err, providerName, model)
+				s.Progress.Publish(progress.Event{Type: "error", Status: "failed", Provider: u.Provider, Model: u.Model, Message: errorMessage(u), ElapsedMillis: time.Since(start).Milliseconds()})
+				return
+			}
+			s.Progress.Publish(progress.Event{Type: "completed", Status: "completed", Message: "Generation complete", Provider: providerName, Model: model, ElapsedMillis: time.Since(start).Milliseconds()})
+			return
+		case <-ticker.C:
+			event := s.projectProgressEvent(start, providerName, model)
+			s.Progress.Publish(event)
+		}
+	}
+}
+
+func (s *Server) projectProgressEvent(start time.Time, providerName, model string) progress.Event {
+	event := progress.Event{Type: "progress", Status: "generating", Provider: providerName, Model: model, Message: "Generating the next safe batch", ElapsedMillis: time.Since(start).Milliseconds()}
+	if s.App.Store == nil {
+		return event
+	}
+	data, err := os.ReadFile(generation.ProjectPlanPath(s.App.Store.Root))
+	if err != nil {
+		if os.IsNotExist(err) {
+			event.Status = "planning"
+			event.Message = "Building the project plan"
+		}
+		return event
+	}
+	var plan generation.ProjectPlan
+	if json.Unmarshal(data, &plan) != nil {
+		event.Status = "planning"
+		event.Message = "Reading the project plan"
+		return event
+	}
+	event.Project = plan.Project
+	event.TotalFiles = len(plan.Files)
+	event.CompletedFiles = len(plan.Files) - len(generation.PendingFiles(plan))
+	pending := generation.PendingFiles(plan)
+	if len(pending) == 0 {
+		event.Status = "verifying"
+		event.Message = "Final verification is running"
+	} else {
+		event.Status = "generating"
+		event.CurrentFile = pending[0].Path
+		event.BatchNumber = (event.CompletedFiles / generation.PlannerBatchSize) + 1
+		event.TotalBatches = (event.TotalFiles + generation.PlannerBatchSize - 1) / generation.PlannerBatchSize
+		event.Message = fmt.Sprintf("Generating %s", pending[0].Path)
+	}
+	return event
 }
 
 func (s *Server) config(w http.ResponseWriter, r *http.Request) {
@@ -198,7 +254,7 @@ func (s *Server) config(w http.ResponseWriter, r *http.Request) {
 	}
 	if r.Method != http.MethodPost {
 		w.Header().Set("Allow", "GET, POST")
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "GET or POST is required for settings"})
 		return
 	}
 
@@ -207,33 +263,35 @@ func (s *Server) config(w http.ResponseWriter, r *http.Request) {
 		Model    string `json:"model"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid settings request"})
+		writeUserError(w, http.StatusBadRequest, diagnostics.Interpret(fmt.Errorf("invalid settings request: %w", err), "", ""))
 		return
 	}
 	request.Provider = strings.TrimSpace(request.Provider)
 	request.Model = strings.TrimSpace(request.Model)
 	if request.Provider == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "provider is required"})
+		writeUserError(w, http.StatusBadRequest, diagnostics.Interpret(fmt.Errorf("provider is required"), "", request.Model))
 		return
 	}
-
 	pc, ok := s.App.Config.Providers[request.Provider]
 	if !ok {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "unknown provider: " + request.Provider})
+		writeUserError(w, http.StatusBadRequest, diagnostics.Interpret(fmt.Errorf("unknown provider %q", request.Provider), request.Provider, request.Model))
 		return
 	}
-	if request.Model != "" {
-		pc.DefaultModel = request.Model
-		s.App.Config.Providers[request.Provider] = pc
+	if request.Model == "" {
+		request.Model = pc.DefaultModel
 	}
+	if request.Model == "" {
+		writeUserError(w, http.StatusBadRequest, diagnostics.Interpret(fmt.Errorf("no model configured for %s", request.Provider), request.Provider, request.Model))
+		return
+	}
+	pc.DefaultModel = request.Model
+	s.App.Config.Providers[request.Provider] = pc
 	s.App.Config.DefaultProvider = request.Provider
-
 	if err := config.Save(s.App.Config); err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not save settings: " + err.Error()})
+		writeUserError(w, http.StatusInternalServerError, diagnostics.Interpret(err, request.Provider, request.Model))
 		return
 	}
-
-	writeJSON(w, http.StatusOK, map[string]any{"saved": true, "provider": request.Provider, "model": pc.DefaultModel})
+	writeJSON(w, http.StatusOK, map[string]any{"saved": true, "provider": request.Provider, "model": request.Model})
 }
 
 func (s *Server) models(w http.ResponseWriter, r *http.Request) {
@@ -242,13 +300,12 @@ func (s *Server) models(w http.ResponseWriter, r *http.Request) {
 		providerName = s.App.Config.DefaultProvider
 	}
 	if providerName == "auto" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "select a specific provider to load models"})
+		writeUserError(w, http.StatusBadRequest, diagnostics.Interpret(fmt.Errorf("models requires a specific provider"), providerName, ""))
 		return
 	}
-
 	models, err := s.App.Registry.ListModels(r.Context(), providerName)
 	if err != nil {
-		writeJSON(w, http.StatusBadGateway, map[string]string{"error": "could not load models: " + err.Error()})
+		writeUserError(w, http.StatusBadGateway, diagnostics.Interpret(err, providerName, ""))
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"provider": providerName, "models": models})
@@ -256,16 +313,14 @@ func (s *Server) models(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) workspace(w http.ResponseWriter, r *http.Request) {
 	if s.App.Store == nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "workspace is not initialized"})
+		writeUserError(w, http.StatusInternalServerError, diagnostics.Interpret(fmt.Errorf("workspace not initialized; run aicli init"), "", ""))
 		return
 	}
-
 	paths, err := s.App.Store.Touched()
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not read workspace files: " + err.Error()})
+		writeUserError(w, http.StatusInternalServerError, diagnostics.Interpret(err, "", ""))
 		return
 	}
-
 	entries := make([]map[string]any, 0, len(paths))
 	for _, rel := range paths {
 		path := filepath.Join(s.App.Store.Root, filepath.FromSlash(rel))
@@ -275,16 +330,14 @@ func (s *Server) workspace(w http.ResponseWriter, r *http.Request) {
 		}
 		entries = append(entries, map[string]any{"path": rel, "size": info.Size(), "modified": info.ModTime()})
 	}
-
 	writeJSON(w, http.StatusOK, map[string]any{"root": s.App.Store.Root, "files": entries})
 }
 
 func (s *Server) plan(w http.ResponseWriter, r *http.Request) {
 	if s.App.Store == nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "workspace is not initialized"})
+		writeUserError(w, http.StatusInternalServerError, diagnostics.Interpret(fmt.Errorf("workspace not initialized; run aicli init"), "", ""))
 		return
 	}
-
 	path := generation.ProjectPlanPath(s.App.Store.Root)
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -292,22 +345,29 @@ func (s *Server) plan(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusOK, map[string]any{"exists": false})
 			return
 		}
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not read project plan: " + err.Error()})
+		writeUserError(w, http.StatusInternalServerError, diagnostics.Interpret(err, "", ""))
 		return
 	}
-
 	var plan generation.ProjectPlan
 	if err := json.Unmarshal(data, &plan); err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "project plan is invalid: " + err.Error()})
+		writeUserError(w, http.StatusInternalServerError, diagnostics.Interpret(fmt.Errorf("project plan JSON is invalid: %w", err), "", ""))
 		return
 	}
-
 	writeJSON(w, http.StatusOK, map[string]any{"exists": true, "plan": plan})
 }
 
-func writeSSE(w http.ResponseWriter, event progress.Event) {
+func writeSSE(w http.ResponseWriter, eventType string, event progress.Event) {
 	data, _ := json.Marshal(event)
-	fmt.Fprintf(w, "event: progress\ndata: %s\n\n", data)
+	fmt.Fprintf(w, "event: %s\ndata: %s\n\n", eventType, data)
+}
+
+func errorMessage(e diagnostics.UserError) string {
+	data, _ := json.Marshal(e)
+	return string(data)
+}
+
+func writeUserError(w http.ResponseWriter, status int, err diagnostics.UserError) {
+	writeJSON(w, status, map[string]any{"error": err.Message, "title": err.Title, "recovery": err.Recovery, "retryable": err.Retryable, "provider": err.Provider, "model": err.Model})
 }
 
 func writeJSON(w http.ResponseWriter, status int, value any) {
