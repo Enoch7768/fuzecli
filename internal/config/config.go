@@ -29,7 +29,7 @@ type VerificationConfig struct {
 
 func Default() Config {
 	return Config{
-		DefaultProvider: "gemini",
+		DefaultProvider: "groq",
 		Providers: map[string]ProviderConfig{
 			"openai": {DefaultModel: "gpt-4o"},
 			"gemini": {DefaultModel: "gemini-2.5-flash"},
