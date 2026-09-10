@@ -189,14 +189,16 @@ func (s *Server) runChatJob(job, prompt, providerName, model string, code, yes b
 
 	start := time.Now()
 	if code {
-		s.Progress.Publish(progress.Event{Type: "progress", Status: "planning", Message: "Analyzing the request and building a resumable project plan", Provider: providerName, Model: model, ElapsedMillis: 0})
-		s.Progress.Publish(progress.Event{Type: "chat_token", Status: "planning", Message: "I’m planning the project and preparing the first generation batch…\n", Provider: providerName, Model: model, ElapsedMillis: 0})
+		s.Progress.Publish(progress.Event{Type: "progress", Status: "planning", Message: "Understanding your request and identifying the work", Provider: providerName, Model: model, ElapsedMillis: 0})
+		s.Progress.Publish(progress.Event{Type: "chat_token", Status: "planning", Message: "Thinking through the implementation plan…\n", Provider: providerName, Model: model, ElapsedMillis: 0})
+		tickerStop := make(chan struct{})
+		go s.publishPlanningHeartbeat(tickerStop, start, providerName, model)
 		result := make(chan error, 1)
 		go func() {
 			_, err := s.App.Ask(context.Background(), prompt, providerName, model, yes)
 			result <- err
 		}()
-		s.monitorProjectPlan(start, providerName, model, result)
+		s.monitorProjectPlan(start, providerName, model, result, tickerStop)
 		return
 	}
 
@@ -209,7 +211,11 @@ func (s *Server) runChatJob(job, prompt, providerName, model string, code, yes b
 		}
 	}
 
-	s.Progress.Publish(progress.Event{Type: "progress", Status: "generating", Message: "Receiving response", Provider: providerName, Model: model, ElapsedMillis: 0})
+	s.Progress.Publish(progress.Event{Type: "progress", Status: "planning", Message: "Analyzing the request and preparing context", Provider: providerName, Model: model, ElapsedMillis: 0})
+	s.Progress.Publish(progress.Event{Type: "chat_token", Status: "planning", Message: "Analyzing the request…\n", Provider: providerName, Model: model, ElapsedMillis: 0})
+	time.Sleep(120 * time.Millisecond)
+	s.Progress.Publish(progress.Event{Type: "progress", Status: "generating", Message: fmt.Sprintf("Waiting for %s to respond", providerName), Provider: providerName, Model: model, ElapsedMillis: time.Since(start).Milliseconds()})
+	s.Progress.Publish(progress.Event{Type: "chat_token", Status: "generating", Message: fmt.Sprintf("Preparing %s and waiting for the first response…\n", model), Provider: providerName, Model: model, ElapsedMillis: time.Since(start).Milliseconds()})
 	err := s.App.ChatStreamRequest(context.Background(), prompt, providerName, model, func(delta string) {
 		s.Progress.Publish(progress.Event{Type: "chat_token", Status: "streaming", Message: delta, Provider: providerName, Model: model, ElapsedMillis: time.Since(start).Milliseconds()})
 	})
@@ -230,14 +236,26 @@ func (s *Server) runChatJob(job, prompt, providerName, model string, code, yes b
 		}
 	}
 
+	s.Progress.Publish(progress.Event{Type: "progress", Status: "verifying", Message: "Checking the completed response and workspace state", Provider: providerName, Model: model, ElapsedMillis: time.Since(start).Milliseconds()})
 	message := "Response complete"
 	if len(generated) > 0 {
 		message = fmt.Sprintf("Generated %d file%s and saved the code to your workspace.", len(generated), pluralSuffix(len(generated)))
-	}
-	if len(generated) > 0 {
 		s.Progress.Publish(progress.Event{Type: "generated", Status: "completed", Message: message, GeneratedFiles: generated, Provider: providerName, Model: model, ElapsedMillis: time.Since(start).Milliseconds()})
 	}
 	s.Progress.Publish(progress.Event{Type: "completed", Status: "completed", Message: message, GeneratedFiles: generated, Provider: providerName, Model: model, ElapsedMillis: time.Since(start).Milliseconds()})
+}
+
+func (s *Server) publishPlanningHeartbeat(stop <-chan struct{}, start time.Time, providerName, model string) {
+	ticker := time.NewTicker(1200 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-stop:
+			return
+		case <-ticker.C:
+			s.Progress.Publish(progress.Event{Type: "progress", Status: "planning", Message: "Working through the project structure and dependencies", Provider: providerName, Model: model, ElapsedMillis: time.Since(start).Milliseconds()})
+		}
+	}
 }
 
 func pluralSuffix(count int) string {
@@ -247,9 +265,10 @@ func pluralSuffix(count int) string {
 	return "s"
 }
 
-func (s *Server) monitorProjectPlan(start time.Time, providerName, model string, result <-chan error) {
+func (s *Server) monitorProjectPlan(start time.Time, providerName, model string, result <-chan error, heartbeatStop chan<- struct{}) {
 	ticker := time.NewTicker(250 * time.Millisecond)
 	defer ticker.Stop()
+	defer close(heartbeatStop)
 	for {
 		select {
 		case err := <-result:
@@ -286,6 +305,7 @@ func (s *Server) publishCodeCompletion(start time.Time, providerName, model stri
 			}
 		}
 	}
+	s.Progress.Publish(progress.Event{Type: "progress", Status: "verifying", Message: "Final verification complete", GeneratedFiles: generated, Provider: providerName, Model: model, ElapsedMillis: time.Since(start).Milliseconds()})
 	s.Progress.Publish(progress.Event{Type: "chat_token", Status: "completed", Message: "\n\n" + message + "\n", GeneratedFiles: generated, Provider: providerName, Model: model, ElapsedMillis: time.Since(start).Milliseconds()})
 	s.Progress.Publish(progress.Event{Type: "completed", Status: "completed", Message: message, GeneratedFiles: generated, Provider: providerName, Model: model, ElapsedMillis: time.Since(start).Milliseconds()})
 }
