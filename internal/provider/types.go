@@ -52,6 +52,7 @@ const (
 	ErrorUnauthorized        ErrorKind = "unauthorized"
 	ErrorProviderUnavailable ErrorKind = "provider_unavailable"
 	ErrorBadRequest          ErrorKind = "bad_request"
+	ErrorOverloaded          ErrorKind = "overloaded"
 	ErrorUnknown             ErrorKind = "unknown"
 )
 
@@ -83,7 +84,7 @@ func (e *ProviderError) Is(target error) bool {
 	case target == ErrUnauthorized:
 		return e.Kind == ErrorUnauthorized
 	case target == ErrProviderUnavailable:
-		return e.Kind == ErrorProviderUnavailable
+		return e.Kind == ErrorProviderUnavailable || e.Kind == ErrorOverloaded
 	default:
 		return false
 	}
@@ -104,7 +105,7 @@ func ClassifyError(err error) error {
 			return fmt.Errorf("%w: %v", ErrRateLimited, err)
 		case ErrorUnauthorized:
 			return fmt.Errorf("%w: %v", ErrUnauthorized, err)
-		case ErrorProviderUnavailable:
+		case ErrorProviderUnavailable, ErrorOverloaded:
 			return fmt.Errorf("%w: %v", ErrProviderUnavailable, err)
 		}
 	}
