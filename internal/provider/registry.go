@@ -337,8 +337,10 @@ func providerBudget(name string) requestBudget {
 		return requestBudget{maxInputChars: 24000, maxOutputTokens: 3500, jsonOutputTokens: 3000}
 	case "anthropic":
 		return requestBudget{maxInputChars: 24000, maxOutputTokens: 4000, jsonOutputTokens: 3500}
+	case "llamacpp", "ollama", "vllm", "text-generation-inference", "lmstudio", "jan", "litellm":
+		return requestBudget{maxInputChars: 6000, maxOutputTokens: 1600, jsonOutputTokens: 1400}
 	default:
-		return requestBudget{maxInputChars: 20000, maxOutputTokens: 3000, jsonOutputTokens: 2500}
+		return requestBudget{maxInputChars: 16000, maxOutputTokens: 2600, jsonOutputTokens: 2000}
 	}
 }
 
@@ -429,12 +431,15 @@ func trimWorkspaceMessage(message Message, prompt string, maxChars int) Message 
 		}
 		return blocks[i].score > blocks[j].score
 	})
-	manifest := prefix + "Workspace files available locally. The full workspace remains on disk; only relevant files are loaded into this request.\n"
+	manifest := prefix + "Workspace files available locally. The complete repository remains on disk; relevant files are loaded into each request.\n"
 	for _, item := range blocks {
 		manifest += "- " + item.path + "\n"
 		if len(manifest) >= maxChars/3 {
 			break
 		}
+	}
+	if lowContextPrompt(prompt) {
+		return Message{Role: message.Role, Content: truncateString(manifest, maxChars-len(prompt)-32)}
 	}
 	if len(manifest)+len(prompt)+512 >= maxChars {
 		return Message{Role: message.Role, Content: truncateString(manifest, maxChars-len(prompt)-32)}
@@ -457,6 +462,19 @@ func trimWorkspaceMessage(message Message, prompt string, maxChars int) Message 
 		}
 	}
 	return Message{Role: message.Role, Content: truncateString(b.String(), maxChars-len(prompt)-32)}
+}
+
+func lowContextPrompt(prompt string) bool {
+	text := strings.ToLower(strings.TrimSpace(prompt))
+	if text == "" {
+		return true
+	}
+	for _, term := range []string{"change", "modify", "fix", "update", "create", "add", "remove", "delete", "write", "build", "code", "file", "project", "website", "app", "application", "analyze", "debug", "refactor", "implement", "implementing"} {
+		if strings.Contains(text, term) {
+			return false
+		}
+	}
+	return len(strings.Fields(text)) <= 6
 }
 
 func contextTerms(prompt string) []string {
