@@ -3,6 +3,7 @@ package app
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
@@ -18,24 +19,19 @@ func (a *App) TerminalChat(ctx context.Context, yes bool) error {
 	if a.Store == nil {
 		return fmt.Errorf("workspace not initialized; run aicli init")
 	}
-
 	providerName, model, _ := a.ProviderAndModel("", "")
 	printTerminalHeader(providerName, model, a.Store.Root)
-
 	scanner := bufio.NewScanner(os.Stdin)
 	scanner.Buffer(make([]byte, 4096), 1024*1024)
-
 	for {
 		fmt.Print("\n\x1b[38;5;111m❯\x1b[0m ")
 		if !scanner.Scan() {
 			break
 		}
-
 		line := strings.TrimSpace(scanner.Text())
 		if line == "" {
 			continue
 		}
-
 		if strings.HasPrefix(line, "/") {
 			command, value := splitTerminalCommand(line)
 			switch command {
@@ -81,12 +77,10 @@ func (a *App) TerminalChat(ctx context.Context, yes bool) error {
 			}
 			continue
 		}
-
 		if err := a.terminalStream(ctx, line, providerName, model); err != nil {
 			fmt.Println(formatTerminalError(err, providerName, model))
 		}
 	}
-
 	go a.RunProfileExtraction(context.Background())
 	return scanner.Err()
 }
@@ -113,9 +107,9 @@ func printTerminalHelp() {
 	fmt.Println("  /code <request>   Generate or resume files in the workspace")
 	fmt.Println("  /provider <name>  Change provider for this session")
 	fmt.Println("  /model <name>     Change model for this session")
-	fmt.Println("  /status            Show provider, model and workspace")
-	fmt.Println("  /clear             Clear the terminal view")
-	fmt.Println("  /exit              Close the session")
+	fmt.Println("  /status           Show provider, model and workspace")
+	fmt.Println("  /clear            Clear the terminal view")
+	fmt.Println("  /exit             Close the session")
 }
 
 func printTerminalStatus(providerName, model, root string) {
@@ -123,10 +117,6 @@ func printTerminalStatus(providerName, model, root string) {
 	fmt.Printf("  Provider  %s\n", providerName)
 	fmt.Printf("  Model     %s\n", model)
 	fmt.Printf("  Workspace %s\n", root)
-	if plan, err := generation.LoadProjectPlan(root, ""); err == nil && plan != nil {
-		done := len(plan.Files) - len(generation.PendingFiles(*plan))
-		fmt.Printf("  Project   %s · %d/%d files complete\n", plan.Project, done, len(plan.Files))
-	}
 }
 
 func (a *App) terminalStream(ctx context.Context, prompt, providerName, model string) error {
@@ -134,22 +124,18 @@ func (a *App) terminalStream(ctx context.Context, prompt, providerName, model st
 	if err != nil {
 		return err
 	}
-
 	name, mdl, err := a.ProviderAndModel(providerName, model)
 	if err != nil {
 		return err
 	}
-
 	history, err = a.compactHistory(ctx, name, mdl, history)
 	if err != nil {
 		return err
 	}
-
 	workspaceContext, err := a.Store.WorkspaceContext()
 	if err != nil {
 		return err
 	}
-
 	system := "You are FuzeCLI, a practical coding assistant. Answer clearly and concisely. Do not modify files in chat mode."
 	if a.Profile.Condensed() != "" {
 		system += "\nDeveloper profile:\n" + a.Profile.Condensed()
@@ -157,25 +143,19 @@ func (a *App) terminalStream(ctx context.Context, prompt, providerName, model st
 	if workspaceContext != "" {
 		system += "\nRelevant workspace files:\n" + workspaceContext
 	}
-
 	msgs := []provider.Message{{Role: "system", Content: system}}
 	msgs = append(msgs, history...)
 	msgs = append(msgs, provider.Message{Role: "user", Content: prompt})
 	msgs = generationTrim(msgs, 120000)
-
 	if err := a.Store.AddMessage(provider.Message{Role: "user", Content: prompt}); err != nil {
 		return err
 	}
-
 	stream, err := a.Registry.Stream(ctx, name, msgs, provider.RequestOptions{Model: mdl, Temperature: 0.3, MaxTokens: 4000})
 	if err != nil {
 		return err
 	}
-
 	fmt.Println("\n\x1b[38;5;111mFuzeCLI\x1b[0m")
 	var response strings.Builder
-	var last = time.Now()
-
 	for chunk := range stream {
 		if chunk.Error != nil {
 			return chunk.Error
@@ -183,13 +163,9 @@ func (a *App) terminalStream(ctx context.Context, prompt, providerName, model st
 		if chunk.Delta != "" {
 			fmt.Print(chunk.Delta)
 			response.WriteString(chunk.Delta)
-			if time.Since(last) > 900*time.Millisecond {
-				last = time.Now()
-			}
 		}
 	}
 	fmt.Println()
-
 	return a.Store.AddMessage(provider.Message{Role: "assistant", Content: response.String()})
 }
 
@@ -200,30 +176,58 @@ func (a *App) terminalCode(ctx context.Context, prompt, providerName, model stri
 		_, err := a.Ask(ctx, prompt, providerName, model, yes)
 		done <- err
 	}()
-
 	stop := make(chan struct{})
 	var once sync.Once
 	go func() {
-		frames := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
-		i := 0
-		ticker := time.NewTicker(100 * time.Millisecond)
+		ticker := time.NewTicker(250 * time.Millisecond)
 		defer ticker.Stop()
 		for {
 			select {
 			case <-ticker.C:
 				elapsed := time.Since(start).Round(time.Second)
-				fmt.Printf("\r\x1b[38;5;111m%s\x1b[0m Working · %s", frames[i%len(frames)], elapsed)
-				i++
+				completed, total, current := terminalPlanProgress(a.Store.Root)
+				if total > 0 {
+					pct := completed * 100 / total
+					fmt.Printf("\r\x1b[K\x1b[38;5;111m%s\x1b[0m %d%% · %d/%d · %s · %s", terminalSpinnerFrame(), pct, completed, total, current, elapsed)
+				} else {
+					fmt.Printf("\r\x1b[K\x1b[38;5;111m%s\x1b[0m Working · %s", terminalSpinnerFrame(), elapsed)
+				}
 			case <-stop:
 				return
 			}
 		}
 	}()
-
 	err := <-done
 	once.Do(func() { close(stop) })
 	fmt.Print("\r\x1b[K")
 	return err
+}
+
+func terminalPlanProgress(root string) (int, int, string) {
+	data, err := os.ReadFile(generation.ProjectPlanPath(root))
+	if err != nil {
+		return 0, 0, "planning"
+	}
+	var plan generation.ProjectPlan
+	if err := json.Unmarshal(data, &plan); err != nil {
+		return 0, 0, "planning"
+	}
+	total := len(plan.Files)
+	completed := total - len(generation.PendingFiles(plan))
+	current := "verifying"
+	pending := generation.PendingFiles(plan)
+	if len(pending) > 0 {
+		current = pending[0].Path
+	}
+	return completed, total, current
+}
+
+var terminalFrame uint64
+
+func terminalSpinnerFrame() string {
+	terminalFrame++
+	frames := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+	return frames[int(terminalFrame)%len(frames)]
 }
 
 func formatTerminalError(err error, providerName, model string) string {
