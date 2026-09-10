@@ -39,21 +39,7 @@ func ShouldUsePlanner(prompt string) bool {
 		return true
 	}
 	lower := strings.ToLower(text)
-	terms := []string{
-		"full project",
-		"complete project",
-		"entire website",
-		"entire application",
-		"full website",
-		"full application",
-		"admin panel",
-		"authentication",
-		"database",
-		"crud",
-		"user accounts",
-		"multiple pages",
-		"all features",
-	}
+	terms := []string{"full project", "complete project", "entire website", "entire application", "full website", "full application", "admin panel", "authentication", "database", "crud", "user accounts", "multiple pages", "all features"}
 	for _, term := range terms {
 		if strings.Contains(lower, term) {
 			return true
@@ -139,7 +125,7 @@ func ParseProjectPlan(raw string) (ProjectPlan, error) {
 	if len(plan.Files) == 0 {
 		return ProjectPlan{}, fmt.Errorf("project planner returned no files")
 	}
-	seen := map[string]struct{}{}
+	allPaths := make(map[string]struct{}, len(plan.Files))
 	for i := range plan.Files {
 		file := &plan.Files[i]
 		file.Path = filepath.ToSlash(strings.TrimSpace(file.Path))
@@ -149,10 +135,10 @@ func ParseProjectPlan(raw string) (ProjectPlan, error) {
 		if filepath.IsAbs(file.Path) || strings.HasPrefix(file.Path, "/") || strings.HasPrefix(file.Path, "//") || filepath.VolumeName(file.Path) != "" || strings.HasPrefix(file.Path, "../") || strings.Contains(file.Path, "/../") {
 			return ProjectPlan{}, fmt.Errorf("unsafe planned path %q", file.Path)
 		}
-		if _, ok := seen[file.Path]; ok {
+		if _, exists := allPaths[file.Path]; exists {
 			return ProjectPlan{}, fmt.Errorf("duplicate planned path %q", file.Path)
 		}
-		seen[file.Path] = struct{}{}
+		allPaths[file.Path] = struct{}{}
 		file.Dependencies = normalizePaths(file.Dependencies)
 		if file.Status == "" {
 			file.Status = "pending"
@@ -163,16 +149,10 @@ func ParseProjectPlan(raw string) (ProjectPlan, error) {
 		if strings.TrimSpace(file.Purpose) == "" {
 			return ProjectPlan{}, fmt.Errorf("planned file %q has no purpose", file.Path)
 		}
+	}
+	for _, file := range plan.Files {
 		for _, dep := range file.Dependencies {
-			if _, ok := seen[dep]; !ok {
-				for _, other := range plan.Files {
-					if filepath.ToSlash(other.Path) == dep {
-						ok = true
-						break
-					}
-				}
-			}
-			if !ok {
+			if _, exists := allPaths[dep]; !exists {
 				return ProjectPlan{}, fmt.Errorf("planned file %q references unknown dependency %q", file.Path, dep)
 			}
 		}
@@ -213,9 +193,7 @@ func NewProjectPlan(prompt string, plan ProjectPlan) ProjectPlan {
 	return plan
 }
 
-func ProjectPlanPath(root string) string {
-	return filepath.Join(root, ".aicli", "project-plan.json")
-}
+func ProjectPlanPath(root string) string { return filepath.Join(root, ".aicli", "project-plan.json") }
 
 func SaveProjectPlan(root string, plan ProjectPlan) error {
 	dir := filepath.Join(root, ".aicli")
