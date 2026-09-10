@@ -28,6 +28,13 @@ func NewRegistry(fallback []string, defaults map[string]string, providers ...Pro
 		registered[p.Name()] = p
 		requestMu[p.Name()] = &sync.Mutex{}
 	}
+	for _, spec := range compatibleCatalog {
+		if _, exists := registered[spec.Name]; exists {
+			continue
+		}
+		registered[spec.Name] = newCompatibleProvider(spec, configuredFor(spec.Name))
+		requestMu[spec.Name] = &sync.Mutex{}
+	}
 	return &Registry{providers: registered, fallback: append([]string(nil), fallback...), models: defaults, requestMu: requestMu, lastCall: map[string]time.Time{}, retryUntil: map[string]time.Time{}, attempts: map[string]int{}}
 }
 
@@ -59,7 +66,6 @@ func (r *Registry) Send(ctx context.Context, name string, messages []Message, op
 		}
 		return r.sendWithRetry(ctx, name, requestMessages, request)
 	}
-
 	var last error
 	for _, candidate := range r.fallback {
 		requestMessages, request := adaptRequest(candidate, messages, opts)
@@ -133,7 +139,6 @@ func (r *Registry) Stream(ctx context.Context, name string, messages []Message, 
 		}
 		return r.continueStream(ctx, name, streamMessages, streamOptions, stream), nil
 	}
-
 	var last error
 	for _, candidate := range r.fallback {
 		streamMessages, streamOptions := adaptRequest(candidate, messages, opts)
