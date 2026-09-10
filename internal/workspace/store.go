@@ -54,6 +54,12 @@ func (s *Store) AddMessage(m provider.Message) error {
 	}
 	return nil
 }
+func (s *Store) ClearMemory() error {
+	if _, err := s.DB.Exec(`DELETE FROM messages`); err != nil {
+		return fmt.Errorf("clear conversation memory: %w", err)
+	}
+	return nil
+}
 func (s *Store) History(limit int) ([]provider.Message, error) {
 	if limit <= 0 {
 		limit = 200
