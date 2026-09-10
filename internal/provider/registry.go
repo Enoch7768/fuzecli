@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 )
 
 type Registry struct {
@@ -146,63 +147,25 @@ func (r *Registry) Stream(
 	messages []Message,
 	opts RequestOptions,
 ) (<-chan StreamChunk, error) {
+	if opts.MaxTokens < 16000 {
+		opts.MaxTokens = 16000
+	}
+
 	if name != "auto" {
-		provider, err := r.Get(name)
+		stream, err := r.streamProvider(ctx, name, messages, opts)
 		if err != nil {
 			return nil, err
 		}
 
-		request := opts
-
-		if request.Model == "" {
-			request.Model = r.models[name]
-		}
-
-		if request.Model == "" {
-			return nil, fmt.Errorf(
-				"no default model configured for provider %s",
-				name,
-			)
-		}
-
-		return provider.Stream(
-			ctx,
-			messages,
-			request,
-		)
+		return r.continueStream(ctx, name, messages, opts, stream), nil
 	}
 
 	var last error
 
 	for _, candidate := range r.fallback {
-		provider, err := r.Get(candidate)
-		if err != nil {
-			last = err
-			continue
-		}
-
-		request := opts
-
-		if request.Model == "" {
-			request.Model = r.models[candidate]
-		}
-
-		if request.Model == "" {
-			last = fmt.Errorf(
-				"no default model configured for provider %s",
-				candidate,
-			)
-			continue
-		}
-
-		stream, err := provider.Stream(
-			ctx,
-			messages,
-			request,
-		)
-
+		stream, err := r.streamProvider(ctx, candidate, messages, opts)
 		if err == nil {
-			return stream, nil
+			return r.continueStream(ctx, candidate, messages, opts, stream), nil
 		}
 
 		if errors.Is(err, ErrRateLimited) ||
@@ -221,4 +184,105 @@ func (r *Registry) Stream(
 	}
 
 	return nil, last
+}
+
+func (r *Registry) streamProvider(
+	ctx context.Context,
+	name string,
+	messages []Message,
+	opts RequestOptions,
+) (<-chan StreamChunk, error) {
+	provider, err := r.Get(name)
+	if err != nil {
+		return nil, err
+	}
+
+	request := opts
+
+	if request.Model == "" {
+		request.Model = r.models[name]
+	}
+
+	if request.Model == "" {
+		return nil, fmt.Errorf(
+			"no default model configured for provider %s",
+			name,
+		)
+	}
+
+	return provider.Stream(
+		ctx,
+		messages,
+		request,
+	)
+}
+
+func (r *Registry) continueStream(
+	ctx context.Context,
+	name string,
+	messages []Message,
+	opts RequestOptions,
+	initial <-chan StreamChunk,
+) <-chan StreamChunk {
+	out := make(chan StreamChunk)
+
+	go func() {
+		defer close(out)
+
+		current := initial
+		combined := strings.Builder{}
+		continuations := 0
+		limit := opts.MaxTokens * 4
+		if limit < 16000 {
+			limit = 16000
+		}
+		threshold := int(float64(limit) * 0.84)
+
+		for {
+			finished := false
+
+			for chunk := range current {
+				if chunk.Error != nil {
+					out <- chunk
+					return
+				}
+
+				if chunk.Delta != "" {
+					combined.WriteString(chunk.Delta)
+					out <- StreamChunk{Delta: chunk.Delta}
+				}
+
+				if chunk.Done {
+					finished = true
+				}
+			}
+
+			if !finished || continuations >= 3 || combined.Len() < threshold {
+				out <- StreamChunk{Done: true}
+				return
+			}
+
+			partial := strings.TrimSpace(combined.String())
+			if partial == "" {
+				out <- StreamChunk{Done: true}
+				return
+			}
+
+			continuations++
+			continuationMessages := append(
+				append([]Message{}, messages...),
+				Message{Role: "assistant", Content: partial},
+				Message{Role: "user", Content: "Continue the previous response exactly from where it stopped. Do not repeat any text. Output only the missing continuation. Preserve the same format and complete the response."},
+			)
+
+			var err error
+			current, err = r.streamProvider(ctx, name, continuationMessages, opts)
+			if err != nil {
+				out <- StreamChunk{Error: err}
+				return
+			}
+		}
+	}()
+
+	return out
 }
