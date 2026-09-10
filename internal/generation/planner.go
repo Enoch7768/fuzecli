@@ -69,12 +69,12 @@ func PlannerSchema() map[string]any {
 						"dependencies": map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
 						"status":       map[string]any{"type": "string", "enum": []string{"pending", "completed"}},
 					},
-					"required":        []string{"path", "purpose", "dependencies", "status"},
+					"required":         []string{"path", "purpose", "dependencies", "status"},
 					"propertyOrdering": []string{"path", "purpose", "dependencies", "status"},
 				},
 			},
 		},
-		"required":        []string{"project", "summary", "files"},
+		"required":         []string{"project", "summary", "files"},
 		"propertyOrdering": []string{"project", "summary", "files"},
 	}
 }
@@ -110,7 +110,7 @@ func ParseProjectPlan(raw string) (ProjectPlan, error) {
 	decoder := json.NewDecoder(bytes.NewReader(clean))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&plan); err != nil {
-		return ProjectPlan{}, fmt.Errorf("invalid project planner JSON: %w", explainJSONDecodeError(err))
+		return ProjectPlan{}, fmt.Errorf("invalid project planner JSON: %s", explainJSONDecodeError(err))
 	}
 	var trailing any
 	if err := decoder.Decode(&trailing); err != io.EOF {
@@ -125,7 +125,7 @@ func ParseProjectPlan(raw string) (ProjectPlan, error) {
 	if len(plan.Files) == 0 {
 		return ProjectPlan{}, fmt.Errorf("project planner returned no files")
 	}
-	allPaths := make(map[string]struct{}, len(plan.Files))
+	seen := map[string]struct{}{}
 	for i := range plan.Files {
 		file := &plan.Files[i]
 		file.Path = filepath.ToSlash(strings.TrimSpace(file.Path))
@@ -135,10 +135,10 @@ func ParseProjectPlan(raw string) (ProjectPlan, error) {
 		if filepath.IsAbs(file.Path) || strings.HasPrefix(file.Path, "/") || strings.HasPrefix(file.Path, "//") || filepath.VolumeName(file.Path) != "" || strings.HasPrefix(file.Path, "../") || strings.Contains(file.Path, "/../") {
 			return ProjectPlan{}, fmt.Errorf("unsafe planned path %q", file.Path)
 		}
-		if _, exists := allPaths[file.Path]; exists {
+		if _, ok := seen[file.Path]; ok {
 			return ProjectPlan{}, fmt.Errorf("duplicate planned path %q", file.Path)
 		}
-		allPaths[file.Path] = struct{}{}
+		seen[file.Path] = struct{}{}
 		file.Dependencies = normalizePaths(file.Dependencies)
 		if file.Status == "" {
 			file.Status = "pending"
@@ -152,7 +152,7 @@ func ParseProjectPlan(raw string) (ProjectPlan, error) {
 	}
 	for _, file := range plan.Files {
 		for _, dep := range file.Dependencies {
-			if _, exists := allPaths[dep]; !exists {
+			if _, ok := seen[dep]; !ok {
 				return ProjectPlan{}, fmt.Errorf("planned file %q references unknown dependency %q", file.Path, dep)
 			}
 		}
@@ -193,7 +193,9 @@ func NewProjectPlan(prompt string, plan ProjectPlan) ProjectPlan {
 	return plan
 }
 
-func ProjectPlanPath(root string) string { return filepath.Join(root, ".aicli", "project-plan.json") }
+func ProjectPlanPath(root string) string {
+	return filepath.Join(root, ".aicli", "project-plan.json")
+}
 
 func SaveProjectPlan(root string, plan ProjectPlan) error {
 	dir := filepath.Join(root, ".aicli")
