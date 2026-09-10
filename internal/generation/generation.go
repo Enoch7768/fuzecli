@@ -196,16 +196,14 @@ Execute the instruction as written.`
 const systemSchema = `You are a production code generation engine. Respond with ONLY valid JSON matching exactly this schema: {"files":[{"path":"relative/path.ext","content":"full file content","action":"create|modify|delete"}],"explanation":"one paragraph explaining what was done","commands":["optional shell commands"]}. Never use markdown fences. Never omit full content for create or modify. Paths must be relative and must not contain '..'. For delete, content must be empty. Do not invent files outside the user's requested scope.`
 
 func (e *Engine) Messages(profileText string, workspaceContext string, conversation []provider.Message, prompt string) []provider.Message {
-	msgs := []provider.Message{
-		{Role: "system", Content: StrictExecutionMode},
-		{Role: "system", Content: systemSchema},
-	}
+	system := StrictExecutionMode + "\n\n" + systemSchema
 	if profileText != "" {
-		msgs[1].Content += "\nDeveloper profile:\n" + profileText
+		system += "\nDeveloper profile:\n" + profileText
 	}
 	if workspaceContext != "" {
-		msgs[1].Content += "\nWorkspace context:\n" + workspaceContext
+		system += "\nWorkspace context:\n" + workspaceContext
 	}
+	msgs := []provider.Message{{Role: "system", Content: system}}
 	msgs = append(msgs, conversation...)
 	msgs = append(msgs, provider.Message{Role: "user", Content: prompt})
 	return trimMessages(msgs, e.MaxContextChars)
@@ -222,27 +220,15 @@ func trimMessages(messages []provider.Message, maxChars int) []provider.Message 
 	if total <= maxChars {
 		return messages
 	}
-	prefixEnd := 0
-	used := 0
-	for prefixEnd < len(messages) && messages[prefixEnd].Role == "system" {
-		used += len(messages[prefixEnd].Content)
-		prefixEnd++
-	}
-	out := append([]provider.Message(nil), messages[:prefixEnd]...)
-	last := messages[len(messages)-1]
-	if last.Role == "user" {
-		used += len(last.Content)
-	}
-	for i := len(messages) - 2; i >= prefixEnd; i-- {
+	out := []provider.Message{messages[0]}
+	used := len(messages[0].Content)
+	for i := len(messages) - 1; i >= 1; i-- {
 		m := messages[i]
 		if used+len(m.Content) > maxChars {
 			continue
 		}
 		out = append([]provider.Message{m}, out...)
 		used += len(m.Content)
-	}
-	if last.Role == "user" {
-		out = append(out, last)
 	}
 	return out
 }
