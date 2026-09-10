@@ -83,7 +83,7 @@ func ParsePlan(raw string) (Plan, error) {
 	dec := json.NewDecoder(bytes.NewReader(clean))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&plan); err != nil {
-		return Plan{}, fmt.Errorf("invalid generation JSON: %w", explainJSONDecodeError(err))
+		return Plan{}, fmt.Errorf("invalid generation JSON: %s", explainJSONDecodeError(err))
 	}
 	var trailing any
 	if err := dec.Decode(&trailing); err != io.EOF {
@@ -132,10 +132,7 @@ func normalizeJSONDocument(raw string) ([]byte, error) {
 	}
 	end, ok := balancedJSONEnd(s, start)
 	if !ok {
-		if strings.Contains(strings.ToLower(s), "unexpected end") || strings.Contains(strings.ToLower(s), "max_tokens") {
-			return nil, errors.New("response appears truncated before the JSON document was closed")
-		}
-		return nil, errors.New("response contains incomplete JSON")
+		return nil, errors.New("response contains incomplete JSON and may have been truncated by the provider")
 	}
 	candidate := strings.TrimSpace(s[start:end])
 	if !json.Valid([]byte(candidate)) {
@@ -145,12 +142,7 @@ func normalizeJSONDocument(raw string) ([]byte, error) {
 }
 
 func balancedJSONEnd(s string, start int) (int, bool) {
-	open := s[start]
-	closeByte := byte('}')
-	if open == '[' {
-		closeByte = ']'
-	}
-	depth := 0
+	stack := make([]byte, 0, 16)
 	inString := false
 	escaped := false
 	for i := start; i < len(s); i++ {
@@ -173,17 +165,20 @@ func balancedJSONEnd(s string, start int) (int, bool) {
 			inString = true
 			continue
 		}
-		if c == open || (open == '{' && c == '[') || (open == '[' && c == '{') {
-			depth++
-			continue
-		}
-		if c == closeByte || (open == '{' && c == ']') || (open == '[' && c == '}') {
-			depth--
-			if depth == 0 {
-				return i + 1, true
-			}
-			if depth < 0 {
+		switch c {
+		case '{', '[':
+			stack = append(stack, c)
+		case '}', ']':
+			if len(stack) == 0 {
 				return 0, false
+			}
+			open := stack[len(stack)-1]
+			if (open == '{' && c != '}') || (open == '[' && c != ']') {
+				return 0, false
+			}
+			stack = stack[:len(stack)-1]
+			if len(stack) == 0 {
+				return i + 1, true
 			}
 		}
 	}
@@ -192,7 +187,8 @@ func balancedJSONEnd(s string, start int) (int, bool) {
 
 func explainJSONDecodeError(err error) string {
 	message := err.Error()
-	if strings.Contains(message, "unexpected end of JSON input") || strings.Contains(strings.ToLower(message), "unexpected end") {
+	lower := strings.ToLower(message)
+	if strings.Contains(lower, "unexpected end") || strings.Contains(lower, "unexpected eof") {
 		return "response was truncated before the JSON document finished; reduce the batch size and retry"
 	}
 	return message
