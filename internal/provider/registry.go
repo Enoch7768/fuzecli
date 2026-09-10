@@ -257,12 +257,15 @@ func (r *Registry) continueStream(
 				}
 			}
 
-			if !finished || continuations >= 3 || combined.Len() < threshold {
+			partial := strings.TrimSpace(combined.String())
+			if !finished ||
+				continuations >= 3 ||
+				combined.Len() < threshold ||
+				!needsContinuation(partial) {
 				out <- StreamChunk{Done: true}
 				return
 			}
 
-			partial := strings.TrimSpace(combined.String())
 			if partial == "" {
 				out <- StreamChunk{Done: true}
 				return
@@ -285,4 +288,23 @@ func (r *Registry) continueStream(
 	}()
 
 	return out
+}
+
+func needsContinuation(text string) bool {
+	if text == "" {
+		return false
+	}
+
+	if strings.Count(text, "```")%2 != 0 {
+		return true
+	}
+
+	last := rune(text[len(text)-1])
+	for _, mark := range []rune{'.', '!', '?', ':', ';', ')', ']', '}', '"', '\'', '`'} {
+		if last == mark {
+			return false
+		}
+	}
+
+	return true
 }
