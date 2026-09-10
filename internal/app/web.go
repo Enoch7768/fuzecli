@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 
+	"github.com/Enoch7768/fuzecli/internal/generation"
 	"github.com/Enoch7768/fuzecli/internal/provider"
 )
 
@@ -54,7 +55,7 @@ func (a *App) ChatStreamRequest(ctx context.Context, prompt, providerName, model
 		return err
 	}
 
-	system := "You are FuzeCLI, a practical coding assistant. Answer clearly and concisely. Do not modify files in chat mode."
+	system := "You are FuzeCLI, a practical coding assistant. For ordinary questions, answer naturally in plain text. When the user asks you to create, modify, or delete files and the response can be represented by the FuzeCLI generation schema, return ONLY that valid generation JSON so FuzeCLI can apply it safely. Never use markdown fences for generation JSON."
 	if a.Profile.Condensed() != "" {
 		system += "\nDeveloper profile:\n" + a.Profile.Condensed()
 	}
@@ -93,6 +94,21 @@ func (a *App) ChatStreamRequest(ctx context.Context, prompt, providerName, model
 	text := strings.TrimSpace(response.String())
 	if text == "" {
 		return context.Canceled
+	}
+
+	if plan, parseErr := generation.ParsePlan(response.String()); parseErr == nil {
+		written, applyErr := generation.Apply(a.Store.Root, plan)
+		if applyErr != nil {
+			return applyErr
+		}
+		if err := a.Store.MarkTouched(written); err != nil {
+			return err
+		}
+		st, _ := a.Store.LoadState()
+		st.ActiveProvider = name
+		st.ActiveModel = mdl
+		_ = a.Store.SaveState(st)
+		_ = a.Store.RefreshHashes(written)
 	}
 
 	return a.Store.AddMessage(provider.Message{Role: "assistant", Content: response.String()})
