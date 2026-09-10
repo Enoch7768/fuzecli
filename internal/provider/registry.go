@@ -259,15 +259,15 @@ func (r *Registry) observe(name string, err error) {
 func providerMinInterval(name string) time.Duration {
 	switch strings.ToLower(name) {
 	case "groq":
-		return 1500 * time.Millisecond
+		return 2500 * time.Millisecond
 	case "gemini":
-		return 1200 * time.Millisecond
+		return 2000 * time.Millisecond
 	case "openai":
-		return 1000 * time.Millisecond
+		return 1500 * time.Millisecond
 	case "anthropic":
-		return 1000 * time.Millisecond
+		return 1500 * time.Millisecond
 	default:
-		return 750 * time.Millisecond
+		return 1000 * time.Millisecond
 	}
 }
 
@@ -292,15 +292,15 @@ type requestBudget struct {
 func providerBudget(name string) requestBudget {
 	switch strings.ToLower(name) {
 	case "groq":
-		return requestBudget{maxInputChars: 14000, maxOutputTokens: 2500, jsonOutputTokens: 2200}
+		return requestBudget{maxInputChars: 10000, maxOutputTokens: 2200, jsonOutputTokens: 1800}
 	case "gemini":
-		return requestBudget{maxInputChars: 50000, maxOutputTokens: 5000, jsonOutputTokens: 4500}
+		return requestBudget{maxInputChars: 36000, maxOutputTokens: 4500, jsonOutputTokens: 4000}
 	case "openai":
-		return requestBudget{maxInputChars: 50000, maxOutputTokens: 6000, jsonOutputTokens: 5000}
+		return requestBudget{maxInputChars: 40000, maxOutputTokens: 6000, jsonOutputTokens: 5000}
 	case "anthropic":
-		return requestBudget{maxInputChars: 80000, maxOutputTokens: 8000, jsonOutputTokens: 7000}
+		return requestBudget{maxInputChars: 50000, maxOutputTokens: 7000, jsonOutputTokens: 6000}
 	default:
-		return requestBudget{maxInputChars: 50000, maxOutputTokens: 6000, jsonOutputTokens: 5000}
+		return requestBudget{maxInputChars: 40000, maxOutputTokens: 6000, jsonOutputTokens: 5000}
 	}
 }
 
@@ -416,7 +416,8 @@ func (r *Registry) continueStream(ctx context.Context, name string, messages []M
 				Message{Role: "user", Content: "Continue the previous response exactly from where it stopped. Do not repeat any text. Output only the missing continuation. Preserve the same format and complete the response."},
 			)
 			continuationMessages, continuationOptions := adaptRequest(name, continuationMessages, opts)
-			current, err := r.streamWithRetry(ctx, name, continuationMessages, continuationOptions)
+			var err error
+			current, err = r.streamWithRetry(ctx, name, continuationMessages, continuationOptions)
 			if err != nil {
 				out <- StreamChunk{Error: err}
 				return
