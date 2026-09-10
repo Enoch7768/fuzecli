@@ -42,6 +42,7 @@ func (s *Server) ListenAndServe(ctx context.Context) error {
 	mux.HandleFunc("/api/state", s.state)
 	mux.HandleFunc("/api/events", s.events)
 	mux.HandleFunc("/api/chat", s.chat)
+	mux.HandleFunc("/api/session", s.session)
 	mux.HandleFunc("/api/history", s.history)
 	mux.HandleFunc("/api/config", s.config)
 	mux.HandleFunc("/api/models", s.models)
@@ -160,6 +161,68 @@ func (s *Server) chat(w http.ResponseWriter, r *http.Request) {
 	go s.runChatJob(job, request.Prompt, request.Provider, request.Model, request.Code, request.Yes)
 
 	writeJSON(w, http.StatusAccepted, map[string]any{"accepted": true, "job_id": job})
+}
+
+func (s *Server) session(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.Header().Set("Allow", http.MethodPost)
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "POST is required for session setup"})
+		return
+	}
+	if s.App.Store == nil {
+		writeUserError(w, http.StatusInternalServerError, diagnostics.Interpret(fmt.Errorf("workspace not initialized; run aicli init"), "", ""))
+		return
+	}
+
+	var request struct {
+		Memory   string `json:"memory"`
+		Provider string `json:"provider"`
+		Model    string `json:"model"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		writeUserError(w, http.StatusBadRequest, diagnostics.Interpret(fmt.Errorf("invalid session request: %w", err), request.Provider, request.Model))
+		return
+	}
+	request.Memory = strings.ToLower(strings.TrimSpace(request.Memory))
+	request.Provider = strings.TrimSpace(request.Provider)
+	request.Model = strings.TrimSpace(request.Model)
+	if request.Memory != "continue" && request.Memory != "clear" {
+		writeUserError(w, http.StatusBadRequest, diagnostics.Interpret(fmt.Errorf("memory must be either continue or clear"), request.Provider, request.Model))
+		return
+	}
+
+	s.mu.Lock()
+	if s.busy {
+		s.mu.Unlock()
+		writeUserError(w, http.StatusConflict, diagnostics.Interpret(fmt.Errorf("FuzeCLI is already working on another request"), request.Provider, request.Model))
+		return
+	}
+	s.busy = true
+	s.mu.Unlock()
+	defer func() {
+		s.mu.Lock()
+		s.busy = false
+		s.mu.Unlock()
+	}()
+
+	if request.Memory == "clear" {
+		if err := s.App.Store.ClearMemory(); err != nil {
+			writeUserError(w, http.StatusInternalServerError, diagnostics.Interpret(err, request.Provider, request.Model))
+			return
+		}
+	}
+
+	start := time.Now()
+	s.Progress.Publish(progress.Event{Type: "progress", Status: "planning", Message: "Prebriefing FuzeCLI and preparing your session", Provider: request.Provider, Model: request.Model, ElapsedMillis: 0})
+	welcome, err := s.App.SessionWelcome(r.Context(), request.Provider, request.Model)
+	if err != nil {
+		u := diagnostics.Interpret(err, request.Provider, request.Model)
+		s.publishError(start, u)
+		writeUserError(w, http.StatusBadGateway, u)
+		return
+	}
+	s.Progress.Publish(progress.Event{Type: "progress", Status: "completed", Message: "Session ready. Your request can now be sent.", Provider: request.Provider, Model: request.Model, ElapsedMillis: time.Since(start).Milliseconds()})
+	writeJSON(w, http.StatusOK, map[string]any{"ready": true, "memory": request.Memory, "welcome": welcome, "provider": request.Provider, "model": request.Model})
 }
 
 func (s *Server) history(w http.ResponseWriter, r *http.Request) {
