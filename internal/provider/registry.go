@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -20,44 +22,43 @@ type Registry struct {
 	attempts   map[string]int
 }
 
-func NewRegistry(
-	fallback []string,
-	defaults map[string]string,
-	providers ...Provider,
-) *Registry {
+func NewRegistry(fallback []string, defaults map[string]string, providers ...Provider) *Registry {
 	registered := map[string]Provider{}
 	requestMu := map[string]*sync.Mutex{}
-
-	for _, provider := range providers {
-		registered[provider.Name()] = provider
-		requestMu[provider.Name()] = &sync.Mutex{}
+	for _, p := range providers {
+		registered[p.Name()] = p
+		requestMu[p.Name()] = &sync.Mutex{}
 	}
-
-	return &Registry{
-		providers:  registered,
-		fallback:   append([]string(nil), fallback...),
-		models:     defaults,
-		requestMu:  requestMu,
-		lastCall:   map[string]time.Time{},
-		retryUntil: map[string]time.Time{},
-		attempts:   map[string]int{},
-	}
+	return &Registry{providers: registered, fallback: append([]string(nil), fallback...), models: defaults, requestMu: requestMu, lastCall: map[string]time.Time{}, retryUntil: map[string]time.Time{}, attempts: map[string]int{}}
 }
 
 func (r *Registry) Get(name string) (Provider, error) {
-	provider, ok := r.providers[name]
+	if p, ok := r.providers[name]; ok {
+		return p, nil
+	}
+	spec, ok := compatibleSpecFor(name)
 	if !ok {
 		return nil, fmt.Errorf("provider %q is not configured", name)
 	}
-	return provider, nil
+	cfg := configuredFor(name)
+	p := newCompatibleProvider(spec, cfg)
+	r.limitMu.Lock()
+	if existing, exists := r.providers[name]; exists {
+		r.limitMu.Unlock()
+		return existing, nil
+	}
+	r.providers[name] = p
+	r.requestMu[name] = &sync.Mutex{}
+	r.limitMu.Unlock()
+	return p, nil
 }
 
 func (r *Registry) ListModels(ctx context.Context, name string) ([]string, error) {
-	provider, err := r.Get(name)
+	p, err := r.Get(name)
 	if err != nil {
 		return nil, err
 	}
-	return provider.ListModels(ctx)
+	return p.ListModels(ctx)
 }
 
 func (r *Registry) Send(ctx context.Context, name string, messages []Message, opts RequestOptions) (*Response, error) {
@@ -72,7 +73,6 @@ func (r *Registry) Send(ctx context.Context, name string, messages []Message, op
 		}
 		return r.sendWithRetry(ctx, name, requestMessages, request)
 	}
-
 	var last error
 	for _, candidate := range r.fallback {
 		requestMessages, request := adaptRequest(candidate, messages, opts)
@@ -98,7 +98,6 @@ func (r *Registry) Send(ctx context.Context, name string, messages []Message, op
 		}
 		return nil, err
 	}
-
 	if last == nil {
 		last = fmt.Errorf("no providers available for auto mode")
 	}
@@ -109,17 +108,16 @@ func (r *Registry) sendWithRetry(ctx context.Context, name string, messages []Me
 	lock := r.providerLock(name)
 	lock.Lock()
 	defer lock.Unlock()
-
 	var last error
 	for attempt := 0; attempt < 3; attempt++ {
 		if err := r.wait(ctx, name); err != nil {
 			return nil, err
 		}
-		provider, err := r.Get(name)
+		p, err := r.Get(name)
 		if err != nil {
 			return nil, err
 		}
-		response, err := provider.Send(ctx, messages, opts)
+		response, err := p.Send(ctx, messages, opts)
 		r.observe(name, err)
 		if err == nil {
 			return response, nil
@@ -148,7 +146,6 @@ func (r *Registry) Stream(ctx context.Context, name string, messages []Message, 
 		}
 		return r.continueStream(ctx, name, streamMessages, streamOptions, stream), nil
 	}
-
 	var last error
 	for _, candidate := range r.fallback {
 		streamMessages, streamOptions := adaptRequest(candidate, messages, opts)
@@ -174,7 +171,6 @@ func (r *Registry) Stream(ctx context.Context, name string, messages []Message, 
 		}
 		return nil, err
 	}
-
 	if last == nil {
 		last = fmt.Errorf("no providers available for auto mode")
 	}
@@ -185,17 +181,16 @@ func (r *Registry) streamWithRetry(ctx context.Context, name string, messages []
 	lock := r.providerLock(name)
 	lock.Lock()
 	defer lock.Unlock()
-
 	var last error
 	for attempt := 0; attempt < 3; attempt++ {
 		if err := r.wait(ctx, name); err != nil {
 			return nil, err
 		}
-		provider, err := r.Get(name)
+		p, err := r.Get(name)
 		if err != nil {
 			return nil, err
 		}
-		stream, err := provider.Stream(ctx, messages, opts)
+		stream, err := p.Stream(ctx, messages, opts)
 		r.observe(name, err)
 		if err == nil {
 			return stream, nil
@@ -237,12 +232,10 @@ func (r *Registry) wait(ctx context.Context, name string) error {
 		readyAt = r.retryUntil[name]
 	}
 	r.limitMu.Unlock()
-
 	waitFor := time.Until(readyAt)
 	if waitFor <= 0 {
 		return nil
 	}
-
 	timer := time.NewTimer(waitFor)
 	defer timer.Stop()
 	select {
@@ -256,19 +249,16 @@ func (r *Registry) wait(ctx context.Context, name string) error {
 func (r *Registry) observe(name string, err error) {
 	r.limitMu.Lock()
 	defer r.limitMu.Unlock()
-
 	r.lastCall[name] = time.Now()
 	if err == nil {
 		r.attempts[name] = 0
 		r.retryUntil[name] = time.Time{}
 		return
 	}
-
 	var providerErr *ProviderError
 	if !errors.As(err, &providerErr) {
 		return
 	}
-
 	switch providerErr.Kind {
 	case ErrorRateLimited:
 		r.attempts[name]++
@@ -353,11 +343,12 @@ func providerBudget(name string) requestBudget {
 	}
 }
 
+var workspaceBlockPattern = regexp.MustCompile(`(?ms)^--- (.+?) ---\n(.*?)(?=^--- .+? ---\n|\z)`)
+
 func trimProviderMessages(messages []Message, maxChars int) []Message {
 	if len(messages) == 0 || maxChars <= 0 {
 		return messages
 	}
-
 	total := 0
 	for _, message := range messages {
 		total += len(message.Content)
@@ -365,13 +356,33 @@ func trimProviderMessages(messages []Message, maxChars int) []Message {
 	if total <= maxChars {
 		return messages
 	}
-
 	first := messages[0]
 	last := messages[len(messages)-1]
 	if first.Role != "system" || last.Role != "user" {
 		return messages
 	}
+	if strings.Contains(first.Content, "--- ") {
+		first = trimWorkspaceMessage(first, last.Content, maxChars)
+		total = len(first.Content) + len(last.Content)
+		if total <= maxChars {
+			result := make([]Message, 0, len(messages))
+			result = append(result, first)
+			for i := 1; i < len(messages)-1; i++ {
+				result = append(result, messages[i])
+			}
+			result = append(result, last)
+			return trimHistory(result, maxChars)
+		}
+	}
+	return trimHistory(messages, maxChars)
+}
 
+func trimHistory(messages []Message, maxChars int) []Message {
+	if len(messages) == 0 {
+		return messages
+	}
+	first := messages[0]
+	last := messages[len(messages)-1]
 	used := len(first.Content) + len(last.Content)
 	result := []Message{first}
 	for i := len(messages) - 2; i >= 1; i-- {
@@ -386,6 +397,114 @@ func trimProviderMessages(messages []Message, maxChars int) []Message {
 	}
 	result = append(result, last)
 	return result
+}
+
+func trimWorkspaceMessage(message Message, prompt string, maxChars int) Message {
+	matches := workspaceBlockPattern.FindAllStringSubmatch(message.Content, -1)
+	if len(matches) == 0 {
+		return truncateMessage(message, maxChars/2)
+	}
+	prefix := message.Content[:strings.Index(message.Content, "--- ")]
+	type block struct {
+		path string
+		body string
+		score int
+	}
+	blocks := make([]block, 0, len(matches))
+	terms := contextTerms(prompt)
+	for _, match := range matches {
+		path := strings.TrimSpace(match[1])
+		body := match[2]
+		score := pathScore(path, terms)
+		for _, term := range terms {
+			if strings.Contains(strings.ToLower(body), term) {
+				score++
+			}
+		}
+		blocks = append(blocks, block{path: path, body: body, score: score})
+	}
+	sort.SliceStable(blocks, func(i, j int) bool {
+		if blocks[i].score == blocks[j].score {
+			return blocks[i].path < blocks[j].path
+		}
+		return blocks[i].score > blocks[j].score
+	})
+	manifest := prefix + "Workspace files available locally. The full workspace remains on disk; only relevant files are loaded into this request.\n"
+	for _, b := range blocks {
+		manifest += "- " + b.path + "\n"
+	}
+	if len(manifest)+len(prompt)+512 >= maxChars {
+		manifest = prefix + truncateString("Workspace file index:\n"+strings.Join(blockPaths(blocks), "\n"), maxChars/3) + "\n"
+	}
+	budget := maxChars - len(manifest) - len(prompt) - 256
+	if budget < 1200 {
+		return Message{Role: message.Role, Content: truncateString(manifest, maxChars-len(prompt)-32)}
+	}
+	var b strings.Builder
+	b.WriteString(manifest)
+	for _, item := range blocks {
+		candidate := fmt.Sprintf("\n--- %s ---\n%s\n", item.path, item.body)
+		if len(candidate) > budget {
+			continue
+		}
+		b.WriteString(candidate)
+		budget -= len(candidate)
+		if budget < 1200 {
+			break
+		}
+	}
+	return Message{Role: message.Role, Content: truncateString(b.String(), maxChars-len(prompt)-32)}
+}
+
+func contextTerms(prompt string) []string {
+	words := strings.Fields(strings.ToLower(prompt))
+	seen := map[string]bool{}
+	terms := make([]string, 0, len(words))
+	for _, word := range words {
+		word = strings.Trim(word, ".,:;!?()[]{}\"'`<>/\\")
+		if len(word) < 2 || len(word) > 80 || seen[word] {
+			continue
+		}
+		seen[word] = true
+		terms = append(terms, word)
+	}
+	return terms
+}
+
+func pathScore(path string, terms []string) int {
+	lower := strings.ToLower(path)
+	score := 0
+	for _, term := range terms {
+		if strings.Contains(lower, term) {
+			score += 10
+		}
+	}
+	for _, marker := range []string{"main", "app", "index", "readme", "config", "route", "server", "package"} {
+		for _, term := range terms {
+			if term == marker && strings.Contains(lower, marker) {
+				score += 5
+			}
+		}
+	}
+	return score
+}
+
+func blockPaths(blocks []struct{ path, body string; score int }) []string {
+	out := make([]string, 0, len(blocks))
+	for _, b := range blocks {
+		out = append(out, b.path)
+	}
+	return out
+}
+
+func truncateString(value string, max int) string {
+	if max <= 0 {
+		return ""
+	}
+	if len(value) <= max {
+		return value
+	}
+	return value[:max]
 }
 
 func validateRequestBudget(name string, messages []Message, opts RequestOptions) error {
@@ -412,10 +531,8 @@ func minInt(a, b int) int {
 
 func (r *Registry) continueStream(ctx context.Context, name string, messages []Message, opts RequestOptions, initial <-chan StreamChunk) <-chan StreamChunk {
 	out := make(chan StreamChunk)
-
 	go func() {
 		defer close(out)
-
 		current := initial
 		combined := strings.Builder{}
 		continuations := 0
@@ -423,7 +540,6 @@ func (r *Registry) continueStream(ctx context.Context, name string, messages []M
 		if threshold < 1800 {
 			threshold = 1800
 		}
-
 		for {
 			finished := false
 			for chunk := range current {
@@ -439,13 +555,11 @@ func (r *Registry) continueStream(ctx context.Context, name string, messages []M
 					finished = true
 				}
 			}
-
 			partial := strings.TrimSpace(combined.String())
 			if !finished || opts.JSONMode || continuations >= 2 || combined.Len() < threshold || !needsContinuation(partial) {
 				out <- StreamChunk{Done: true}
 				return
 			}
-
 			continuationMessages := make([]Message, 0, len(messages)+2)
 			continuationMessages = append(continuationMessages, messages...)
 			continuationMessages = append(continuationMessages, Message{Role: "assistant", Content: combined.String()})
@@ -455,18 +569,15 @@ func (r *Registry) continueStream(ctx context.Context, name string, messages []M
 				out <- StreamChunk{Error: err}
 				return
 			}
-
 			next, err := r.streamWithRetry(ctx, name, continuationMessages, continuationOptions)
 			if err != nil {
 				out <- StreamChunk{Error: err}
 				return
 			}
-
 			current = next
 			continuations++
 		}
 	}()
-
 	return out
 }
 
