@@ -17,19 +17,19 @@ let activeAssistant=null;
 function addMessage(role,text){
   const el=document.createElement('div');
   el.className=`message ${role}`;
-  el.textContent=text;
+  el.textContent=text||'';
   conversation.appendChild(el);
   conversation.scrollTop=conversation.scrollHeight;
   return el;
 }
 
 function ensureAssistant(){
-  if(!activeAssistant) activeAssistant=addMessage('assistant','');
+  if(!activeAssistant)activeAssistant=addMessage('assistant','');
   return activeAssistant;
 }
 
 function showError(payload){
-  const data=typeof payload==='string'?parseErrorPayload(payload):payload;
+  const data=typeof payload==='string'?parseErrorPayload(payload):payload||{};
   $('errorTitle').textContent=data.title||'Something went wrong';
   $('errorText').textContent=data.error||data.message||'The request could not be completed.';
   $('errorRecovery').textContent=data.recovery?`Next: ${data.recovery}`:'';
@@ -37,15 +37,13 @@ function showError(payload){
 }
 
 function parseErrorPayload(value){
-  try{
-    const parsed=JSON.parse(value);
-    if(parsed&&typeof parsed==='object') return parsed;
-  }catch{}
-  return {message:String(value)};
+  try{const parsed=JSON.parse(value);if(parsed&&typeof parsed==='object')return parsed;}catch{}
+  return{message:String(value)};
 }
 
 function clearError(){
   $('errorBox').classList.add('hidden');
+  $('errorTitle').textContent='Something went wrong';
   $('errorText').textContent='';
   $('errorRecovery').textContent='';
 }
@@ -83,10 +81,8 @@ function prettyStatus(value){
 
 function formatElapsed(ms){
   const seconds=Math.max(0,Math.floor(ms/1000));
-  if(seconds<60)return `${seconds}s`;
-  const minutes=Math.floor(seconds/60);
-  const remainder=seconds%60;
-  return `${minutes}m ${String(remainder).padStart(2,'0')}s`;
+  if(seconds<60)return`${seconds}s`;
+  return`${Math.floor(seconds/60)}m ${String(seconds%60).padStart(2,'0')}s`;
 }
 
 function openTab(name){
@@ -162,9 +158,7 @@ async function loadModels(){
     modelInput.value=configured;
     showError(error.payload||error.message);
     $('modelLabel').textContent=configured||'Unavailable';
-  }finally{
-    modelInput.disabled=false;
-  }
+  }finally{modelInput.disabled=false;}
 }
 
 providerSelect.addEventListener('change',loadModels);
@@ -236,17 +230,18 @@ async function loadPlan(){
 }
 
 function formatBytes(n){
-  if(n<1024)return `${n} B`;
-  if(n<1048576)return `${(n/1024).toFixed(1)} KB`;
-  return `${(n/1048576).toFixed(1)} MB`;
+  if(n<1024)return`${n} B`;
+  if(n<1048576)return`${(n/1024).toFixed(1)} KB`;
+  return`${(n/1048576).toFixed(1)} MB`;
 }
 
 function escapeHTML(s){return String(s??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));}
 
 const source=new EventSource('/api/events');
-source.addEventListener('progress',event=>handleProgress(event));
-source.addEventListener('chat_token',event=>handleChatToken(event));
-source.addEventListener('error',event=>handleProgress(event));
+source.addEventListener('progress',handleProgress);
+source.addEventListener('chat_token',handleChatToken);
+source.addEventListener('error',handleProgress);
+source.onmessage=handleProgress;
 source.onerror=()=>{
   $('runtime').classList.add('disconnected');
   $('connectionDot').style.background='var(--warn)';
@@ -254,18 +249,18 @@ source.onerror=()=>{
 
 function handleProgress(event){
   try{
+    if(!event.data)return;
     const data=JSON.parse(event.data);
     setProgress(data);
     if(data.provider)$('providerLabel').textContent=data.provider;
     if(data.model)$('modelLabel').textContent=data.model;
     if(data.status==='failed'){
-      showError(data.message||'The request failed.');
+      showError(parseErrorPayload(data.message||'The request failed.'));
       jobRunning=false;
       send.disabled=false;
       document.body.classList.remove('busy');
       activeAssistant=null;
     }else if(data.status==='completed'){
-      clearError();
       jobRunning=false;
       send.disabled=false;
       document.body.classList.remove('busy');
@@ -278,6 +273,7 @@ function handleProgress(event){
 
 function handleChatToken(event){
   try{
+    if(!event.data)return;
     const data=JSON.parse(event.data);
     setProgress(data);
     const node=ensureAssistant();
@@ -292,6 +288,8 @@ async function submit(){
   if(!text)return;
   const isCode=code.checked||text.startsWith('/code ');
   const clean=text.startsWith('/code ')?text.slice(6).trim():text;
+  if(!clean)return;
+  if(conversation.querySelector('.welcome'))conversation.innerHTML='';
   addMessage('user',clean);
   activeAssistant=null;
   prompt.value='';
@@ -302,14 +300,15 @@ async function submit(){
   clearError();
   setProgress({status:isCode?'planning':'generating',message:isCode?'Starting project planning…':'Connecting to provider…',provider:selectedProvider,model:selectedModel});
   try{
-    await fetchJSON('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt:clean,provider:selectedProvider,model:selectedModel,code:isCode,yes:true})});
+    const result=await fetchJSON('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt:clean,provider:selectedProvider,model:selectedModel,code:isCode,yes:true})});
+    if(result?.accepted!==true)throw new Error('The server did not accept the chat request.');
   }catch(error){
     jobRunning=false;
     send.disabled=false;
     document.body.classList.remove('busy');
     showError(error.payload||error.message);
-    addMessage('assistant',error.payload?.message||error.message);
-    setProgress({status:'failed',message:error.payload?.message||error.message,provider:selectedProvider,model:selectedModel});
+    addMessage('assistant',error.payload?.error||error.message);
+    setProgress({status:'failed',message:JSON.stringify(error.payload||{message:error.message}),provider:selectedProvider,model:selectedModel});
   }
 }
 
@@ -344,7 +343,7 @@ $('refreshPlan').addEventListener('click',loadPlan);
 document.addEventListener('keydown',event=>{
   if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='k'){
     event.preventDefault();
-    if(!jobRunning){prompt.focus();}
+    if(!jobRunning)prompt.focus();
   }
 });
 
