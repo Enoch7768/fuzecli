@@ -85,6 +85,8 @@ func (e *ProviderError) Is(target error) bool {
 		return e.Kind == ErrorUnauthorized
 	case target == ErrProviderUnavailable:
 		return e.Kind == ErrorProviderUnavailable || e.Kind == ErrorOverloaded
+	case target == ErrRequestTooLarge:
+		return errors.Is(e.Err, ErrRequestTooLarge)
 	default:
 		return false
 	}
@@ -94,6 +96,7 @@ var (
 	ErrRateLimited         = errors.New("provider rate limited")
 	ErrUnauthorized        = errors.New("provider unauthorized")
 	ErrProviderUnavailable = errors.New("provider unavailable")
+	ErrRequestTooLarge     = errors.New("provider request too large")
 )
 
 func ClassifyError(err error) error {
