@@ -67,6 +67,9 @@ func (r *Registry) Send(ctx context.Context, name string, messages []Message, op
 		if request.Model == "" {
 			return nil, fmt.Errorf("no default model configured for provider %s", name)
 		}
+		if err := validateRequestBudget(name, requestMessages, request); err != nil {
+			return nil, err
+		}
 		return r.sendWithRetry(ctx, name, requestMessages, request)
 	}
 
@@ -78,11 +81,18 @@ func (r *Registry) Send(ctx context.Context, name string, messages []Message, op
 			last = fmt.Errorf("no default model configured for provider %s", candidate)
 			continue
 		}
+		if err := validateRequestBudget(candidate, requestMessages, request); err != nil {
+			last = err
+			if errors.Is(err, ErrRequestTooLarge) || errors.Is(err, ErrRateLimited) || errors.Is(err, ErrProviderUnavailable) {
+				continue
+			}
+			return nil, err
+		}
 		response, err := r.sendWithRetry(ctx, candidate, requestMessages, request)
 		if err == nil {
 			return response, nil
 		}
-		if errors.Is(err, ErrRateLimited) || errors.Is(err, ErrProviderUnavailable) {
+		if errors.Is(err, ErrRateLimited) || errors.Is(err, ErrProviderUnavailable) || errors.Is(err, ErrRequestTooLarge) {
 			last = err
 			continue
 		}
@@ -129,6 +139,9 @@ func (r *Registry) Stream(ctx context.Context, name string, messages []Message, 
 		if streamOptions.Model == "" {
 			return nil, fmt.Errorf("no default model configured for provider %s", name)
 		}
+		if err := validateRequestBudget(name, streamMessages, streamOptions); err != nil {
+			return nil, err
+		}
 		stream, err := r.streamWithRetry(ctx, name, streamMessages, streamOptions)
 		if err != nil {
 			return nil, err
@@ -144,11 +157,18 @@ func (r *Registry) Stream(ctx context.Context, name string, messages []Message, 
 			last = fmt.Errorf("no default model configured for provider %s", candidate)
 			continue
 		}
+		if err := validateRequestBudget(candidate, streamMessages, streamOptions); err != nil {
+			last = err
+			if errors.Is(err, ErrRequestTooLarge) || errors.Is(err, ErrRateLimited) || errors.Is(err, ErrProviderUnavailable) {
+				continue
+			}
+			return nil, err
+		}
 		stream, err := r.streamWithRetry(ctx, candidate, streamMessages, streamOptions)
 		if err == nil {
 			return r.continueStream(ctx, candidate, streamMessages, streamOptions, stream), nil
 		}
-		if errors.Is(err, ErrRateLimited) || errors.Is(err, ErrProviderUnavailable) {
+		if errors.Is(err, ErrRateLimited) || errors.Is(err, ErrProviderUnavailable) || errors.Is(err, ErrRequestTooLarge) {
 			last = err
 			continue
 		}
@@ -321,7 +341,7 @@ type requestBudget struct {
 func providerBudget(name string) requestBudget {
 	switch strings.ToLower(name) {
 	case "groq":
-		return requestBudget{maxInputChars: 6000, maxOutputTokens: 1400, jsonOutputTokens: 1200}
+		return requestBudget{maxInputChars: 19000, maxOutputTokens: 1100, jsonOutputTokens: 1000}
 	case "gemini":
 		return requestBudget{maxInputChars: 12000, maxOutputTokens: 2200, jsonOutputTokens: 2000}
 	case "openai":
@@ -346,20 +366,15 @@ func trimProviderMessages(messages []Message, maxChars int) []Message {
 		return messages
 	}
 
-	prefixEnd := 0
-	used := 0
-	for prefixEnd < len(messages) && messages[prefixEnd].Role == "system" {
-		used += len(messages[prefixEnd].Content)
-		prefixEnd++
-	}
-	result := append([]Message(nil), messages[:prefixEnd]...)
+	first := messages[0]
 	last := messages[len(messages)-1]
-	lastIsUser := last.Role == "user"
-	if lastIsUser {
-		used += len(last.Content)
+	if first.Role != "system" || last.Role != "user" {
+		return messages
 	}
 
-	for i := len(messages) - 2; i >= prefixEnd; i-- {
+	used := len(first.Content) + len(last.Content)
+	result := []Message{first}
+	for i := len(messages) - 2; i >= 1; i-- {
 		remaining := maxChars - used
 		if remaining <= 0 {
 			break
@@ -369,11 +384,31 @@ func trimProviderMessages(messages []Message, maxChars int) []Message {
 			used += len(messages[i].Content)
 		}
 	}
-
-	if lastIsUser {
-		result = append(result, last)
-	}
+	result = append(result, last)
 	return result
+}
+
+func validateRequestBudget(name string, messages []Message, opts RequestOptions) error {
+	if !strings.EqualFold(name, "groq") {
+		return nil
+	}
+	budget := providerBudget(name)
+	chars := 0
+	for _, message := range messages {
+		chars += len(message.Content)
+	}
+	estimatedInputTokens := (chars + 2) / 3
+	estimatedTotal := estimatedInputTokens + opts.MaxTokens
+	if chars > budget.maxInputChars || estimatedTotal > 7600 {
+		return &ProviderError{
+			Kind:       ErrorBadRequest,
+			Provider:   name,
+			StatusCode: 413,
+			Message:    fmt.Sprintf("request exceeds the safe Groq request budget: about %d input tokens plus %d output tokens; FuzeCLI preserves the strict execution briefing and complete user prompt", estimatedInputTokens, opts.MaxTokens),
+			Err:        ErrRequestTooLarge,
+		}
+	}
+	return nil
 }
 
 func truncateMessage(message Message, maxChars int) Message {
@@ -437,6 +472,10 @@ func (r *Registry) continueStream(ctx context.Context, name string, messages []M
 				Message{Role: "user", Content: "Continue the previous response exactly from where it stopped. Do not repeat any text. Output only the missing continuation. Preserve the same format and complete the response."},
 			)
 			continuationMessages, continuationOptions := adaptRequest(name, continuationMessages, opts)
+			if err := validateRequestBudget(name, continuationMessages, continuationOptions); err != nil {
+				out <- StreamChunk{Error: err}
+				return
+			}
 			var err error
 			current, err = r.streamWithRetry(ctx, name, continuationMessages, continuationOptions)
 			if err != nil {
