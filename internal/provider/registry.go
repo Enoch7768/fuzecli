@@ -329,6 +329,17 @@ func adaptRequest(name string, messages []Message, opts RequestOptions) ([]Messa
 	if request.JSONMode && request.MaxTokens > budget.jsonOutputTokens {
 		request.MaxTokens = budget.jsonOutputTokens
 	}
+	if strings.EqualFold(name, "groq") {
+		chars := 0
+		for _, message := range messages {
+			chars += len(message.Content)
+		}
+		estimatedInputTokens := (chars + 2) / 3
+		available := 7600 - estimatedInputTokens
+		if available > 0 && request.MaxTokens > available {
+			request.MaxTokens = available
+		}
+	}
 	return trimProviderMessages(messages, budget.maxInputChars), request
 }
 
@@ -341,9 +352,9 @@ type requestBudget struct {
 func providerBudget(name string) requestBudget {
 	switch strings.ToLower(name) {
 	case "groq":
-		return requestBudget{maxInputChars: 19000, maxOutputTokens: 1100, jsonOutputTokens: 1000}
+		return requestBudget{maxInputChars: 19000, maxOutputTokens: 3000, jsonOutputTokens: 1000}
 	case "gemini":
-		return requestBudget{maxInputChars: 12000, maxOutputTokens: 2200, jsonOutputTokens: 2000}
+		return requestBudget{maxInputChars: 12000, maxOutputTokens: 2600, jsonOutputTokens: 2000}
 	case "openai":
 		return requestBudget{maxInputChars: 24000, maxOutputTokens: 3500, jsonOutputTokens: 3000}
 	case "anthropic":
@@ -438,9 +449,9 @@ func (r *Registry) continueStream(ctx context.Context, name string, messages []M
 		current := initial
 		combined := strings.Builder{}
 		continuations := 0
-		threshold := int(float64(opts.MaxTokens*4) * 0.92)
-		if threshold < 5000 {
-			threshold = 5000
+		threshold := int(float64(opts.MaxTokens) * 3.2)
+		if threshold < 1800 {
+			threshold = 1800
 		}
 
 		for {
@@ -460,28 +471,29 @@ func (r *Registry) continueStream(ctx context.Context, name string, messages []M
 			}
 
 			partial := strings.TrimSpace(combined.String())
-			if !finished || continuations >= 2 || combined.Len() < threshold || !needsContinuation(partial) {
+			if !finished || opts.JSONMode || continuations >= 2 || combined.Len() < threshold || !needsContinuation(partial) {
 				out <- StreamChunk{Done: true}
 				return
 			}
 
-			continuations++
-			continuationMessages := append(
-				append([]Message{}, messages...),
-				Message{Role: "assistant", Content: partial},
-				Message{Role: "user", Content: "Continue the previous response exactly from where it stopped. Do not repeat any text. Output only the missing continuation. Preserve the same format and complete the response."},
-			)
+			continuationMessages := make([]Message, 0, len(messages)+2)
+			continuationMessages = append(continuationMessages, messages...)
+			continuationMessages = append(continuationMessages, Message{Role: "assistant", Content: combined.String()})
+			continuationMessages = append(continuationMessages, Message{Role: "user", Content: "Continue the previous response exactly where it stopped. Do not repeat any content already given. Finish the requested answer completely."})
 			continuationMessages, continuationOptions := adaptRequest(name, continuationMessages, opts)
 			if err := validateRequestBudget(name, continuationMessages, continuationOptions); err != nil {
 				out <- StreamChunk{Error: err}
 				return
 			}
-			var err error
-			current, err = r.streamWithRetry(ctx, name, continuationMessages, continuationOptions)
+
+			next, err := r.streamWithRetry(ctx, name, continuationMessages, continuationOptions)
 			if err != nil {
 				out <- StreamChunk{Error: err}
 				return
 			}
+
+			current = next
+			continuations++
 		}
 	}()
 
@@ -489,17 +501,28 @@ func (r *Registry) continueStream(ctx context.Context, name string, messages []M
 }
 
 func needsContinuation(text string) bool {
+	text = strings.TrimSpace(text)
 	if text == "" {
 		return false
 	}
 	if strings.Count(text, "```")%2 != 0 {
 		return true
 	}
-	last := rune(text[len(text)-1])
-	for _, mark := range []rune{'.', '!', '?', ':', ';', ')', ']', '}', '"', '\'', '`'} {
-		if last == mark {
-			return false
-		}
+	last := text[len(text)-1]
+	if strings.ContainsRune("([<{", rune(last)) {
+		return true
 	}
-	return true
+	if strings.HasSuffix(text, ":") || strings.HasSuffix(text, ",") || strings.HasSuffix(text, ";") || strings.HasSuffix(text, "-") {
+		return true
+	}
+	words := strings.Fields(strings.ToLower(text))
+	if len(words) == 0 {
+		return false
+	}
+	switch words[len(words)-1] {
+	case "and", "or", "but", "because", "with", "to", "of", "for", "from", "into", "is", "are", "was", "were", "the", "a", "an", "that", "which", "then", "when", "while":
+		return true
+	default:
+		return false
+	}
 }
