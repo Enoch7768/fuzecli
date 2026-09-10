@@ -1,6 +1,7 @@
 package web
 
 import (
+	"archive/zip"
 	"context"
 	"embed"
 	"encoding/json"
@@ -46,6 +47,7 @@ func (s *Server) ListenAndServe(ctx context.Context) error {
 	mux.HandleFunc("/api/models", s.models)
 	mux.HandleFunc("/api/workspace", s.workspace)
 	mux.HandleFunc("/api/plan", s.plan)
+	mux.HandleFunc("/api/download", s.download)
 
 	server := &http.Server{Addr: s.Addr, Handler: mux, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 30 * time.Second, WriteTimeout: 0, IdleTimeout: 60 * time.Second}
 	done := make(chan error, 1)
@@ -198,6 +200,15 @@ func (s *Server) runChatJob(job, prompt, providerName, model string, code, yes b
 		return
 	}
 
+	before := map[string]struct{}{}
+	if s.App.Store != nil {
+		if paths, err := s.App.Store.Touched(); err == nil {
+			for _, path := range paths {
+				before[path] = struct{}{}
+			}
+		}
+	}
+
 	s.Progress.Publish(progress.Event{Type: "progress", Status: "generating", Message: "Receiving response", Provider: providerName, Model: model, ElapsedMillis: 0})
 	err := s.App.ChatStreamRequest(context.Background(), prompt, providerName, model, func(delta string) {
 		s.Progress.Publish(progress.Event{Type: "chat_token", Status: "streaming", Message: delta, Provider: providerName, Model: model, ElapsedMillis: time.Since(start).Milliseconds()})
@@ -207,7 +218,33 @@ func (s *Server) runChatJob(job, prompt, providerName, model string, code, yes b
 		s.publishError(start, u)
 		return
 	}
-	s.Progress.Publish(progress.Event{Type: "completed", Status: "completed", Provider: providerName, Model: model, Message: "Response complete", ElapsedMillis: time.Since(start).Milliseconds()})
+
+	generated := []string{}
+	if s.App.Store != nil {
+		if paths, readErr := s.App.Store.Touched(); readErr == nil {
+			for _, path := range paths {
+				if _, ok := before[path]; !ok {
+					generated = append(generated, path)
+				}
+			}
+		}
+	}
+
+	message := "Response complete"
+	if len(generated) > 0 {
+		message = fmt.Sprintf("Generated %d file%s and saved the code to your workspace.", len(generated), pluralSuffix(len(generated)))
+	}
+	if len(generated) > 0 {
+		s.Progress.Publish(progress.Event{Type: "generated", Status: "completed", Message: message, GeneratedFiles: generated, Provider: providerName, Model: model, ElapsedMillis: time.Since(start).Milliseconds()})
+	}
+	s.Progress.Publish(progress.Event{Type: "completed", Status: "completed", Message: message, GeneratedFiles: generated, Provider: providerName, Model: model, ElapsedMillis: time.Since(start).Milliseconds()})
+}
+
+func pluralSuffix(count int) string {
+	if count == 1 {
+		return ""
+	}
+	return "s"
 }
 
 func (s *Server) monitorProjectPlan(start time.Time, providerName, model string, result <-chan error) {
@@ -232,19 +269,25 @@ func (s *Server) monitorProjectPlan(start time.Time, providerName, model string,
 
 func (s *Server) publishCodeCompletion(start time.Time, providerName, model string) {
 	message := "Code generation completed successfully."
+	generated := []string{}
 	if s.App.Store != nil {
 		if data, err := os.ReadFile(generation.ProjectPlanPath(s.App.Store.Root)); err == nil {
 			var plan generation.ProjectPlan
 			if json.Unmarshal(data, &plan) == nil {
 				completed := len(plan.Files) - len(generation.PendingFiles(plan))
+				for _, file := range plan.Files {
+					if file.Status == "completed" {
+						generated = append(generated, file.Path)
+					}
+				}
 				if len(plan.Files) > 0 {
 					message = fmt.Sprintf("Done. Generated %d of %d planned files for %s. The files are saved in your workspace.", completed, len(plan.Files), plan.Project)
 				}
 			}
 		}
 	}
-	s.Progress.Publish(progress.Event{Type: "chat_token", Status: "completed", Message: "\n\n" + message + "\n", Provider: providerName, Model: model, ElapsedMillis: time.Since(start).Milliseconds()})
-	s.Progress.Publish(progress.Event{Type: "completed", Status: "completed", Message: message, Provider: providerName, Model: model, ElapsedMillis: time.Since(start).Milliseconds()})
+	s.Progress.Publish(progress.Event{Type: "chat_token", Status: "completed", Message: "\n\n" + message + "\n", GeneratedFiles: generated, Provider: providerName, Model: model, ElapsedMillis: time.Since(start).Milliseconds()})
+	s.Progress.Publish(progress.Event{Type: "completed", Status: "completed", Message: message, GeneratedFiles: generated, Provider: providerName, Model: model, ElapsedMillis: time.Since(start).Milliseconds()})
 }
 
 func (s *Server) publishError(start time.Time, u diagnostics.UserError) {
@@ -399,6 +442,52 @@ func (s *Server) plan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"exists": true, "plan": plan})
+}
+
+func (s *Server) download(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.Header().Set("Allow", http.MethodGet)
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "GET is required for downloads"})
+		return
+	}
+	if s.App.Store == nil {
+		writeUserError(w, http.StatusInternalServerError, diagnostics.Interpret(fmt.Errorf("workspace not initialized; run aicli init"), "", ""))
+		return
+	}
+	paths, err := s.App.Store.Touched()
+	if err != nil {
+		writeUserError(w, http.StatusInternalServerError, diagnostics.Interpret(err, "", ""))
+		return
+	}
+	if len(paths) == 0 {
+		writeUserError(w, http.StatusNotFound, diagnostics.Interpret(fmt.Errorf("no generated files are available to download"), "", ""))
+		return
+	}
+	w.Header().Set("Content-Type", "application/zip")
+	w.Header().Set("Content-Disposition", `attachment; filename="fuzecli-workspace.zip"`)
+	archive := zip.NewWriter(w)
+	for _, rel := range paths {
+		path, err := generation.Resolve(s.App.Store.Root, rel)
+		if err != nil {
+			_ = archive.Close()
+			return
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			continue
+		}
+		entry := filepath.ToSlash(rel)
+		writer, err := archive.Create(entry)
+		if err != nil {
+			_ = archive.Close()
+			return
+		}
+		if _, err := writer.Write(data); err != nil {
+			_ = archive.Close()
+			return
+		}
+	}
+	_ = archive.Close()
 }
 
 func writeSSE(w http.ResponseWriter, eventType string, event progress.Event) {
