@@ -1,6 +1,7 @@
 package workspace
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
@@ -8,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -151,21 +153,109 @@ func (s *Store) RefreshHashes(paths []string) error {
 	return s.SaveState(st)
 }
 func (s *Store) WorkspaceContext() (string, error) {
-	paths, err := s.Touched()
+	const maxContextChars = 8000
+
+	touched, err := s.Touched()
 	if err != nil {
 		return "", err
 	}
+
+	seen := make(map[string]struct{}, len(touched))
+	paths := make([]string, 0, len(touched))
+	for _, rel := range touched {
+		rel = filepath.ToSlash(rel)
+		if _, ok := seen[rel]; ok {
+			continue
+		}
+		seen[rel] = struct{}{}
+		paths = append(paths, rel)
+	}
+
+	var discovered []string
+	err = filepath.WalkDir(s.Root, func(path string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if path == s.Root {
+			return nil
+		}
+		if entry.IsDir() {
+			if workspaceContextSkipDir(entry.Name()) {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		rel, err := filepath.Rel(s.Root, path)
+		if err != nil {
+			return nil
+		}
+		rel = filepath.ToSlash(rel)
+		if _, ok := seen[rel]; ok || !workspaceContextTextPath(rel) {
+			return nil
+		}
+		discovered = append(discovered, rel)
+		return nil
+	})
+	if err != nil {
+		return "", err
+	}
+
+	sort.Strings(discovered)
+	paths = append(paths, discovered...)
+
 	var b strings.Builder
+	b.WriteString("Workspace access is available to FuzeCLI through this local context. The following files were read directly from the workspace on disk. Use these files to inspect, analyze, and modify the project. Do not ask the user to paste files that are present here.\n")
+
 	for _, rel := range paths {
+		if b.Len() >= maxContextChars {
+			break
+		}
 		path, err := filepath.Abs(filepath.Join(s.Root, filepath.FromSlash(rel)))
 		if err != nil {
 			continue
 		}
 		data, err := os.ReadFile(path)
-		if err != nil {
+		if err != nil || !workspaceContextTextData(data) {
 			continue
 		}
-		fmt.Fprintf(&b, "\n--- %s ---\n%s\n", rel, string(data))
+		remaining := maxContextChars - b.Len()
+		entry := fmt.Sprintf("\n--- %s ---\n", rel)
+		if len(entry) >= remaining {
+			break
+		}
+		b.WriteString(entry)
+		remaining = maxContextChars - b.Len()
+		if len(data) > remaining {
+			data = data[:remaining]
+			if index := bytes.LastIndexByte(data, '\n'); index > 0 {
+				data = data[:index]
+			}
+		}
+		b.Write(data)
+		b.WriteByte('\n')
 	}
 	return b.String(), nil
+}
+
+func workspaceContextSkipDir(name string) bool {
+	switch strings.ToLower(name) {
+	case ".aicli", ".git", ".hg", ".svn", "node_modules", "vendor", "dist", "build", "target", ".next", ".nuxt", ".cache", "coverage", ".idea", ".vscode":
+		return true
+	default:
+		return false
+	}
+}
+
+func workspaceContextTextPath(rel string) bool {
+	ext := strings.ToLower(filepath.Ext(rel))
+	switch ext {
+	case ".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico", ".bmp", ".tif", ".tiff", ".svgz", ".pdf", ".zip", ".7z", ".rar", ".gz", ".tar", ".exe", ".dll", ".so", ".dylib", ".bin", ".mp3", ".wav", ".flac", ".mp4", ".mov", ".avi", ".mkv", ".woff", ".woff2", ".ttf", ".otf":
+		return false
+	default:
+		return true
+	}
+}
+
+func workspaceContextTextData(data []byte) bool {
+	return len(data) > 0 && !bytes.Contains(data, []byte{0})
 }
