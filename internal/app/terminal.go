@@ -120,10 +120,32 @@ func printTerminalStatus(providerName, model, root string) {
 }
 
 func (a *App) terminalStream(ctx context.Context, prompt, providerName, model string) error {
+	start := time.Now()
+	stop := make(chan struct{})
+	var once sync.Once
+	phase := "Preparing request"
+	go func() {
+		ticker := time.NewTicker(200 * time.Millisecond)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				fmt.Printf("\r\x1b[K\x1b[38;5;244m· %s · %s · %s\x1b[0m", phase, providerName, formatTerminalElapsed(time.Since(start)))
+			case <-stop:
+				return
+			}
+		}
+	}()
+	defer func() {
+		once.Do(func() { close(stop) })
+		fmt.Print("\r\x1b[K")
+	}()
+
 	history, err := a.Store.History(400)
 	if err != nil {
 		return err
 	}
+	phase = "Preparing conversation context"
 	name, mdl, err := a.ProviderAndModel(providerName, model)
 	if err != nil {
 		return err
@@ -136,6 +158,7 @@ func (a *App) terminalStream(ctx context.Context, prompt, providerName, model st
 	if err != nil {
 		return err
 	}
+	phase = "Assembling workspace context"
 	system := "You are FuzeCLI, a practical coding assistant. For ordinary questions, answer naturally in plain text. When the user asks you to create, modify, or delete files and the response can be represented by the FuzeCLI generation schema, return ONLY that valid generation JSON so FuzeCLI can apply it safely. Never use markdown fences for generation JSON."
 	if a.Profile.Condensed() != "" {
 		system += "\nDeveloper profile:\n" + a.Profile.Condensed()
@@ -150,25 +173,34 @@ func (a *App) terminalStream(ctx context.Context, prompt, providerName, model st
 	if err := a.Store.AddMessage(provider.Message{Role: "user", Content: prompt}); err != nil {
 		return err
 	}
+	phase = "Waiting for provider"
 	stream, err := a.Registry.Stream(ctx, name, msgs, provider.RequestOptions{Model: mdl, Temperature: 0.3, MaxTokens: 16000})
 	if err != nil {
 		return err
 	}
+	phase = "Receiving response"
 	var response strings.Builder
+	chunks := 0
 	for chunk := range stream {
 		if chunk.Error != nil {
 			return chunk.Error
 		}
 		if chunk.Delta != "" {
 			response.WriteString(chunk.Delta)
+			chunks++
+			if chunks%40 == 0 {
+				phase = fmt.Sprintf("Receiving response · %d chunks", chunks)
+			}
 		}
 	}
+	phase = "Finalizing response"
 	text := strings.TrimSpace(response.String())
 	if text == "" {
 		return context.Canceled
 	}
 
 	if plan, parseErr := generation.ParsePlan(response.String()); parseErr == nil {
+		phase = "Applying generated files"
 		written, applyErr := generation.Apply(a.Store.Root, plan)
 		if applyErr != nil {
 			return applyErr
@@ -198,6 +230,11 @@ func (a *App) terminalStream(ctx context.Context, prompt, providerName, model st
 		fmt.Println(response.String())
 	}
 	return a.Store.AddMessage(provider.Message{Role: "assistant", Content: response.String()})
+}
+
+func formatTerminalElapsed(d time.Duration) string {
+	total := int(d.Round(time.Second) / time.Second)
+	return fmt.Sprintf("%dm%02ds", total/60, total%60)
 }
 
 func (a *App) terminalCode(ctx context.Context, prompt, providerName, model string, yes bool) error {
