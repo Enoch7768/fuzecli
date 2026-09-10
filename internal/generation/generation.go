@@ -1,6 +1,7 @@
 package generation
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -20,6 +21,7 @@ type FileChange struct {
 	Content string `json:"content"`
 	Action  string `json:"action"`
 }
+
 type Plan struct {
 	Files       []FileChange `json:"files"`
 	Explanation string       `json:"explanation"`
@@ -49,7 +51,7 @@ func (e *Engine) Messages(profileText string, workspaceContext string, conversat
 }
 
 func trimMessages(messages []provider.Message, maxChars int) []provider.Message {
-	if maxChars <= 0 {
+	if maxChars <= 0 || len(messages) == 0 {
 		return messages
 	}
 	total := 0
@@ -74,10 +76,14 @@ func trimMessages(messages []provider.Message, maxChars int) []provider.Message 
 
 func ParsePlan(raw string) (Plan, error) {
 	var plan Plan
-	dec := json.NewDecoder(strings.NewReader(raw))
+	clean, err := normalizeJSONDocument(raw)
+	if err != nil {
+		return Plan{}, fmt.Errorf("invalid generation JSON: %w", err)
+	}
+	dec := json.NewDecoder(bytes.NewReader(clean))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&plan); err != nil {
-		return Plan{}, fmt.Errorf("invalid generation JSON: %w", err)
+		return Plan{}, fmt.Errorf("invalid generation JSON: %w", explainJSONDecodeError(err))
 	}
 	var trailing any
 	if err := dec.Decode(&trailing); err != io.EOF {
@@ -99,11 +105,97 @@ func ParsePlan(raw string) (Plan, error) {
 		if f.Action == "delete" && f.Content != "" {
 			return Plan{}, fmt.Errorf("file %d delete action must have empty content", i)
 		}
-		if strings.Contains(filepath.ToSlash(f.Path), "../") || strings.HasPrefix(filepath.ToSlash(f.Path), "../") {
+		rel := filepath.ToSlash(f.Path)
+		if strings.HasPrefix(rel, "../") || strings.Contains(rel, "/../") || strings.HasPrefix(rel, "/") || filepath.IsAbs(f.Path) || filepath.VolumeName(f.Path) != "" {
 			return Plan{}, fmt.Errorf("path traversal rejected for %q", f.Path)
 		}
 	}
 	return plan, nil
+}
+
+func normalizeJSONDocument(raw string) ([]byte, error) {
+	s := strings.TrimSpace(strings.TrimPrefix(raw, "\ufeff"))
+	if s == "" {
+		return nil, errors.New("empty model response")
+	}
+	s = strings.ReplaceAll(s, "```json", "```")
+	if strings.HasPrefix(s, "```") {
+		if end := strings.Index(s[3:], "```"); end >= 0 {
+			body := s[3 : 3+end]
+			body = strings.TrimSpace(strings.TrimPrefix(body, "json"))
+			s = strings.TrimSpace(body)
+		}
+	}
+	start := strings.IndexAny(s, "{[")
+	if start < 0 {
+		return nil, errors.New("response does not contain a JSON object")
+	}
+	end, ok := balancedJSONEnd(s, start)
+	if !ok {
+		if strings.Contains(strings.ToLower(s), "unexpected end") || strings.Contains(strings.ToLower(s), "max_tokens") {
+			return nil, errors.New("response appears truncated before the JSON document was closed")
+		}
+		return nil, errors.New("response contains incomplete JSON")
+	}
+	candidate := strings.TrimSpace(s[start:end])
+	if !json.Valid([]byte(candidate)) {
+		return nil, errors.New("response contains malformed JSON")
+	}
+	return []byte(candidate), nil
+}
+
+func balancedJSONEnd(s string, start int) (int, bool) {
+	open := s[start]
+	closeByte := byte('}')
+	if open == '[' {
+		closeByte = ']'
+	}
+	depth := 0
+	inString := false
+	escaped := false
+	for i := start; i < len(s); i++ {
+		c := s[i]
+		if inString {
+			if escaped {
+				escaped = false
+				continue
+			}
+			if c == '\\' {
+				escaped = true
+				continue
+			}
+			if c == '"' {
+				inString = false
+			}
+			continue
+		}
+		if c == '"' {
+			inString = true
+			continue
+		}
+		if c == open || (open == '{' && c == '[') || (open == '[' && c == '{') {
+			depth++
+			continue
+		}
+		if c == closeByte || (open == '{' && c == ']') || (open == '[' && c == '}') {
+			depth--
+			if depth == 0 {
+				return i + 1, true
+			}
+			if depth < 0 {
+				return 0, false
+			}
+		}
+	}
+	return 0, false
+}
+
+func explainJSONDecodeError(err error) string {
+	message := err.Error()
+	if strings.Contains(message, "unexpected end of JSON input") || strings.Contains(strings.ToLower(message), "unexpected end") {
+		return "response was truncated before the JSON document finished; reduce the batch size and retry"
+	}
+	return message
 }
 
 func Resolve(root, rel string) (string, error) {
