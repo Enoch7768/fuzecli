@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -33,22 +32,10 @@ func NewRegistry(fallback []string, defaults map[string]string, providers ...Pro
 }
 
 func (r *Registry) Get(name string) (Provider, error) {
-	if p, ok := r.providers[name]; ok {
-		return p, nil
-	}
-	spec, ok := compatibleSpecFor(name)
+	p, ok := r.providers[name]
 	if !ok {
 		return nil, fmt.Errorf("provider %q is not configured", name)
 	}
-	p := newCompatibleProvider(spec, configuredFor(name))
-	r.limitMu.Lock()
-	if existing, exists := r.providers[name]; exists {
-		r.limitMu.Unlock()
-		return existing, nil
-	}
-	r.providers[name] = p
-	r.requestMu[name] = &sync.Mutex{}
-	r.limitMu.Unlock()
 	return p, nil
 }
 
@@ -72,6 +59,7 @@ func (r *Registry) Send(ctx context.Context, name string, messages []Message, op
 		}
 		return r.sendWithRetry(ctx, name, requestMessages, request)
 	}
+
 	var last error
 	for _, candidate := range r.fallback {
 		requestMessages, request := adaptRequest(candidate, messages, opts)
@@ -145,6 +133,7 @@ func (r *Registry) Stream(ctx context.Context, name string, messages []Message, 
 		}
 		return r.continueStream(ctx, name, streamMessages, streamOptions, stream), nil
 	}
+
 	var last error
 	for _, candidate := range r.fallback {
 		streamMessages, streamOptions := adaptRequest(candidate, messages, opts)
@@ -226,7 +215,7 @@ func (r *Registry) model(name, requested string) string {
 
 func (r *Registry) wait(ctx context.Context, name string) error {
 	r.limitMu.Lock()
-	readyAt := r.lastCall[name].Add(providerMinInterval(name))
+	readyAt := r.lastCall[name].Add(ProviderPolicy(name).MinInterval)
 	if r.retryUntil[name].After(readyAt) {
 		readyAt = r.retryUntil[name]
 	}
@@ -269,8 +258,8 @@ func (r *Registry) observe(name string, err error) {
 		if delay <= 0 {
 			delay = time.Duration(1<<uint(step-1)) * time.Second
 		}
-		if delay < providerMinInterval(name) {
-			delay = providerMinInterval(name)
+		if delay < ProviderPolicy(name).MinInterval {
+			delay = ProviderPolicy(name).MinInterval
 		}
 		if delay > 120*time.Second {
 			delay = 120 * time.Second
@@ -284,8 +273,8 @@ func (r *Registry) observe(name string, err error) {
 			step = 5
 		}
 		delay := time.Duration(1<<uint(step-1)) * time.Second
-		if delay < providerMinInterval(name) {
-			delay = providerMinInterval(name)
+		if delay < ProviderPolicy(name).MinInterval {
+			delay = ProviderPolicy(name).MinInterval
 		}
 		delay += time.Duration(time.Now().UnixNano()%1200) * time.Millisecond
 		r.retryUntil[name] = time.Now().Add(delay)
@@ -294,62 +283,16 @@ func (r *Registry) observe(name string, err error) {
 	}
 }
 
-func providerMinInterval(name string) time.Duration {
-	switch strings.ToLower(name) {
-	case "groq":
-		return 10 * time.Second
-	case "gemini":
-		return 7 * time.Second
-	case "openai":
-		return 4 * time.Second
-	case "anthropic":
-		return 4 * time.Second
-	default:
-		return 3 * time.Second
-	}
-}
-
 func adaptRequest(name string, messages []Message, opts RequestOptions) ([]Message, RequestOptions) {
-	budget := providerBudget(name)
+	budget := ProviderPolicy(name)
 	request := opts
-	if request.MaxTokens <= 0 || request.MaxTokens > budget.maxOutputTokens {
-		request.MaxTokens = budget.maxOutputTokens
+	if request.MaxTokens <= 0 || request.MaxTokens > budget.MaxOutputTokens {
+		request.MaxTokens = budget.MaxOutputTokens
 	}
-	if request.JSONMode && request.MaxTokens > budget.jsonOutputTokens {
-		request.MaxTokens = budget.jsonOutputTokens
+	if request.JSONMode && request.MaxTokens > budget.JSONOutputTokens {
+		request.MaxTokens = budget.JSONOutputTokens
 	}
-	return trimProviderMessages(messages, budget.maxInputChars), request
-}
-
-type requestBudget struct {
-	maxInputChars    int
-	maxOutputTokens  int
-	jsonOutputTokens int
-}
-
-func providerBudget(name string) requestBudget {
-	switch strings.ToLower(name) {
-	case "groq":
-		return requestBudget{maxInputChars: 19000, maxOutputTokens: 3000, jsonOutputTokens: 1000}
-	case "gemini":
-		return requestBudget{maxInputChars: 12000, maxOutputTokens: 2600, jsonOutputTokens: 2000}
-	case "openai":
-		return requestBudget{maxInputChars: 24000, maxOutputTokens: 3500, jsonOutputTokens: 3000}
-	case "anthropic":
-		return requestBudget{maxInputChars: 24000, maxOutputTokens: 4000, jsonOutputTokens: 3500}
-	case "llamacpp", "ollama", "vllm", "text-generation-inference", "lmstudio", "jan", "litellm":
-		return requestBudget{maxInputChars: 6000, maxOutputTokens: 1600, jsonOutputTokens: 1400}
-	default:
-		return requestBudget{maxInputChars: 16000, maxOutputTokens: 2600, jsonOutputTokens: 2000}
-	}
-}
-
-var workspaceBlockPattern = regexp.MustCompile(`(?ms)^--- (.+?) ---\n(.*?)(?=^--- .+? ---\n|\z)`)
-
-type workspaceBlock struct {
-	path  string
-	body  string
-	score int
+	return trimProviderMessages(messages, budget.MaxInputChars), request
 }
 
 func trimProviderMessages(messages []Message, maxChars int) []Message {
@@ -402,28 +345,62 @@ func trimHistory(messages []Message, maxChars int) []Message {
 	return result
 }
 
-func trimWorkspaceMessage(message Message, prompt string, maxChars int) Message {
-	matches := workspaceBlockPattern.FindAllStringSubmatch(message.Content, -1)
-	if len(matches) == 0 {
-		return truncateMessage(message, maxChars/2)
+type workspaceBlock struct {
+	path  string
+	body  string
+	score int
+}
+
+func parseWorkspaceBlocks(content string) (string, []workspaceBlock) {
+	lines := strings.Split(content, "\n")
+	prefixLines := make([]string, 0)
+	blocks := make([]workspaceBlock, 0)
+	current := -1
+	var body strings.Builder
+	flush := func() {
+		if current < 0 {
+			return
+		}
+		blocks[current].body = body.String()
+		body.Reset()
+		current = -1
 	}
-	marker := strings.Index(message.Content, "--- ")
-	prefix := message.Content
-	if marker >= 0 {
-		prefix = message.Content[:marker]
-	}
-	blocks := make([]workspaceBlock, 0, len(matches))
-	terms := contextTerms(prompt)
-	for _, match := range matches {
-		path := strings.TrimSpace(match[1])
-		body := match[2]
-		score := pathScore(path, terms)
-		for _, term := range terms {
-			if strings.Contains(strings.ToLower(body), term) {
-				score++
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "--- ") && strings.HasSuffix(trimmed, " ---") {
+			flush()
+			path := strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(trimmed, "--- "), " ---"))
+			if path != "" {
+				blocks = append(blocks, workspaceBlock{path: path})
+				current = len(blocks) - 1
+				continue
 			}
 		}
-		blocks = append(blocks, workspaceBlock{path: path, body: body, score: score})
+		if current < 0 {
+			prefixLines = append(prefixLines, line)
+			continue
+		}
+		body.WriteString(line)
+		body.WriteByte('\n')
+	}
+	flush()
+	return strings.Join(prefixLines, "\n"), blocks
+}
+
+func trimWorkspaceMessage(message Message, prompt string, maxChars int) Message {
+	prefix, blocks := parseWorkspaceBlocks(message.Content)
+	if len(blocks) == 0 {
+		return truncateMessage(message, maxChars/2)
+	}
+	terms := contextTerms(prompt)
+	for i := range blocks {
+		blocks[i].score = pathScore(blocks[i].path, terms)
+		lowerBody := strings.ToLower(blocks[i].body)
+		for _, term := range terms {
+			if strings.Contains(lowerBody, term) {
+				blocks[i].score++
+			}
+		}
 	}
 	sort.SliceStable(blocks, func(i, j int) bool {
 		if blocks[i].score == blocks[j].score {
