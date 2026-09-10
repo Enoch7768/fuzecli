@@ -184,6 +184,7 @@ func (s *Server) runChatJob(job, prompt, providerName, model string, code, yes b
 	start := time.Now()
 	if code {
 		s.Progress.Publish(progress.Event{Type: "progress", Status: "planning", Message: "Analyzing the request and building a resumable project plan", Provider: providerName, Model: model, ElapsedMillis: 0})
+		s.Progress.Publish(progress.Event{Type: "chat_token", Status: "planning", Message: "I’m planning the project and preparing the first generation batch…\n", Provider: providerName, Model: model, ElapsedMillis: 0})
 		result := make(chan error, 1)
 		go func() {
 			_, err := s.App.Ask(context.Background(), prompt, providerName, model, yes)
@@ -216,7 +217,7 @@ func (s *Server) monitorProjectPlan(start time.Time, providerName, model string,
 				s.publishError(start, u)
 				return
 			}
-			s.Progress.Publish(progress.Event{Type: "completed", Status: "completed", Message: "Generation complete", Provider: providerName, Model: model, ElapsedMillis: time.Since(start).Milliseconds()})
+			s.publishCodeCompletion(start, providerName, model)
 			return
 		case <-ticker.C:
 			event := s.projectProgressEvent(start, providerName, model)
@@ -225,21 +226,25 @@ func (s *Server) monitorProjectPlan(start time.Time, providerName, model string,
 	}
 }
 
+func (s *Server) publishCodeCompletion(start time.Time, providerName, model string) {
+	message := "Code generation completed successfully."
+	if s.App.Store != nil {
+		if data, err := os.ReadFile(generation.ProjectPlanPath(s.App.Store.Root)); err == nil {
+			var plan generation.ProjectPlan
+			if json.Unmarshal(data, &plan) == nil {
+				completed := len(plan.Files) - len(generation.PendingFiles(plan))
+				if len(plan.Files) > 0 {
+					message = fmt.Sprintf("Done. Generated %d of %d planned files for %s. The files are saved in your workspace.", completed, len(plan.Files), plan.Project)
+				}
+			}
+		}
+	}
+	s.Progress.Publish(progress.Event{Type: "chat_token", Status: "completed", Message: "\n\n" + message + "\n", Provider: providerName, Model: model, ElapsedMillis: time.Since(start).Milliseconds()})
+	s.Progress.Publish(progress.Event{Type: "completed", Status: "completed", Message: message, Provider: providerName, Model: model, ElapsedMillis: time.Since(start).Milliseconds()})
+}
+
 func (s *Server) publishError(start time.Time, u diagnostics.UserError) {
-	s.Progress.Publish(progress.Event{
-		Type: "job_error",
-		Status: "failed",
-		Provider: u.Provider,
-		Model: u.Model,
-		Message: u.Message,
-		ErrorTitle: u.Title,
-		ErrorMessage: u.Message,
-		ErrorRecovery: u.Recovery,
-		ErrorTechnical: u.Technical,
-		RetryAfter: u.RetryAfter,
-		HTTPStatus: u.StatusCode,
-		ElapsedMillis: time.Since(start).Milliseconds(),
-	})
+	s.Progress.Publish(progress.Event{Type: "job_error", Status: "failed", Provider: u.Provider, Model: u.Model, Message: u.Message, ErrorTitle: u.Title, ErrorMessage: u.Message, ErrorRecovery: u.Recovery, ErrorTechnical: u.Technical, RetryAfter: u.RetryAfter, HTTPStatus: u.StatusCode, ElapsedMillis: time.Since(start).Milliseconds()})
 }
 
 func (s *Server) projectProgressEvent(start time.Time, providerName, model string) progress.Event {
