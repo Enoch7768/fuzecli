@@ -22,6 +22,7 @@ type State struct {
 	ActiveProvider string            `json:"active_provider"`
 	ActiveModel    string            `json:"active_model"`
 }
+
 type Store struct {
 	Root string
 	DB   *sql.DB
@@ -47,8 +48,15 @@ func Init(root string) (*Store, error) {
 	}
 	return &Store{Root: root, DB: db}, nil
 }
-func Open(root string) (*Store, error) { return Init(root) }
-func (s *Store) Close() error          { return s.DB.Close() }
+
+func Open(root string) (*Store, error) {
+	return Init(root)
+}
+
+func (s *Store) Close() error {
+	return s.DB.Close()
+}
+
 func (s *Store) AddMessage(m provider.Message) error {
 	_, err := s.DB.Exec(`INSERT INTO messages(role,content,created_at) VALUES(?,?,?)`, m.Role, m.Content, time.Now().UTC().Format(time.RFC3339Nano))
 	if err != nil {
@@ -56,12 +64,14 @@ func (s *Store) AddMessage(m provider.Message) error {
 	}
 	return nil
 }
+
 func (s *Store) ClearMemory() error {
 	if _, err := s.DB.Exec(`DELETE FROM messages`); err != nil {
 		return fmt.Errorf("clear conversation memory: %w", err)
 	}
 	return nil
 }
+
 func (s *Store) History(limit int) ([]provider.Message, error) {
 	if limit <= 0 {
 		limit = 200
@@ -85,6 +95,7 @@ func (s *Store) History(limit int) ([]provider.Message, error) {
 	}
 	return out, rows.Err()
 }
+
 func (s *Store) MarkTouched(paths []string) error {
 	for _, p := range paths {
 		if _, err := s.DB.Exec(`INSERT OR IGNORE INTO touched_files(path) VALUES(?)`, p); err != nil {
@@ -93,6 +104,7 @@ func (s *Store) MarkTouched(paths []string) error {
 	}
 	return nil
 }
+
 func (s *Store) Touched() ([]string, error) {
 	rows, err := s.DB.Query(`SELECT path FROM touched_files ORDER BY path`)
 	if err != nil {
@@ -109,6 +121,7 @@ func (s *Store) Touched() ([]string, error) {
 	}
 	return out, rows.Err()
 }
+
 func (s *Store) LoadState() (State, error) {
 	p := filepath.Join(s.Root, ".aicli", "state.json")
 	b, err := os.ReadFile(p)
@@ -127,6 +140,7 @@ func (s *Store) LoadState() (State, error) {
 	}
 	return st, nil
 }
+
 func (s *Store) SaveState(st State) error {
 	p := filepath.Join(s.Root, ".aicli", "state.json")
 	b, _ := json.MarshalIndent(st, "", "  ")
@@ -136,6 +150,7 @@ func (s *Store) SaveState(st State) error {
 	}
 	return os.Rename(tmp, p)
 }
+
 func (s *Store) RefreshHashes(paths []string) error {
 	st, err := s.LoadState()
 	if err != nil {
@@ -152,6 +167,7 @@ func (s *Store) RefreshHashes(paths []string) error {
 	}
 	return s.SaveState(st)
 }
+
 func (s *Store) WorkspaceContext() (string, error) {
 	touched, err := s.Touched()
 	if err != nil {
@@ -202,7 +218,7 @@ func (s *Store) WorkspaceContext() (string, error) {
 	paths = append(paths, discovered...)
 
 	var b strings.Builder
-	b.WriteString("Workspace access is available to FuzeCLI through this local context. Every discovered text source file in the workspace is included below in full. Use these files to inspect, analyze, and modify the project. Do not ask the user to paste files that are present here. Binary files and generated/dependency directories are intentionally excluded.\n")
+	b.WriteString("Workspace access is available to FuzeCLI through this local context. Every discovered text source file is represented below in full through source chunks. The complete repository remains on disk and must be used as the authoritative source. Never ask the user to paste a file that exists in the workspace. Binary files and generated/dependency directories are intentionally excluded.\n")
 
 	for _, rel := range paths {
 		path, err := filepath.Abs(filepath.Join(s.Root, filepath.FromSlash(rel)))
@@ -213,11 +229,48 @@ func (s *Store) WorkspaceContext() (string, error) {
 		if err != nil || !workspaceContextTextData(data) {
 			continue
 		}
-		b.WriteString(fmt.Sprintf("\n--- %s ---\n", rel))
-		b.Write(data)
-		b.WriteByte('\n')
+		writeWorkspaceFileChunks(&b, rel, string(data))
 	}
 	return b.String(), nil
+}
+
+const workspaceChunkSize = 2400
+
+func writeWorkspaceFileChunks(b *strings.Builder, rel, content string) {
+	if len(content) <= workspaceChunkSize {
+		b.WriteString(fmt.Sprintf("\n--- %s ---\n", rel))
+		b.WriteString(content)
+		b.WriteByte('\n')
+		return
+	}
+	parts := splitWorkspaceContent(content, workspaceChunkSize)
+	for i, part := range parts {
+		b.WriteString(fmt.Sprintf("\n--- %s [part %d/%d] ---\n", rel, i+1, len(parts)))
+		b.WriteString(part)
+		if !strings.HasSuffix(part, "\n") {
+			b.WriteByte('\n')
+		}
+	}
+}
+
+func splitWorkspaceContent(content string, maxChars int) []string {
+	if len(content) <= maxChars {
+		return []string{content}
+	}
+	parts := make([]string, 0, (len(content)/maxChars)+1)
+	remaining := content
+	for len(remaining) > maxChars {
+		cut := maxChars
+		if idx := strings.LastIndex(remaining[:maxChars], "\n"); idx >= maxChars/2 {
+			cut = idx + 1
+		}
+		parts = append(parts, remaining[:cut])
+		remaining = remaining[cut:]
+	}
+	if remaining != "" {
+		parts = append(parts, remaining)
+	}
+	return parts
 }
 
 func workspaceContextSkipDir(name string) bool {
