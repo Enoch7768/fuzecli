@@ -5,12 +5,18 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
+	"time"
 )
 
 type Registry struct {
-	providers map[string]Provider
-	fallback  []string
-	models    map[string]string
+	providers  map[string]Provider
+	fallback   []string
+	models     map[string]string
+	limitMu    sync.Mutex
+	lastCall   map[string]time.Time
+	retryUntil map[string]time.Time
+	attempts   map[string]int
 }
 
 func NewRegistry(
@@ -25,214 +31,264 @@ func NewRegistry(
 	}
 
 	return &Registry{
-		providers: registered,
-		fallback:  append([]string(nil), fallback...),
-		models:    defaults,
+		providers:  registered,
+		fallback:   append([]string(nil), fallback...),
+		models:     defaults,
+		lastCall:   map[string]time.Time{},
+		retryUntil: map[string]time.Time{},
+		attempts:   map[string]int{},
 	}
 }
 
-func (r *Registry) Get(
-	name string,
-) (Provider, error) {
+func (r *Registry) Get(name string) (Provider, error) {
 	provider, ok := r.providers[name]
-
 	if !ok {
-		return nil, fmt.Errorf(
-			"provider %q is not configured",
-			name,
-		)
+		return nil, fmt.Errorf("provider %q is not configured", name)
 	}
-
 	return provider, nil
 }
 
-func (r *Registry) ListModels(
-	ctx context.Context,
-	name string,
-) ([]string, error) {
+func (r *Registry) ListModels(ctx context.Context, name string) ([]string, error) {
 	provider, err := r.Get(name)
 	if err != nil {
 		return nil, err
 	}
-
 	return provider.ListModels(ctx)
 }
 
-func (r *Registry) Send(
-	ctx context.Context,
-	name string,
-	messages []Message,
-	opts RequestOptions,
-) (*Response, error) {
+func (r *Registry) Send(ctx context.Context, name string, messages []Message, opts RequestOptions) (*Response, error) {
 	if name != "auto" {
+		requestMessages, request := adaptRequest(name, messages, opts)
+		request.Model = r.model(name, request.Model)
+		if request.Model == "" {
+			return nil, fmt.Errorf("no default model configured for provider %s", name)
+		}
+		if err := r.wait(ctx, name); err != nil {
+			return nil, err
+		}
 		provider, err := r.Get(name)
 		if err != nil {
 			return nil, err
 		}
-
-		request := opts
-
-		if request.Model == "" {
-			request.Model = r.models[name]
-		}
-
-		if request.Model == "" {
-			return nil, fmt.Errorf(
-				"no default model configured for provider %s",
-				name,
-			)
-		}
-
-		messages, request = adaptRequest(name, messages, request)
-
-		return provider.Send(
-			ctx,
-			messages,
-			request,
-		)
+		response, err := provider.Send(ctx, requestMessages, request)
+		r.observe(name, err)
+		return response, err
 	}
 
 	var last error
-
 	for _, candidate := range r.fallback {
+		requestMessages, request := adaptRequest(candidate, messages, opts)
+		request.Model = r.model(candidate, request.Model)
+		if request.Model == "" {
+			last = fmt.Errorf("no default model configured for provider %s", candidate)
+			continue
+		}
+		if err := r.wait(ctx, candidate); err != nil {
+			last = err
+			continue
+		}
 		provider, err := r.Get(candidate)
 		if err != nil {
 			last = err
 			continue
 		}
-
-		request := opts
-
-		if request.Model == "" {
-			request.Model = r.models[candidate]
-		}
-
-		if request.Model == "" {
-			last = fmt.Errorf(
-				"no default model configured for provider %s",
-				candidate,
-			)
-			continue
-		}
-
-		requestMessages, request := adaptRequest(candidate, messages, request)
-
-		response, err := provider.Send(
-			ctx,
-			requestMessages,
-			request,
-		)
-
+		response, err := provider.Send(ctx, requestMessages, request)
+		r.observe(candidate, err)
 		if err == nil {
 			return response, nil
 		}
-
-		if errors.Is(err, ErrRateLimited) ||
-			errors.Is(err, ErrProviderUnavailable) {
+		if errors.Is(err, ErrRateLimited) || errors.Is(err, ErrProviderUnavailable) {
 			last = err
 			continue
 		}
-
 		return nil, err
 	}
 
 	if last == nil {
-		last = fmt.Errorf(
-			"no providers available for auto mode",
-		)
+		last = fmt.Errorf("no providers available for auto mode")
 	}
-
 	return nil, last
 }
 
-func (r *Registry) Stream(
-	ctx context.Context,
-	name string,
-	messages []Message,
-	opts RequestOptions,
-) (<-chan StreamChunk, error) {
+func (r *Registry) Stream(ctx context.Context, name string, messages []Message, opts RequestOptions) (<-chan StreamChunk, error) {
 	if name != "auto" {
 		streamMessages, streamOptions := adaptRequest(name, messages, opts)
+		streamOptions.Model = r.model(name, streamOptions.Model)
+		if streamOptions.Model == "" {
+			return nil, fmt.Errorf("no default model configured for provider %s", name)
+		}
+		if err := r.wait(ctx, name); err != nil {
+			return nil, err
+		}
 		stream, err := r.streamProvider(ctx, name, streamMessages, streamOptions)
+		r.observe(name, err)
 		if err != nil {
 			return nil, err
 		}
-
 		return r.continueStream(ctx, name, streamMessages, streamOptions, stream), nil
 	}
 
 	var last error
-
 	for _, candidate := range r.fallback {
 		streamMessages, streamOptions := adaptRequest(candidate, messages, opts)
-		stream, err := r.streamProvider(ctx, candidate, streamMessages, streamOptions)
-		if err == nil {
-			return r.continueStream(ctx, candidate, streamMessages, streamOptions, stream), nil
+		streamOptions.Model = r.model(candidate, streamOptions.Model)
+		if streamOptions.Model == "" {
+			last = fmt.Errorf("no default model configured for provider %s", candidate)
+			continue
 		}
-
-		if errors.Is(err, ErrRateLimited) ||
-			errors.Is(err, ErrProviderUnavailable) {
+		if err := r.wait(ctx, candidate); err != nil {
 			last = err
 			continue
 		}
-
+		stream, err := r.streamProvider(ctx, candidate, streamMessages, streamOptions)
+		r.observe(candidate, err)
+		if err == nil {
+			return r.continueStream(ctx, candidate, streamMessages, streamOptions, stream), nil
+		}
+		if errors.Is(err, ErrRateLimited) || errors.Is(err, ErrProviderUnavailable) {
+			last = err
+			continue
+		}
 		return nil, err
 	}
 
 	if last == nil {
-		last = fmt.Errorf(
-			"no providers available for auto mode",
-		)
+		last = fmt.Errorf("no providers available for auto mode")
 	}
-
 	return nil, last
 }
 
-func (r *Registry) streamProvider(
-	ctx context.Context,
-	name string,
-	messages []Message,
-	opts RequestOptions,
-) (<-chan StreamChunk, error) {
+func (r *Registry) streamProvider(ctx context.Context, name string, messages []Message, opts RequestOptions) (<-chan StreamChunk, error) {
 	provider, err := r.Get(name)
 	if err != nil {
 		return nil, err
 	}
-
-	request := opts
-
-	if request.Model == "" {
-		request.Model = r.models[name]
-	}
-
-	if request.Model == "" {
-		return nil, fmt.Errorf(
-			"no default model configured for provider %s",
-			name,
-		)
-	}
-
-	return provider.Stream(
-		ctx,
-		messages,
-		request,
-	)
+	return provider.Stream(ctx, messages, opts)
 }
 
-func adaptRequest(
-	name string,
-	messages []Message,
-	opts RequestOptions,
-) ([]Message, RequestOptions) {
-	if name != "groq" {
-		return messages, opts
+func (r *Registry) model(name, requested string) string {
+	if requested != "" {
+		return requested
+	}
+	return r.models[name]
+}
+
+func (r *Registry) wait(ctx context.Context, name string) error {
+	r.limitMu.Lock()
+	readyAt := r.lastCall[name].Add(providerMinInterval(name))
+	if r.retryUntil[name].After(readyAt) {
+		readyAt = r.retryUntil[name]
+	}
+	r.limitMu.Unlock()
+
+	waitFor := time.Until(readyAt)
+	if waitFor <= 0 {
+		return nil
 	}
 
-	if opts.MaxTokens <= 0 || opts.MaxTokens > 3000 {
-		opts.MaxTokens = 3000
+	timer := time.NewTimer(waitFor)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
+}
+
+func (r *Registry) observe(name string, err error) {
+	r.limitMu.Lock()
+	defer r.limitMu.Unlock()
+
+	r.lastCall[name] = time.Now()
+	if err == nil {
+		r.attempts[name] = 0
+		r.retryUntil[name] = time.Time{}
+		return
 	}
 
-	return trimProviderMessages(messages, 12000), opts
+	var providerErr *ProviderError
+	if !errors.As(err, &providerErr) {
+		return
+	}
+
+	switch providerErr.Kind {
+	case ErrorRateLimited:
+		r.attempts[name]++
+		step := r.attempts[name]
+		if step > 6 {
+			step = 6
+		}
+		delay := time.Duration(providerErr.RetryAfter) * time.Second
+		if delay <= 0 {
+			delay = time.Duration(1<<uint(step-1)) * time.Second
+		}
+		if delay > 90*time.Second {
+			delay = 90 * time.Second
+		}
+		delay += time.Duration(time.Now().UnixNano()%500) * time.Millisecond
+		r.retryUntil[name] = time.Now().Add(delay)
+	case ErrorProviderUnavailable, ErrorOverloaded:
+		r.attempts[name]++
+		step := r.attempts[name]
+		if step > 5 {
+			step = 5
+		}
+		delay := time.Duration(1<<uint(step-1)) * time.Second
+		delay += time.Duration(time.Now().UnixNano()%400) * time.Millisecond
+		r.retryUntil[name] = time.Now().Add(delay)
+	default:
+		r.attempts[name] = 0
+	}
+}
+
+func providerMinInterval(name string) time.Duration {
+	switch strings.ToLower(name) {
+	case "groq":
+		return 1500 * time.Millisecond
+	case "gemini":
+		return 1200 * time.Millisecond
+	case "openai":
+		return 1000 * time.Millisecond
+	case "anthropic":
+		return 1000 * time.Millisecond
+	default:
+		return 750 * time.Millisecond
+	}
+}
+
+func adaptRequest(name string, messages []Message, opts RequestOptions) ([]Message, RequestOptions) {
+	budget := providerBudget(name)
+	request := opts
+
+	if request.MaxTokens <= 0 || request.MaxTokens > budget.maxOutputTokens {
+		request.MaxTokens = budget.maxOutputTokens
+	}
+	if request.JSONMode && request.MaxTokens > budget.jsonOutputTokens {
+		request.MaxTokens = budget.jsonOutputTokens
+	}
+	return trimProviderMessages(messages, budget.maxInputChars), request
+}
+
+type requestBudget struct {
+	maxInputChars    int
+	maxOutputTokens  int
+	jsonOutputTokens int
+}
+
+func providerBudget(name string) requestBudget {
+	switch strings.ToLower(name) {
+	case "groq":
+		return requestBudget{maxInputChars: 14000, maxOutputTokens: 2500, jsonOutputTokens: 2200}
+	case "gemini":
+		return requestBudget{maxInputChars: 50000, maxOutputTokens: 5000, jsonOutputTokens: 4500}
+	case "openai":
+		return requestBudget{maxInputChars: 50000, maxOutputTokens: 6000, jsonOutputTokens: 5000}
+	case "anthropic":
+		return requestBudget{maxInputChars: 80000, maxOutputTokens: 8000, jsonOutputTokens: 7000}
+	default:
+		return requestBudget{maxInputChars: 50000, maxOutputTokens: 6000, jsonOutputTokens: 5000}
+	}
 }
 
 func trimProviderMessages(messages []Message, maxChars int) []Message {
@@ -244,53 +300,40 @@ func trimProviderMessages(messages []Message, maxChars int) []Message {
 	for _, message := range messages {
 		total += len(message.Content)
 	}
-
 	if total <= maxChars {
 		return messages
 	}
 
-	if len(messages) == 1 {
-		return []Message{truncateMessage(messages[0], maxChars)}
-	}
-
 	first := messages[0]
 	last := messages[len(messages)-1]
-	budget := maxChars - len(first.Content)
-	if budget <= 0 {
-		return []Message{
-			truncateMessage(first, maxChars/2),
-			truncateMessage(last, maxChars-maxChars/2),
-		}
+	firstBudget := maxChars / 4
+	if first.Role != "system" {
+		firstBudget = 0
+	}
+	lastBudget := maxChars - firstBudget
+
+	result := make([]Message, 0, len(messages))
+	if firstBudget > 0 {
+		result = append(result, truncateMessage(first, firstBudget))
 	}
 
-	if len(last.Content) >= budget {
-		firstBudget := maxChars / 4
-		lastBudget := maxChars - firstBudget
-		return []Message{
-			truncateMessage(first, firstBudget),
-			truncateMessage(last, lastBudget),
-		}
-	}
-
-	result := []Message{first}
-	used := len(first.Content) + len(last.Content)
-
+	used := firstBudget
 	for i := len(messages) - 2; i >= 1; i-- {
-		remaining := maxChars - used
+		remaining := maxChars - used - minInt(len(last.Content), lastBudget)
 		if remaining <= 0 {
 			break
 		}
-		if len(messages[i].Content) <= remaining {
-			result = append([]Message{messages[i]}, result...)
-			used += len(messages[i].Content)
+		if len(messages[i].Content) > remaining {
 			continue
 		}
-		result = append([]Message{truncateMessage(messages[i], remaining)}, result...)
-		used = maxChars
-		break
+		result = append([]Message{messages[i]}, result...)
+		used += len(messages[i].Content)
 	}
 
-	result = append(result, last)
+	lastMax := maxChars - used
+	if lastMax > 0 {
+		result = append(result, truncateMessage(last, lastMax))
+	}
 	return result
 }
 
@@ -301,21 +344,18 @@ func truncateMessage(message Message, maxChars int) Message {
 	if len(message.Content) <= maxChars {
 		return message
 	}
-	content := message.Content[:maxChars]
-	if maxChars > 96 {
-		content = content[:maxChars-96] + "\n\n[Earlier content trimmed by FuzeCLI to respect the provider token limit.]"
-	}
-	message.Content = content
+	message.Content = message.Content[:maxChars]
 	return message
 }
 
-func (r *Registry) continueStream(
-	ctx context.Context,
-	name string,
-	messages []Message,
-	opts RequestOptions,
-	initial <-chan StreamChunk,
-) <-chan StreamChunk {
+func minInt(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+func (r *Registry) continueStream(ctx context.Context, name string, messages []Message, opts RequestOptions, initial <-chan StreamChunk) <-chan StreamChunk {
 	out := make(chan StreamChunk)
 
 	go func() {
@@ -324,41 +364,29 @@ func (r *Registry) continueStream(
 		current := initial
 		combined := strings.Builder{}
 		continuations := 0
-		limit := opts.MaxTokens * 4
-		if limit < 12000 {
-			limit = 12000
+		threshold := int(float64(opts.MaxTokens*4) * 0.84)
+		if threshold < 5000 {
+			threshold = 5000
 		}
-		threshold := int(float64(limit) * 0.84)
 
 		for {
 			finished := false
-
 			for chunk := range current {
 				if chunk.Error != nil {
 					out <- chunk
 					return
 				}
-
 				if chunk.Delta != "" {
 					combined.WriteString(chunk.Delta)
 					out <- StreamChunk{Delta: chunk.Delta}
 				}
-
 				if chunk.Done {
 					finished = true
 				}
 			}
 
 			partial := strings.TrimSpace(combined.String())
-			if !finished ||
-				continuations >= 3 ||
-				combined.Len() < threshold ||
-				!needsContinuation(partial) {
-				out <- StreamChunk{Done: true}
-				return
-			}
-
-			if partial == "" {
+			if !finished || continuations >= 3 || combined.Len() < threshold || !needsContinuation(partial) {
 				out <- StreamChunk{Done: true}
 				return
 			}
@@ -369,10 +397,13 @@ func (r *Registry) continueStream(
 				Message{Role: "assistant", Content: partial},
 				Message{Role: "user", Content: "Continue the previous response exactly from where it stopped. Do not repeat any text. Output only the missing continuation. Preserve the same format and complete the response."},
 			)
-
 			continuationMessages, continuationOptions := adaptRequest(name, continuationMessages, opts)
-			var err error
-			current, err = r.streamProvider(ctx, name, continuationMessages, continuationOptions)
+			if err := r.wait(ctx, name); err != nil {
+				out <- StreamChunk{Error: err}
+				return
+			}
+			current, err := r.streamProvider(ctx, name, continuationMessages, continuationOptions)
+			r.observe(name, err)
 			if err != nil {
 				out <- StreamChunk{Error: err}
 				return
@@ -387,17 +418,14 @@ func needsContinuation(text string) bool {
 	if text == "" {
 		return false
 	}
-
 	if strings.Count(text, "```")%2 != 0 {
 		return true
 	}
-
 	last := rune(text[len(text)-1])
 	for _, mark := range []rune{'.', '!', '?', ':', ';', ')', ']', '}', '"', '\'', '`'} {
 		if last == mark {
 			return false
 		}
 	}
-
 	return true
 }
