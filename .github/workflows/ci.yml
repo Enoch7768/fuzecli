@@ -25,6 +25,11 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Normalize Git line endings
+        shell: pwsh
+        run: |
+          git config core.autocrlf false
+          git checkout -- .
       - uses: actions/setup-go@v5
         with:
           go-version: ${{ matrix.go-version }}
