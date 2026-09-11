@@ -1,506 +1,697 @@
-const $=id=>document.getElementById(id);
-const conversation=$('conversation');
-const prompt=$('prompt');
-const send=$('send');
-const code=$('code');
-const providerSelect=$('providerSelect');
-const modelInput=$('modelInput');
-const modelOptions=$('modelOptions');
-const settingsState=$('settingsState');
-const tabs=[...document.querySelectorAll('.nav[data-tab]')];
-let settings=null;
-let selectedProvider='';
-let selectedModel='';
-let jobRunning=false;
-let activeAssistant=null;
-let thinkingAssistant=null;
-let lastPrompt='';
+const $ = id => document.getElementById(id)
+const conversation = $('conversation')
+const prompt = $('prompt')
+const send = $('send')
+const fileInput = $('fileInput')
+const attachmentsNode = $('attachments')
+const composerWrap = $('composerWrap')
+const dropOverlay = $('dropOverlay')
+const providerSelect = $('providerSelect')
+const modelInput = $('modelInput')
+const modelOptions = $('modelOptions')
+const providerSettings = $('providerSettings')
+const modelSettings = $('modelSettings')
+const modelSettingsOptions = $('modelSettingsOptions')
+const sidebar = $('sidebar')
+const historyList = $('historyList')
+const toast = $('toast')
+const composerStatus = $('composerStatus')
 
-function escapeHTML(value){return String(value??'').replace(/[&<>\"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[c]));}
+const STORAGE_KEY = 'fuzecli.web.chats.v2'
+const MAX_ATTACHMENT_BYTES = 64 * 1024
+const MAX_ATTACHMENTS = 6
+const MAX_ATTACHMENT_TOTAL = 256 * 1024
 
-function renderMessageText(text){
-  const safe=escapeHTML(text||'');
-  const parts=safe.split(/(```[\\s\\S]*?```)/g);
-  return parts.map(part=>{
-    if(part.startsWith('```')){
-      const raw=part.slice(3,-3).replace(/^\\s*[a-zA-Z0-9_-]+\\s*\\n/,'');
-      return `<pre><code>${raw}</code></pre>`;
+let settings = null
+let selectedProvider = ''
+let selectedModel = ''
+let busy = false
+let activeAssistant = null
+let thinkingNode = null
+let lastPrompt = ''
+let queuedFiles = []
+let currentChat = null
+let externalContext = false
+let source = null
+let toastTimer = null
+
+function escapeHTML(value) {
+  return String(value ?? '').replace(/[&<>\"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[c]))
+}
+
+function renderMarkdown(text) {
+  const safe = escapeHTML(text || '')
+  const blocks = safe.split(/(```[\s\S]*?```)/g)
+  return blocks.map(block => {
+    if (block.startsWith('```')) {
+      const raw = block.slice(3, -3).replace(/^\s*[a-zA-Z0-9_+-]+\s*\n/, '')
+      return `<pre><code>${raw}</code></pre>`
     }
-    return part.replace(/\\*\\*(.+?)\\*\\*/g,'<strong>$1</strong>').replace(/`([^`]+)`/g,'<code>$1</code>').replace(/\\n/g,'<br>');
-  }).join('');
+    const paragraphs = block.split(/\n{2,}/g).map(part => {
+      const value = part.replace(/\n/g, '<br>')
+        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+        .replace(/`([^`]+)`/g, '<code>$1</code>')
+      return value ? `<p>${value}</p>` : ''
+    }).join('')
+    return paragraphs
+  }).join('')
 }
 
-function addMessage(role,text,options={}){
-  const wrap=document.createElement('article');
-  wrap.className=`message-group ${role}`;
-  const avatar=document.createElement('div');
-  avatar.className='message-avatar';
-  avatar.textContent=role==='user'?'You':'F';
-  const body=document.createElement('div');
-  body.className='message-body';
-  const head=document.createElement('div');
-  head.className='message-head';
-  const name=document.createElement('span');
-  name.textContent=role==='user'?'You':'FuzeCLI';
-  head.appendChild(name);
-  if(options.meta){
-    const meta=document.createElement('small');
-    meta.textContent=options.meta;
-    head.appendChild(meta);
-  }
-  const content=document.createElement('div');
-  content.className='message-content';
-  content.dataset.raw=text||'';
-  content.innerHTML=role==='assistant'?renderMessageText(text):escapeHTML(text).replace(/\n/g,'<br>');
-  body.appendChild(head);
-  body.appendChild(content);
-  if(role==='assistant'){
-    const actions=document.createElement('div');
-    actions.className='message-actions';
-    const copy=document.createElement('button');
-    copy.type='button';
-    copy.textContent='Copy';
-    copy.addEventListener('click',async()=>{
-      try{await navigator.clipboard.writeText(content.dataset.raw||content.textContent||'');copy.textContent='Copied';setTimeout(()=>copy.textContent='Copy',1200);}catch{copy.textContent='Copy failed';setTimeout(()=>copy.textContent='Copy',1200);}
-    });
-    actions.appendChild(copy);
-    body.appendChild(actions);
-  }
-  wrap.appendChild(avatar);
-  wrap.appendChild(body);
-  conversation.appendChild(wrap);
-  conversation.scrollTop=conversation.scrollHeight;
-  return content;
+function showToast(message) {
+  toast.textContent = message
+  toast.classList.add('show')
+  clearTimeout(toastTimer)
+  toastTimer = setTimeout(() => toast.classList.remove('show'), 1800)
 }
 
-function ensureThinking(message='Thinking…',meta='working'){
-  if(!thinkingAssistant){
-    thinkingAssistant=addMessage('assistant',message,{meta});
-    thinkingAssistant.classList.add('thinking-content');
-    const group=thinkingAssistant.closest('.message-group');
-    if(group)group.classList.add('thinking-group');
-  }else{
-    thinkingAssistant.dataset.raw=message;
-    thinkingAssistant.innerHTML=renderMessageText(message);
-    const group=thinkingAssistant.closest('.message-group');
-    if(group){
-      const metaNode=group.querySelector('.message-head small');
-      if(metaNode)metaNode.textContent=meta;
+function formatBytes(bytes) {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`
+}
+
+async function fetchJSON(url, options) {
+  const response = await fetch(url, options)
+  let data = {}
+  try { data = await response.json() } catch {}
+  if (!response.ok) {
+    const error = new Error(data.error || data.message || `Request failed with HTTP ${response.status}`)
+    error.payload = data
+    throw error
+  }
+  return data
+}
+
+function chats() {
+  try {
+    const data = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]')
+    return Array.isArray(data) ? data : []
+  } catch {
+    return []
+  }
+}
+
+function saveChats(items) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(items.slice(0, 100)))
+}
+
+function makeChat(title = 'New chat') {
+  return { id: crypto.randomUUID(), title, createdAt: Date.now(), messages: [] }
+}
+
+function deriveTitle(text) {
+  const clean = String(text || '').replace(/\s+/g, ' ').trim()
+  if (!clean) return 'New chat'
+  return clean.length > 42 ? `${clean.slice(0, 42).trim()}…` : clean
+}
+
+function archiveCurrentChat() {
+  if (!currentChat || currentChat.messages.length === 0) return
+  const items = chats().filter(item => item.id !== currentChat.id)
+  items.unshift(currentChat)
+  saveChats(items)
+}
+
+function renderHistory() {
+  const items = chats()
+  historyList.innerHTML = ''
+  if (!items.length) {
+    historyList.innerHTML = '<div class="history-empty">Your conversations will appear here.</div>'
+    return
+  }
+  items.forEach(item => {
+    const button = document.createElement('button')
+    button.className = `history-item${currentChat?.id === item.id ? ' active' : ''}`
+    button.textContent = item.title || 'New chat'
+    button.title = item.title || 'New chat'
+    button.addEventListener('click', () => openSavedChat(item.id))
+    historyList.appendChild(button)
+  })
+}
+
+function persistCurrentChat() {
+  if (!currentChat || !currentChat.messages.length) return
+  const items = chats().filter(item => item.id !== currentChat.id)
+  items.unshift(currentChat)
+  saveChats(items)
+  renderHistory()
+}
+
+function clearConversationView() {
+  conversation.innerHTML = ''
+  activeAssistant = null
+  thinkingNode = null
+}
+
+function addMessage(role, text, meta = '') {
+  const row = document.createElement('article')
+  row.className = `message-row ${role}`
+  const avatar = document.createElement('div')
+  avatar.className = 'message-avatar'
+  avatar.textContent = role === 'user' ? 'You' : 'F'
+  const bubble = document.createElement('div')
+  bubble.className = 'message-bubble'
+  const content = document.createElement('div')
+  content.className = 'message-content'
+  content.dataset.raw = text || ''
+  content.innerHTML = role === 'assistant' ? renderMarkdown(text) : `<p>${escapeHTML(text || '').replace(/\n/g, '<br>')}</p>`
+  bubble.appendChild(content)
+  if (meta) {
+    const metaNode = document.createElement('div')
+    metaNode.className = 'message-meta'
+    metaNode.textContent = meta
+    bubble.appendChild(metaNode)
+  }
+  if (role === 'assistant') {
+    const tools = document.createElement('div')
+    tools.className = 'message-tools'
+    const copy = document.createElement('button')
+    copy.type = 'button'
+    copy.textContent = 'Copy'
+    copy.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(content.dataset.raw || content.textContent || '')
+        showToast('Copied')
+      } catch {
+        showToast('Copy unavailable')
+      }
+    })
+    tools.appendChild(copy)
+    bubble.appendChild(tools)
+  }
+  row.appendChild(avatar)
+  row.appendChild(bubble)
+  conversation.appendChild(row)
+  conversation.scrollTop = conversation.scrollHeight
+  return content
+}
+
+function ensureThinking(text = 'Thinking…') {
+  if (!thinkingNode) {
+    const row = document.createElement('article')
+    row.className = 'message-row assistant thinking-row'
+    const avatar = document.createElement('div')
+    avatar.className = 'message-avatar'
+    avatar.textContent = 'F'
+    const bubble = document.createElement('div')
+    bubble.className = 'message-bubble'
+    const content = document.createElement('div')
+    content.className = 'message-content'
+    content.innerHTML = `<span class="thinking"><i></i><i></i><i></i></span>`
+    bubble.appendChild(content)
+    row.appendChild(avatar)
+    row.appendChild(bubble)
+    conversation.appendChild(row)
+    thinkingNode = content
+  }
+  if (text) thinkingNode.dataset.message = text
+  conversation.scrollTop = conversation.scrollHeight
+}
+
+function clearThinking() {
+  if (!thinkingNode) return
+  const row = thinkingNode.closest('.message-row')
+  if (row) row.remove()
+  thinkingNode = null
+}
+
+function ensureAssistant() {
+  clearThinking()
+  if (!activeAssistant) {
+    activeAssistant = addMessage('assistant', '', selectedModel || 'streaming')
+    activeAssistant.classList.add('streaming')
+  }
+  return activeAssistant
+}
+
+function appendAssistantDelta(delta) {
+  if (!delta) return
+  const node = ensureAssistant()
+  node.dataset.raw = (node.dataset.raw || '') + delta
+  node.innerHTML = renderMarkdown(node.dataset.raw)
+  conversation.scrollTop = conversation.scrollHeight
+}
+
+function finishAssistant() {
+  clearThinking()
+  if (activeAssistant) activeAssistant.classList.remove('streaming')
+  activeAssistant = null
+}
+
+function addGenerationMessage(files, message) {
+  clearThinking()
+  if (activeAssistant) {
+    const row = activeAssistant.closest('.message-row')
+    if (row) row.remove()
+    activeAssistant = null
+  }
+  const content = addMessage('assistant', message || 'Your workspace was updated.')
+  const card = document.createElement('div')
+  card.className = 'generation-card'
+  card.innerHTML = `<strong>Workspace updated</strong><p>${escapeHTML(message || `Updated ${files.length} file${files.length === 1 ? '' : 's'}.`)}</p><div class="generation-files">${files.slice(0, 24).map(path => `<div class="generation-file">${escapeHTML(path)}</div>`).join('')}</div><a class="generation-download" href="/api/download">Download workspace</a>`
+  content.innerHTML = ''
+  content.appendChild(card)
+}
+
+function addErrorMessage(payload) {
+  finishAssistant()
+  const content = addMessage('assistant', '')
+  content.innerHTML = `<div class="error-card"><strong>${escapeHTML(payload.title || 'Request failed')}</strong><p>${escapeHTML(payload.error || payload.message || 'The request could not be completed.')}</p>${payload.recovery ? `<small>${escapeHTML(payload.recovery)}</small>` : ''}</div>`
+}
+
+function syncComposerState() {
+  send.disabled = busy || !prompt.value.trim()
+  composerStatus.textContent = busy ? 'Working…' : queuedFiles.length ? `${queuedFiles.length} file${queuedFiles.length === 1 ? '' : 's'} attached` : 'Ready'
+}
+
+function renderAttachments() {
+  attachmentsNode.innerHTML = ''
+  queuedFiles.forEach(file => {
+    const chip = document.createElement('div')
+    chip.className = 'attachment-chip'
+    chip.innerHTML = `<span>${escapeHTML(file.name)}</span><small>${formatBytes(file.size)}</small>`
+    const remove = document.createElement('button')
+    remove.className = 'attachment-remove'
+    remove.type = 'button'
+    remove.textContent = '×'
+    remove.setAttribute('aria-label', `Remove ${file.name}`)
+    remove.addEventListener('click', () => {
+      queuedFiles = queuedFiles.filter(item => item.id !== file.id)
+      renderAttachments()
+      syncComposerState()
+    })
+    chip.appendChild(remove)
+    attachmentsNode.appendChild(chip)
+  })
+}
+
+async function readUpload(file) {
+  if (file.size > MAX_ATTACHMENT_BYTES) throw new Error(`${file.name} is larger than 64 KiB.`)
+  const data = new Uint8Array(await file.arrayBuffer())
+  const decoder = new TextDecoder('utf-8', { fatal: true })
+  let content
+  try { content = decoder.decode(data) } catch { throw new Error(`${file.name} is not valid UTF-8 text.`) }
+  return { id: crypto.randomUUID(), name: file.name, size: file.size, content }
+}
+
+async function queueUploads(files) {
+  const list = Array.from(files || [])
+  if (!list.length) return
+  const combined = queuedFiles.reduce((sum, file) => sum + file.size, 0)
+  if (queuedFiles.length + list.length > MAX_ATTACHMENTS) {
+    showToast(`Maximum ${MAX_ATTACHMENTS} files`) 
+    return
+  }
+  let total = combined
+  for (const file of list) {
+    if (total + file.size > MAX_ATTACHMENT_TOTAL) {
+      showToast('Attachment limit reached')
+      break
+    }
+    try {
+      const item = await readUpload(file)
+      queuedFiles.push(item)
+      total += item.size
+    } catch (error) {
+      showToast(error.message)
     }
   }
-  conversation.scrollTop=conversation.scrollHeight;
+  renderAttachments()
+  syncComposerState()
 }
 
-function clearThinking(){
-  if(!thinkingAssistant)return;
-  const group=thinkingAssistant.closest('.message-group');
-  if(group)group.remove();
-  thinkingAssistant=null;
-}
-
-function ensureAssistant(){
-  clearThinking();
-  if(!activeAssistant){
-    activeAssistant=addMessage('assistant','',{meta:`${selectedModel||'model'} · streaming`});
-    activeAssistant.classList.add('streaming-content');
-  }
-  return activeAssistant;
-}
-
-function finishAssistant(){
-  clearThinking();
-  if(activeAssistant){
-    activeAssistant.classList.remove('streaming-content');
-    const group=activeAssistant.closest('.message-group');
-    if(group){
-      const meta=group.querySelector('.message-head small');
-      if(meta)meta.textContent=selectedModel||'model';
+async function loadSettings() {
+  try {
+    settings = await fetchJSON('/api/config')
+    providerSelect.innerHTML = ''
+    providerSettings.innerHTML = ''
+    for (const name of Object.keys(settings.providers || {})) {
+      const label = name === 'llamacpp' ? 'llama.cpp' : name[0].toUpperCase() + name.slice(1)
+      for (const select of [providerSelect, providerSettings]) {
+        const option = document.createElement('option')
+        option.value = name
+        option.textContent = label
+        select.appendChild(option)
+      }
     }
-  }
-  activeAssistant=null;
-}
-
-function appendAssistantDelta(delta){
-  if(!delta)return;
-  const node=ensureAssistant();
-  node.dataset.raw=(node.dataset.raw||'')+delta;
-  node.innerHTML=renderMessageText(node.dataset.raw);
-  conversation.scrollTop=conversation.scrollHeight;
-}
-
-function showGeneratedSummary(files,message){
-  clearThinking();
-  if(!activeAssistant){activeAssistant=addMessage('assistant','',{meta:selectedModel||'model'});}
-  const content=activeAssistant;
-  content.dataset.raw=message||'';
-  const list=(files||[]).slice(0,24).map(path=>`<div class="generation-file">${escapeHTML(path)}</div>`).join('');
-  const more=(files||[]).length>24?`<div class="inline-error-meta">${files.length-24} more files are in the workspace.</div>`:'';
-  content.innerHTML=`<div class="generation-card"><strong>Code generated successfully</strong><p>${escapeHTML(message||`Generated ${files.length} file${files.length===1?'':'s'} and saved them to the workspace.`)}</p>${list?`<div class="generation-files">${list}</div>`:''}${more}<a class="generation-download" href="/api/download">Download code</a></div>`;
-}
-
-function showError(payload){
-  const data=typeof payload==='string'?parseErrorPayload(payload):payload||{};
-  $('errorTitle').textContent=data.title||'Something went wrong';
-  $('errorText').textContent=data.error||data.message||'The request could not be completed.';
-  const bits=[];
-  if(data.provider)bits.push(data.provider);
-  if(data.model)bits.push(data.model);
-  if(data.status_code)bits.push(`HTTP ${data.status_code}`);
-  if(data.retry_after)bits.push(`retry in ~${data.retry_after}s`);
-  $('errorMeta').textContent=bits.join(' · ');
-  $('errorRecovery').textContent=data.recovery||'';
-  $('errorTechnical').textContent=data.technical||'';
-  $('errorTechnicalWrap').classList.toggle('hidden',!data.technical);
-  $('retryError').classList.toggle('hidden',!data.retryable||!lastPrompt);
-  $('errorBox').classList.remove('hidden');
-}
-
-function parseErrorPayload(value){
-  try{const parsed=JSON.parse(value);if(parsed&&typeof parsed==='object')return parsed;}catch{}
-  return{message:String(value)};
-}
-
-function clearError(){
-  $('errorBox').classList.add('hidden');
-  $('errorTitle').textContent='Something went wrong';
-  $('errorText').textContent='';
-  $('errorMeta').textContent='';
-  $('errorRecovery').textContent='';
-  $('errorTechnical').textContent='';
-  $('retryError').classList.add('hidden');
-  $('errorTechnicalWrap').classList.add('hidden');
-}
-
-function setProgress(e){
-  const total=Number(e.total_files||0);
-  const completed=Number(e.completed_files||0);
-  const pct=total?Math.min(100,Math.round(completed/total*100)):e.status==='completed'?100:0;
-  $('percent').textContent=`${pct}%`;
-  $('completed').textContent=completed;
-  $('total').textContent=total;
-  $('current').textContent=e.current_file||e.project||'Waiting for a request';
-  $('message').textContent=e.message||'Ready';
-  $('status').textContent=prettyStatus(e.status||'idle');
-  $('progressRing').style.setProperty('--progress',`${pct*3.6}deg`);
-  $('agentProvider').textContent=e.provider||selectedProvider||'—';
-  $('agentModel').textContent=e.model||selectedModel||'—';
-  $('elapsed').textContent=formatElapsed(Number(e.elapsed_millis||0));
-  $('sideRuntime').textContent=e.status==='failed'?'Needs attention':e.status==='completed'?'Ready':e.status&&e.status!=='idle'?'Working':'Ready';
-  const order=['planning','generating','verifying','completed'];
-  document.querySelectorAll('.step').forEach(step=>{
-    step.classList.remove('active','done');
-    const name=step.dataset.step;
-    const i=order.indexOf(name);
-    const current=order.indexOf(e.status);
-    if(e.status==='completed'||(current>=0&&i<current))step.classList.add('done');
-    if(name===e.status)step.classList.add('active');
-  });
-}
-
-function prettyStatus(value){
-  const map={idle:'Idle',planning:'Thinking',planned:'Planned',generating:'Generating',writing:'Writing',verifying:'Checking',correcting:'Correcting',streaming:'Responding',completed:'Complete',failed:'Failed'};
-  return map[value]||value;
-}
-
-function formatElapsed(ms){
-  const seconds=Math.max(0,Math.floor(ms/1000));
-  if(seconds<60)return`${seconds}s`;
-  return`${Math.floor(seconds/60)}m ${String(seconds%60).padStart(2,'0')}s`;
-}
-
-function openTab(name){
-  tabs.forEach(t=>t.classList.toggle('active',t.dataset.tab===name));
-  document.querySelectorAll('.view').forEach(v=>v.classList.toggle('active',v.id===`view-${name}`));
-  const titles={chat:'Chat',workspace:'Workspace',plan:'Project plan',settings:'Settings'};
-  $('pageTitle').textContent=titles[name]||'Chat';
-  if(name==='workspace')loadWorkspace();
-  if(name==='plan')loadPlan();
-  if(name==='settings')loadSettings();
-}
-
-tabs.forEach(t=>t.addEventListener('click',()=>openTab(t.dataset.tab)));
-
-async function fetchJSON(url,options){
-  const response=await fetch(url,options);
-  let data={};
-  try{data=await response.json();}catch{}
-  if(!response.ok){
-    const error=new Error(data.error||data.message||`Request failed with HTTP ${response.status}`);
-    error.payload=data;
-    throw error;
-  }
-  return data;
-}
-
-async function loadSettings(){
-  try{
-    const d=await fetchJSON('/api/config');
-    settings=d;
-    providerSelect.innerHTML='';
-    Object.keys(d.providers||{}).forEach(name=>{
-      const option=document.createElement('option');
-      option.value=name;
-      option.textContent=name==='llamacpp'?'llama.cpp':name[0].toUpperCase()+name.slice(1);
-      providerSelect.appendChild(option);
-    });
-    selectedProvider=d.default_provider||providerSelect.value||'';
-    providerSelect.value=selectedProvider;
-    await loadModels();
-  }catch(error){
-    showError(error.payload||error.message);
-    settingsState.textContent='Settings unavailable';
+    selectedProvider = settings.default_provider || providerSelect.value || ''
+    providerSelect.value = selectedProvider
+    providerSettings.value = selectedProvider
+    await loadModels(selectedProvider)
+  } catch (error) {
+    showToast(error.message)
   }
 }
 
-async function loadModels(){
-  const provider=providerSelect.value;
-  if(!provider)return;
-  modelOptions.innerHTML='';
-  modelInput.value='Loading…';
-  modelInput.disabled=true;
-  try{
-    const d=await fetchJSON(`/api/models?provider=${encodeURIComponent(provider)}`);
-    const discovered=[...(d.models||[])];
-    discovered.forEach(model=>{const option=document.createElement('option');option.value=model;modelOptions.appendChild(option);});
-    const configured=settings?.providers?.[provider]?.default_model||'';
-    selectedProvider=provider;
-    selectedModel=configured||discovered[0]||'';
-    modelInput.value=selectedModel;
-    $('providerLabel').textContent=provider;
-    $('modelLabel').textContent=selectedModel||'No model';
-    $('agentProvider').textContent=provider;
-    $('agentModel').textContent=selectedModel||'—';
-    clearError();
-  }catch(error){
-    const configured=settings?.providers?.[provider]?.default_model||'';
-    selectedProvider=provider;
-    selectedModel=configured;
-    modelInput.value=configured;
-    $('providerLabel').textContent=provider;
-    $('modelLabel').textContent=configured||'Unavailable';
-    $('agentProvider').textContent=provider;
-    $('agentModel').textContent=configured||'—';
-    showError(error.payload||error.message);
-  }finally{modelInput.disabled=false;}
-}
-
-providerSelect.addEventListener('change',loadModels);
-modelInput.addEventListener('input',()=>{selectedModel=modelInput.value.trim();$('modelLabel').textContent=selectedModel||'No model';$('agentModel').textContent=selectedModel||'—';});
-
-$('saveSettings').addEventListener('click',async()=>{
-  const provider=providerSelect.value;
-  const model=modelInput.value.trim();
-  if(!provider||!model){showError({title:'Settings need a provider and model',error:'Select a provider and enter a model name.',recovery:'Choose a discovered model or enter the exact model identifier supported by the provider.'});return;}
-  settingsState.textContent='Saving…';
-  try{
-    const d=await fetchJSON('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({provider,model})});
-    selectedProvider=d.provider;
-    selectedModel=d.model;
-    $('providerLabel').textContent=selectedProvider;
-    $('modelLabel').textContent=selectedModel;
-    $('agentProvider').textContent=selectedProvider;
-    $('agentModel').textContent=selectedModel;
-    settingsState.textContent='Saved';
-    setTimeout(()=>settingsState.textContent='',1800);
-    clearError();
-  }catch(error){settingsState.textContent='Could not save';showError(error.payload||error.message);}
-});
-
-async function loadWorkspace(){
-  const list=$('fileList');
-  list.innerHTML='<div class="loading">Loading workspace…</div>';
-  try{
-    const d=await fetchJSON('/api/workspace');
-    $('workspaceRoot').textContent=d.root||'Workspace';
-    list.innerHTML='';
-    if(!d.files?.length){list.innerHTML='<div class="empty-state">No generated files are being tracked yet.</div>';return;}
-    d.files.forEach(file=>{const row=document.createElement('div');row.className='file-row';row.innerHTML=`<span class="file-icon">□</span><div><strong>${escapeHTML(file.path)}</strong><small>${formatBytes(file.size)} · ${new Date(file.modified).toLocaleString()}</small></div>`;list.appendChild(row);});
-  }catch(error){
-    list.innerHTML=`<div class="error-box"><div class="error-icon">!</div><div class="error-content"><strong>${escapeHTML(error.payload?.title||'Workspace unavailable')}</strong><p>${escapeHTML(error.payload?.error||error.message)}</p><small>${escapeHTML(error.payload?.recovery||'')}</small></div></div>`;
-  }
-}
-
-async function loadPlan(){
-  const box=$('planContent');
-  box.innerHTML='<div class="loading">Loading project plan…</div>';
-  try{
-    const d=await fetchJSON('/api/plan');
-    if(!d.exists){box.innerHTML='<div class="empty-state">No project plan is active. Start a larger /code request to create one.</div>';return;}
-    const p=d.plan;
-    const files=p.files||[];
-    const done=files.filter(file=>file.status==='completed').length;
-    const pct=files.length?Math.round(done/files.length*100):0;
-    box.innerHTML=`<div class="plan-summary"><span class="kicker">${escapeHTML(p.project)}</span><h3>${escapeHTML(p.summary)}</h3><div class="plan-progress"><span style="width:${pct}%"></span></div><div class="plan-count">${done} of ${files.length} files complete</div></div><div class="file-list">${files.map(file=>`<div class="file-row ${file.status==='completed'?'complete':''}"><span class="file-status">${file.status==='completed'?'✓':'○'}</span><div><strong>${escapeHTML(file.path)}</strong><small>${escapeHTML(file.purpose||'Planned file')}</small></div></div>`).join('')}</div>`;
-  }catch(error){box.innerHTML=`<div class="error-box"><div class="error-icon">!</div><div class="error-content"><strong>${escapeHTML(error.payload?.title||'Project plan unavailable')}</strong><p>${escapeHTML(error.payload?.error||error.message)}</p><small>${escapeHTML(error.payload?.recovery||'')}</small></div></div>`;}
-}
-
-function formatBytes(n){if(n<1024)return`${n} B`;if(n<1048576)return`${(n/1024).toFixed(1)} KB`;return`${(n/1048576).toFixed(1)} MB`;}
-function resetConversationVisual(){conversation.innerHTML='';activeAssistant=null;thinkingAssistant=null;}
-
-function addFriendlyErrorMessage(data){
-  const title=data.title||'Request failed';
-  const text=data.error||data.message||'The request could not be completed.';
-  const meta=[data.provider,data.model,data.status_code?`HTTP ${data.status_code}`:''].filter(Boolean).join(' · ');
-  clearThinking();
-  const content=addMessage('assistant','',{meta});
-  content.innerHTML=`<div class="inline-error"><div class="inline-error-top"><span class="inline-error-icon">!</span><div><strong>${escapeHTML(title)}</strong><p>${escapeHTML(text)}</p></div></div>${data.recovery?`<div class="inline-error-recovery">${escapeHTML(data.recovery)}</div>`:''}${data.retry_after?`<div class="inline-error-meta">Retry delay: about ${escapeHTML(data.retry_after)} seconds</div>`:''}${data.technical?`<details><summary>Technical details</summary><pre>${escapeHTML(data.technical)}</pre></details>`:''}</div>`;
-  return content;
-}
-
-const source=new EventSource('/api/events');
-source.addEventListener('progress',handleProgress);
-source.addEventListener('chat_token',handleChatToken);
-source.addEventListener('generated',handleGenerated);
-source.addEventListener('job_error',handleJobError);
-source.onmessage=handleProgress;
-source.onerror=()=>{
-  $('runtime').classList.add('disconnected');
-  $('connectionText').textContent='Connection interrupted';
-  $('connectionDot').style.background='var(--warn)';
-};
-source.onopen=()=>{
-  $('runtime').classList.remove('disconnected');
-  $('connectionText').textContent='Connected';
-  $('connectionDot').style.background='';
-};
-
-function handleProgress(event){
-  try{
-    if(!event.data)return;
-    const data=JSON.parse(event.data);
-    setProgress(data);
-    if(data.provider)$('providerLabel').textContent=data.provider;
-    if(data.model)$('modelLabel').textContent=data.model;
-    if(data.status==='planning'&&!activeAssistant&&!thinkingAssistant){
-      ensureThinking('Thinking through your request…',`${data.provider||selectedProvider||'provider'} · planning`);
-    }else if(data.status==='planning'&&thinkingAssistant){
-      ensureThinking(data.message||'Thinking through your request…',`${data.provider||selectedProvider||'provider'} · planning`);
-    }else if(data.status==='generating'&&!activeAssistant){
-      ensureThinking(data.message||'Generating a response…',`${data.provider||selectedProvider||'provider'} · working`);
-    }else if(data.status==='verifying'&&!activeAssistant){
-      ensureThinking(data.message||'Checking the result…',`${data.provider||selectedProvider||'provider'} · checking`);
+async function loadModels(provider) {
+  if (!provider) return
+  try {
+    const data = await fetchJSON(`/api/models?provider=${encodeURIComponent(provider)}`)
+    modelOptions.innerHTML = ''
+    modelSettingsOptions.innerHTML = ''
+    for (const name of data.models || []) {
+      for (const list of [modelOptions, modelSettingsOptions]) {
+        const option = document.createElement('option')
+        option.value = name
+        list.appendChild(option)
+      }
     }
-    if(data.status==='completed'){
-      if(data.generated_files?.length)showGeneratedSummary(data.generated_files,data.message);
-      jobRunning=false;
-      send.disabled=false;
-      document.body.classList.remove('busy');
-      finishAssistant();
-      loadWorkspace();
-      loadPlan();
-    }else if(data.status==='failed'){
-      jobRunning=false;
-      send.disabled=false;
-      document.body.classList.remove('busy');
-      finishAssistant();
-    }
-  }catch{}
-}
-
-function handleGenerated(event){
-  try{
-    if(!event.data)return;
-    const data=JSON.parse(event.data);
-    setProgress(data);
-    if(data.generated_files?.length)showGeneratedSummary(data.generated_files,data.message);
-  }catch{}
-}
-
-function handleChatToken(event){
-  try{
-    if(!event.data)return;
-    const data=JSON.parse(event.data);
-    setProgress(data);
-    if(data.status==='streaming'){
-      clearThinking();
-      appendAssistantDelta(data.message||'');
-    }else if(data.status==='planning'||data.status==='generating'||data.status==='verifying'){
-      if(!activeAssistant)ensureThinking(data.message||'Working…',`${data.provider||selectedProvider||'provider'} · ${prettyStatus(data.status).toLowerCase()}`);
-    }else if(data.status==='completed'){
-      clearThinking();
-      if(data.message&&!activeAssistant){activeAssistant=addMessage('assistant',data.message,{meta:selectedModel||'model'});}
-    }
-  }catch{}
-}
-
-function handleJobError(event){
-  try{
-    if(!event.data)return;
-    const data=JSON.parse(event.data);
-    setProgress(data);
-    const payload={title:data.error_title||'Request failed',error:data.error_message||data.message,recovery:data.error_recovery,technical:data.error_technical,provider:data.provider,model:data.model,retry_after:data.retry_after,status_code:data.http_status,retryable:true};
-    finishAssistant();
-    showError(payload);
-    addFriendlyErrorMessage(payload);
-    jobRunning=false;
-    send.disabled=false;
-    document.body.classList.remove('busy');
-  }catch{}
-}
-
-async function submit(){
-  if(jobRunning)return;
-  const text=prompt.value.trim();
-  if(!text)return;
-  const isCode=code.checked||/^\/code(?:\s|$)/i.test(text);
-  const clean=text.replace(/^\/code(?:\s|$)/i,'').trim();
-  if(!clean){
-    showError({title:'Tell FuzeCLI what to build',error:'The /code command needs a description of the code or project you want generated.',recovery:'Example: /code create a modern PHP landing page'});
-    return;
+    const configured = settings?.providers?.[provider]?.default_model || ''
+    selectedModel = configured || data.models?.[0] || ''
+    modelInput.value = selectedModel
+    modelSettings.value = selectedModel
+  } catch (error) {
+    selectedModel = settings?.providers?.[provider]?.default_model || ''
+    modelInput.value = selectedModel
+    modelSettings.value = selectedModel
   }
-  if(conversation.querySelector('.welcome'))conversation.innerHTML='';
-  lastPrompt=clean;
-  addMessage('user',clean,{meta:isCode?'code generation':'message'});
-  activeAssistant=null;
-  clearThinking();
-  prompt.value='';
-  prompt.style.height='auto';
-  jobRunning=true;
-  document.body.classList.add('busy');
-  send.disabled=true;
-  clearError();
-  ensureThinking(isCode?'Thinking through the project and dependencies…':'Thinking through your request…',`${selectedProvider||'provider'} · preparing`);
-  setProgress({status:isCode?'planning':'generating',message:isCode?'Starting project planning…':'Preparing the request…',provider:selectedProvider,model:selectedModel});
-  try{
-    const result=await fetchJSON('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt:clean,provider:selectedProvider,model:selectedModel,code:isCode,yes:true})});
-    if(result?.accepted!==true)throw Object.assign(new Error('The server did not accept the chat request.'),{payload:{title:'Request was not accepted',error:'FuzeCLI did not start the requested chat job.',recovery:'Retry the message.'}});
-  }catch(error){
-    jobRunning=false;
-    send.disabled=false;
-    document.body.classList.remove('busy');
-    const payload=error.payload||{title:'Could not send message',error:error.message,recovery:'Check that FuzeCLI web server is running and retry.'};
-    showError(payload);
-    addFriendlyErrorMessage(payload);
-    setProgress({status:'failed',message:payload.error||error.message,provider:selectedProvider,model:selectedModel});
+  syncRuntimeLabels()
+}
+
+function syncRuntimeLabels() {
+  const meta = `${selectedProvider || 'provider'} · ${selectedModel || 'model'}`
+  document.title = `FuzeCLI · ${selectedModel || selectedProvider || 'Chat'}`
+  composerStatus.dataset.runtime = meta
+}
+
+providerSelect.addEventListener('change', async () => {
+  selectedProvider = providerSelect.value
+  providerSettings.value = selectedProvider
+  await loadModels(selectedProvider)
+})
+
+modelInput.addEventListener('input', () => {
+  selectedModel = modelInput.value.trim()
+  modelSettings.value = selectedModel
+  syncRuntimeLabels()
+})
+
+providerSettings.addEventListener('change', async () => {
+  providerSelect.value = providerSettings.value
+  selectedProvider = providerSettings.value
+  await loadModels(selectedProvider)
+})
+
+modelSettings.addEventListener('input', () => {
+  modelInput.value = modelSettings.value
+  selectedModel = modelSettings.value.trim()
+  syncRuntimeLabels()
+})
+
+$('saveSettings').addEventListener('click', async () => {
+  const provider = providerSettings.value
+  const model = modelSettings.value.trim()
+  if (!provider || !model) return showToast('Provider and model are required')
+  $('settingsStatus').textContent = 'Saving…'
+  try {
+    const data = await fetchJSON('/api/config', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ provider, model }) })
+    selectedProvider = data.provider
+    selectedModel = data.model
+    providerSelect.value = selectedProvider
+    modelInput.value = selectedModel
+    $('settingsStatus').textContent = 'Saved'
+    syncRuntimeLabels()
+    setTimeout(() => $('settingsStatus').textContent = '', 1500)
+  } catch (error) {
+    $('settingsStatus').textContent = 'Could not save'
+    showToast(error.message)
+  }
+})
+
+async function loadHistoryFromServer() {
+  const data = await fetchJSON('/api/history')
+  const messages = data.messages || []
+  currentChat = makeChat(messages.find(m => m.role === 'user')?.content ? deriveTitle(messages.find(m => m.role === 'user').content) : 'Current chat')
+  currentChat.messages = messages.map(message => ({ role: message.role, content: message.content }))
+  externalContext = false
+  clearConversationView()
+  if (!messages.length) {
+    showWelcome()
+    return
+  }
+  renderConversation(messages)
+  renderHistory()
+}
+
+function renderConversation(messages) {
+  clearConversationView()
+  $('welcome')?.remove()
+  messages.forEach(message => addMessage(message.role, message.content))
+}
+
+function showWelcome() {
+  clearConversationView()
+  const welcome = document.createElement('div')
+  welcome.className = 'welcome'
+  welcome.id = 'welcome'
+  welcome.innerHTML = `<div class="welcome-mark"><svg viewBox="0 0 48 48"><path d="M13 8h24v7H21v6h13v7H21v12h-8V8Z"/><path d="m29 31 7-7 5 5-7 7-5-5Z"/></svg></div><div class="eyebrow">PRIVATE · LOCAL · FOCUSED</div><h1>What are we <span>building today?</span></h1><p>Chat with your workspace-aware coding assistant. Ask questions, inspect files, upload context, or describe the implementation you want.</p><div class="suggestions"><button data-prompt="Explain this project">Explain this project</button><button data-prompt="Review my workspace for problems">Review my workspace</button><button data-prompt="Create a clean landing page">Build a landing page</button></div>`
+  conversation.appendChild(welcome)
+  bindSuggestions()
+}
+
+function bindSuggestions() {
+  document.querySelectorAll('[data-prompt]').forEach(button => {
+    button.onclick = () => {
+      prompt.value = button.dataset.prompt || ''
+      prompt.focus()
+      syncComposerState()
+    }
+  })
+}
+
+async function newChat() {
+  if (busy) return
+  archiveCurrentChat()
+  currentChat = makeChat()
+  externalContext = false
+  queuedFiles = []
+  renderAttachments()
+  clearConversationView()
+  showWelcome()
+  renderHistory()
+  try {
+    await fetchJSON('/api/session', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ memory: 'clear', provider: selectedProvider, model: selectedModel }) })
+  } catch {}
+  prompt.focus()
+  closeSidebarMobile()
+  syncComposerState()
+}
+
+function openSavedChat(id) {
+  if (busy) return
+  const item = chats().find(chat => chat.id === id)
+  if (!item) return
+  archiveCurrentChat()
+  currentChat = JSON.parse(JSON.stringify(item))
+  externalContext = true
+  clearConversationView()
+  if (currentChat.messages.length) renderConversation(currentChat.messages)
+  else showWelcome()
+  renderHistory()
+  closeSidebarMobile()
+}
+
+function buildPromptWithFiles(text) {
+  const chunks = []
+  if (externalContext && currentChat?.messages?.length) {
+    chunks.push('Earlier conversation context from this chat:\n' + currentChat.messages.map(message => `${message.role}: ${message.content}`).join('\n\n'))
+  }
+  if (queuedFiles.length) {
+    chunks.push('User-attached files:\n' + queuedFiles.map(file => `--- ${file.name} ---\n${file.content}\n--- end ${file.name} ---`).join('\n\n'))
+  }
+  chunks.push(text)
+  return chunks.join('\n\n')
+}
+
+function handleProgressData(data) {
+  if (data.provider) selectedProvider = data.provider
+  if (data.model) selectedModel = data.model
+  if (data.status === 'planning' || data.status === 'generating' || data.status === 'verifying') ensureThinking(data.message || 'Thinking…')
+  if (data.status === 'completed') {
+    busy = false
+    finishAssistant()
+    if (data.generated_files?.length) addGenerationMessage(data.generated_files, data.message)
+    $('connectionText').textContent = 'Connected'
+    $('connectionDot').classList.remove('warn')
+    loadWorkspace()
+    syncComposerState()
+  }
+  if (data.status === 'failed') {
+    busy = false
+    finishAssistant()
+    syncComposerState()
+  }
+  syncComposerState()
+}
+
+function handleChatTokenData(data) {
+  if (data.provider) selectedProvider = data.provider
+  if (data.model) selectedModel = data.model
+  if (data.status === 'streaming') appendAssistantDelta(data.message || '')
+  else if (data.status !== 'completed') ensureThinking(data.message || 'Thinking…')
+}
+
+function handleGeneratedData(data) {
+  if (data.generated_files?.length) addGenerationMessage(data.generated_files, data.message)
+}
+
+function handleErrorData(data) {
+  busy = false
+  addErrorMessage(data)
+  showToast(data.error_message || data.message || 'Request failed')
+  syncComposerState()
+}
+
+function connectEvents() {
+  if (source) source.close()
+  source = new EventSource('/api/events')
+  source.addEventListener('progress', event => {
+    try { handleProgressData(JSON.parse(event.data)) } catch {}
+  })
+  source.addEventListener('chat_token', event => {
+    try { handleChatTokenData(JSON.parse(event.data)) } catch {}
+  })
+  source.addEventListener('generated', event => {
+    try { handleGeneratedData(JSON.parse(event.data)) } catch {}
+  })
+  source.addEventListener('job_error', event => {
+    try { handleErrorData(JSON.parse(event.data)) } catch {}
+  })
+  source.onopen = () => {
+    $('connectionText').textContent = 'Connected'
+    $('connectionDot').classList.remove('warn')
+  }
+  source.onerror = () => {
+    $('connectionText').textContent = 'Reconnecting…'
+    $('connectionDot').classList.add('warn')
   }
 }
 
-$('retryError').addEventListener('click',()=>{clearError();prompt.value=lastPrompt;submit();});
-$('attachInfo').addEventListener('click',()=>{showError({title:'Workspace context',error:'FuzeCLI automatically includes tracked workspace context where the current request needs it.',recovery:'Normal chat can answer questions. Code requests can be generated automatically when the model returns valid FuzeCLI generation JSON.'});});
-$('downloadCode').addEventListener('click',()=>{window.location.href='/api/download';});
-send.addEventListener('click',submit);
-prompt.addEventListener('keydown',event=>{if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();submit();}});
-prompt.addEventListener('input',()=>{prompt.style.height='auto';prompt.style.height=Math.min(prompt.scrollHeight,220)+'px';});
-document.querySelectorAll('[data-prompt]').forEach(button=>button.addEventListener('click',()=>{prompt.value=button.dataset.prompt;code.checked=button.dataset.code==='true';prompt.focus();}));
-$('newChat').addEventListener('click',()=>{if(jobRunning)return;resetConversationVisual();clearError();setProgress({status:'idle',message:'Ready',completed_files:0,total_files:0,provider:selectedProvider,model:selectedModel});openTab('chat');prompt.focus();});
-$('refreshWorkspace').addEventListener('click',loadWorkspace);
-$('refreshPlan').addEventListener('click',loadPlan);
-conversation.addEventListener('scroll',()=>{const distance=conversation.scrollHeight-conversation.scrollTop-conversation.clientHeight;$('scrollBottom').classList.toggle('visible',distance>220);});
-$('scrollBottom').addEventListener('click',()=>conversation.scrollTo({top:conversation.scrollHeight,behavior:'smooth'}));
-document.addEventListener('keydown',event=>{if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='k'){event.preventDefault();if(!jobRunning)prompt.focus();}});
-
-async function loadHistory(){
-  try{
-    const d=await fetchJSON('/api/history');
-    const messages=d.messages||[];
-    if(!messages.length)return;
-    if(conversation.querySelector('.welcome'))conversation.innerHTML='';
-    const rendered=[...conversation.querySelectorAll('.message-group')].length;
-    if(rendered>0)return;
-    messages.forEach(message=>addMessage(message.role,message.content));
-  }catch{}
+async function submit() {
+  if (busy) return
+  const text = prompt.value.trim()
+  if (!text) return
+  if (conversation.querySelector('.welcome')) conversation.innerHTML = ''
+  if (!currentChat) currentChat = makeChat(deriveTitle(text))
+  if (!currentChat.messages.length) currentChat.title = deriveTitle(text)
+  const outgoing = buildPromptWithFiles(text)
+  lastPrompt = text
+  addMessage('user', text, queuedFiles.length ? `${queuedFiles.length} attachment${queuedFiles.length === 1 ? '' : 's'}` : '')
+  currentChat.messages.push({ role: 'user', content: text })
+  externalContext = false
+  prompt.value = ''
+  queuedFiles = []
+  renderAttachments()
+  busy = true
+  ensureThinking('Thinking…')
+  syncComposerState()
+  try {
+    await fetchJSON('/api/chat', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ prompt: outgoing, provider: selectedProvider, model: selectedModel, code: false, yes: true }) })
+    renderHistory()
+  } catch (error) {
+    busy = false
+    addErrorMessage(error.payload || { title: 'Could not send message', error: error.message })
+    syncComposerState()
+  }
 }
 
-loadSettings();
-loadHistory();
-fetch('/api/state').then(response=>response.json()).then(setProgress).catch(()=>{});
+async function loadWorkspace() {
+  const list = $('fileList')
+  if (!list) return
+  try {
+    const data = await fetchJSON('/api/workspace')
+    $('workspaceRoot').textContent = data.root || 'Workspace'
+    list.innerHTML = ''
+    for (const file of data.files || []) {
+      const row = document.createElement('div')
+      row.className = 'file-row'
+      row.innerHTML = `<span class="file-icon">□</span><div><strong>${escapeHTML(file.path)}</strong><small>${formatBytes(file.size)} · ${new Date(file.modified).toLocaleString()}</small></div>`
+      list.appendChild(row)
+    }
+    if (!data.files?.length) list.innerHTML = '<div class="history-empty">No generated files are being tracked yet.</div>'
+  } catch {}
+}
+
+function openPanel(name) {
+  $('chatView').classList.toggle('hidden', name !== 'chat')
+  $('workspaceView').classList.toggle('hidden', name !== 'workspace')
+  $('settingsView').classList.toggle('hidden', name !== 'settings')
+  if (name === 'workspace') loadWorkspace()
+  if (name === 'settings') {
+    providerSettings.value = selectedProvider
+    modelSettings.value = selectedModel
+  }
+  closeSidebarMobile()
+}
+
+function closeSidebarMobile() { sidebar.classList.remove('open') }
+
+$('openSettings').addEventListener('click', () => openPanel('settings'))
+$('openSettingsTop').addEventListener('click', () => openPanel('settings'))
+$('workspaceButton').addEventListener('click', () => openPanel('workspace'))
+$('menuButton').addEventListener('click', () => sidebar.classList.toggle('open'))
+$('newChat').addEventListener('click', newChat)
+$('refreshWorkspace').addEventListener('click', loadWorkspace)
+$('clearHistory').addEventListener('click', () => {
+  if (!chats().length) return
+  localStorage.removeItem(STORAGE_KEY)
+  renderHistory()
+  showToast('Saved chat history cleared')
+})
+
+$('attachButton').addEventListener('click', () => fileInput.click())
+fileInput.addEventListener('change', async () => {
+  await queueUploads(fileInput.files)
+  fileInput.value = ''
+})
+
+;['dragenter','dragover'].forEach(type => composerWrap.addEventListener(type, event => {
+  event.preventDefault()
+  dropOverlay.classList.add('show')
+}))
+;['dragleave','drop'].forEach(type => composerWrap.addEventListener(type, event => {
+  event.preventDefault()
+  if (type === 'dragleave' && event.relatedTarget && composerWrap.contains(event.relatedTarget)) return
+  dropOverlay.classList.remove('show')
+}))
+composerWrap.addEventListener('drop', async event => {
+  await queueUploads(event.dataTransfer.files)
+})
+
+send.addEventListener('click', submit)
+prompt.addEventListener('input', () => {
+  prompt.style.height = 'auto'
+  prompt.style.height = `${Math.min(prompt.scrollHeight, 220)}px`
+  syncComposerState()
+})
+prompt.addEventListener('keydown', event => {
+  if (event.key === 'Enter' && !event.shiftKey) {
+    event.preventDefault()
+    submit()
+  }
+})
+
+document.addEventListener('keydown', event => {
+  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
+    event.preventDefault()
+    if (!busy) prompt.focus()
+  }
+  if (event.key === 'Escape') closeSidebarMobile()
+})
+
+async function boot() {
+  bindSuggestions()
+  await loadSettings()
+  connectEvents()
+  try {
+    await loadHistoryFromServer()
+  } catch {
+    currentChat = makeChat()
+    showWelcome()
+  }
+  renderHistory()
+  loadWorkspace()
+  syncComposerState()
+}
+
+boot()
