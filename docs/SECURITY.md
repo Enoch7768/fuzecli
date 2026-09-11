@@ -18,6 +18,10 @@ The application API has a separate bearer-token option documented in `docs/API.m
 
 Generated paths must be relative to the active workspace. Absolute paths, drive-qualified paths, traversal segments, and symlink paths that escape the workspace are rejected.
 
+Workspace context is filtered before it is sent to a model. FuzeCLI always excludes known secret-bearing paths including `.env*`, private-key formats, credential/secret files, and common local credential stores. Projects can add further exclusions in a root `.aicliignore` file. Ignore rules only add restrictions; they cannot override the built-in secret blocklist.
+
+Binary files and common dependency/build directories are excluded from automatic workspace context. Large text files are split into bounded source chunks before being assembled into model context.
+
 Workspace attachments are limited to UTF-8 text and capped at 64 KiB per file in the web and terminal interfaces. The web interface caps a message's attachment payload at 256 KiB and six files.
 
 ## Generated code
@@ -29,6 +33,12 @@ When a complete valid generation JSON document is detected during streaming, Fuz
 Model-provided shell commands are informational data only. FuzeCLI does not automatically execute commands returned inside generation JSON.
 
 File replacement is performed through a temporary file followed by a rename. Conversation state and file hashes are stored locally in `.aicli/`.
+
+## Recovery
+
+FuzeCLI provides explicit local snapshots through `aicli snapshot` and restoration through `aicli restore`. Snapshots are stored under `.aicli/snapshots` with restrictive directory permissions. Restoring a snapshot is deliberately explicit and does not execute commands or remove unrelated workspace files.
+
+For source-controlled projects, use `aicli status` and `aicli diff` to inspect the Git working tree before and after an AI-assisted change.
 
 ## Response lifecycle
 
