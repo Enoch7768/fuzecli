@@ -8,8 +8,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Enoch7768/fuzecli/internal/api"
 	"github.com/Enoch7768/fuzecli/internal/app"
 	"github.com/Enoch7768/fuzecli/internal/config"
+	"github.com/Enoch7768/fuzecli/internal/mcpserver"
 	"github.com/Enoch7768/fuzecli/internal/profile"
 )
 
@@ -45,8 +47,10 @@ func run(args []string) error {
 		return askCommand(args[1:])
 	case "chat":
 		return chatCommand(args[1:])
-	case "web":
-		return webCommand()
+	case "api":
+		return apiCommand(args[1:])
+	case "mcp":
+		return mcpCommand()
 	case "help", "--help", "-h":
 		return usage()
 	default:
@@ -122,6 +126,10 @@ func chatCommand(args []string) error {
   aicli chat [--yes]
 
 Commands inside chat:
+  /file
+  /file <relative-path>
+  /file list
+  /file clear
   /provider <name>
   /model <name>
   /status
@@ -145,6 +153,48 @@ Commands inside chat:
 	}
 
 	return a.TerminalChat(context.Background(), yes)
+}
+
+func apiCommand(args []string) error {
+	addr := "127.0.0.1:8787"
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--addr":
+			if i+1 >= len(args) {
+				return fmt.Errorf("missing value for --addr")
+			}
+			addr = args[i+1]
+			i++
+		case "--help", "-h":
+			fmt.Println("Usage: aicli api [--addr 127.0.0.1:8787]")
+			return nil
+		default:
+			return fmt.Errorf("unknown api option %q", args[i])
+		}
+	}
+	a, err := app.Load()
+	if err != nil {
+		return err
+	}
+	defer a.Close()
+	if err := a.AttachWorkspace("."); err != nil {
+		return err
+	}
+	server := api.NewServer(api.NewService(a), api.TokenFromEnvironment())
+	fmt.Printf("FuzeCLI API listening on http://%s\n", addr)
+	return server.ListenAndServe(addr)
+}
+
+func mcpCommand() error {
+	a, err := app.Load()
+	if err != nil {
+		return err
+	}
+	defer a.Close()
+	if err := a.AttachWorkspace("."); err != nil {
+		return err
+	}
+	return mcpserver.Run(context.Background(), a)
 }
 
 func modelsCommand(args []string) error {
@@ -281,19 +331,24 @@ Commands:
   aicli models [--provider name]
   aicli chat [--yes]
   aicli ask "prompt" [--provider name|auto] [--model name] [--yes]
-  aicli web
+  aicli api [--addr 127.0.0.1:8787]
+  aicli mcp
   aicli profile show
   aicli profile reset
   aicli history
   aicli version
 
 Chat commands:
-  /provider <name>  Change provider
-  /model <name>     Change model
-  /status           Show runtime state
-  /clear            Clear terminal
-  /help             Show chat help
-  /exit             Leave chat
+  /file
+  /file <relative-path>
+  /file list
+  /file clear
+  /provider <name>
+  /model <name>
+  /status
+  /clear
+  /help
+  /exit
 
 Options:
   --help
