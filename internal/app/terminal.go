@@ -5,6 +5,9 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -70,10 +73,21 @@ func (a *App) TerminalChat(ctx context.Context, _ bool) error {
 				printTerminalHeader(providerName, model, a.Store.Root)
 			case "/file":
 				if value == "" {
-					fmt.Printf("Attached files: %d\n", len(attachments))
-					for path := range attachments {
-						fmt.Printf("  ✓ %s\n", path)
+					paths, err := pickTerminalFiles(a.Store.Root)
+					if err != nil {
+						fmt.Println(formatTerminalError(err))
+						continue
 					}
+					for _, selected := range paths {
+						if err := attachSelectedTerminalFile(a.Store.Root, selected, attachments); err != nil {
+							fmt.Println(formatTerminalError(err))
+							continue
+						}
+					}
+					continue
+				}
+				if strings.EqualFold(value, "list") {
+					printAttachedFiles(attachments)
 					continue
 				}
 				if strings.EqualFold(value, "clear") {
@@ -91,10 +105,7 @@ func (a *App) TerminalChat(ctx context.Context, _ bool) error {
 					fmt.Println(formatTerminalError(err))
 					continue
 				}
-				rel := value
-				if normalized := filepathSlash(rel); normalized != "" {
-					rel = normalized
-				}
+				rel := filepathSlash(value)
 				attachments[rel] = string(data)
 				fmt.Printf("\x1b[38;5;111mAttached\x1b[0m %s\n", rel)
 			default:
@@ -108,6 +119,72 @@ func (a *App) TerminalChat(ctx context.Context, _ bool) error {
 	}
 	go a.RunProfileExtraction(context.Background())
 	return scanner.Err()
+}
+
+func pickTerminalFiles(root string) ([]string, error) {
+	if runtime.GOOS != "windows" {
+		return nil, fmt.Errorf("interactive file upload is supported on Windows; use /file <relative-path>")
+	}
+	script := `$ErrorActionPreference = 'Stop'; Add-Type -AssemblyName System.Windows.Forms; $dialog = New-Object System.Windows.Forms.OpenFileDialog; $dialog.Multiselect = $true; $dialog.CheckFileExists = $true; $dialog.InitialDirectory = $env:FUZECLI_ROOT; $dialog.Filter = 'All files (*.*)|*.*'; if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { $dialog.FileNames }`
+	cmd := exec.Command("powershell.exe", "-NoProfile", "-STA", "-Command", script)
+	cmd.Env = append(os.Environ(), "FUZECLI_ROOT="+root)
+	output, err := cmd.Output()
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok && len(exitErr.Stderr) > 0 {
+			return nil, fmt.Errorf("file picker failed: %s", strings.TrimSpace(string(exitErr.Stderr)))
+		}
+		return nil, fmt.Errorf("file picker failed: %w", err)
+	}
+	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
+	paths := make([]string, 0, len(lines))
+	for _, line := range lines {
+		line = strings.TrimSpace(strings.TrimSuffix(line, "\r"))
+		if line != "" {
+			paths = append(paths, line)
+		}
+	}
+	if len(paths) == 0 {
+		return nil, nil
+	}
+	return paths, nil
+}
+
+func attachSelectedTerminalFile(root, selected string, attachments map[string]string) error {
+	absolute, err := filepath.Abs(selected)
+	if err != nil {
+		return err
+	}
+	base, err := filepath.Abs(root)
+	if err != nil {
+		return err
+	}
+	rel, err := filepath.Rel(base, absolute)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
+		return fmt.Errorf("selected file must be inside the workspace: %s", selected)
+	}
+	rel = filepath.ToSlash(rel)
+	path, err := attachTerminalFile(root, rel)
+	if err != nil {
+		return err
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	attachments[rel] = string(data)
+	fmt.Printf("\x1b[38;5;111mAttached\x1b[0m %s\n", rel)
+	return nil
+}
+
+func printAttachedFiles(attachments map[string]string) {
+	if len(attachments) == 0 {
+		fmt.Println("No attached files.")
+		return
+	}
+	fmt.Printf("Attached files: %d\n", len(attachments))
+	for path := range attachments {
+		fmt.Printf("  ✓ %s\n", path)
+	}
 }
 
 func attachTerminalFile(root, rel string) (string, error) {
@@ -218,15 +295,17 @@ func printTerminalHeader(providerName, model, root string) {
 
 func printTerminalHelp() {
 	fmt.Println("\n\x1b[1mChat Commands\x1b[0m")
-	fmt.Println("  /file <relative-path>  Attach a workspace text file")
-	fmt.Println("  /file clear            Clear attached files")
-	fmt.Println("  /provider <name>       Change provider for this session")
-	fmt.Println("  /model <name>          Change model for this session")
-	fmt.Println("  /status                Show provider, model and workspace")
-	fmt.Println("  /clear                 Clear the terminal view")
-	fmt.Println("  /exit                  Close the session")
+	fmt.Println("  /file                 Open the interactive file picker")
+	fmt.Println("  /file <relative-path> Attach a workspace text file")
+	fmt.Println("  /file list            Show attached files")
+	fmt.Println("  /file clear           Clear attached files")
+	fmt.Println("  /provider <name>      Change provider for this session")
+	fmt.Println("  /model <name>         Change model for this session")
+	fmt.Println("  /status               Show provider, model and workspace")
+	fmt.Println("  /clear                Clear the terminal view")
+	fmt.Println("  /exit                 Close the session")
 	fmt.Println()
-	fmt.Println("Use natural language for your prompt after attaching a file. Attached files are supplied directly to the model for the session.")
+	fmt.Println("Attach files, then use natural language for your prompt. Attached files are supplied directly to the model for the session.")
 	fmt.Println("Project changes are requested naturally in chat. When the model returns valid file JSON, FuzeCLI writes it automatically.")
 }
 
