@@ -12,6 +12,14 @@ import (
 	"github.com/Enoch7768/fuzecli/internal/provider"
 )
 
+type chatFileChange struct {
+	Path      string `json:"path"`
+	Content   string `json:"content"`
+	Action    string `json:"action"`
+	LineStart int    `json:"line_start"`
+	LineEnd   int    `json:"line_end"`
+}
+
 type ChatResponse struct {
 	Type        string           `json:"type,omitempty"`
 	Response    string           `json:"response,omitempty"`
