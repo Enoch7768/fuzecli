@@ -1,0 +1,17 @@
+# Additional files and directories to keep out of AI context.
+# FuzeCLI always blocks known secret-bearing paths such as .env and private keys.
+
+# Local secrets and credentials
+*.secret
+*.secrets
+local.config.*
+
+# Generated/build output
+.tmp/
+.cache/
+coverage/
+
+# Large local data
+*.sqlite
+*.sqlite3
+*.db
