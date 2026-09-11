@@ -3,7 +3,7 @@ module github.com/Enoch7768/fuzecli
 go 1.23.0
 
 require (
-	github.com/modelcontextprotocol/go-sdk v1.2.0
+	github.com/modelcontextprotocol/go-sdk v1.4.1
 	modernc.org/sqlite v1.35.0
 )
 
