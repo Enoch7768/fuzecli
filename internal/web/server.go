@@ -96,14 +96,7 @@ func (s *Server) logo(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	path := filepath.Join(s.assetDir, name)
-	if s.App.Store != nil {
-		workspacePath := filepath.Join(s.App.Store.Root, name)
-		if info, err := os.Stat(workspacePath); err == nil && !info.IsDir() && info.Size() <= 2<<20 {
-			path = workspacePath
-		}
-	}
-	data, err := os.ReadFile(path)
+	data, err := assets.ReadFile("static/" + name)
 	if err != nil || len(data) == 0 || len(data) > 2<<20 {
 		http.NotFound(w, r)
 		return
@@ -700,14 +693,6 @@ func secureHeaders(w http.ResponseWriter) {
 	w.Header().Set("Content-Security-Policy", "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'")
 }
 
-func writeSSE(w http.ResponseWriter, eventType string, value any) {
-	data, err := json.Marshal(value)
-	if err != nil {
-		return
-	}
-	_, _ = fmt.Fprintf(w, "event: %s\ndata: %s\n\n", eventType, data)
-}
-
 func writeJSON(w http.ResponseWriter, status int, value any) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
@@ -715,6 +700,14 @@ func writeJSON(w http.ResponseWriter, status int, value any) {
 	_ = json.NewEncoder(w).Encode(value)
 }
 
-func writeUserError(w http.ResponseWriter, status int, value diagnostics.UserError) {
-	writeJSON(w, status, map[string]any{"error": value.Message, "title": value.Title, "recovery": value.Recovery, "technical": value.Technical, "provider": value.Provider, "model": value.Model, "status": value.StatusCode, "retry_after": value.RetryAfter})
+func writeUserError(w http.ResponseWriter, status int, u diagnostics.UserError) {
+	writeJSON(w, status, map[string]any{"error": u.Message, "title": u.Title, "recovery": u.Recovery, "technical": u.Technical, "provider": u.Provider, "model": u.Model, "retry_after": u.RetryAfter})
+}
+
+func writeSSE(w http.ResponseWriter, event string, value any) {
+	data, err := json.Marshal(value)
+	if err != nil {
+		return
+	}
+	_, _ = fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event, data)
 }
