@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -47,9 +48,10 @@ func ParseChatPlan(raw string) (Plan, error) {
 		return Plan{}, fmt.Errorf("invalid chat JSON: %w", err)
 	}
 	var trailing any
-	if err := dec.Decode(&trailing); err == nil {
-		return Plan{}, fmt.Errorf("invalid chat JSON: trailing data")
-	} else if err.Error() != "EOF" {
+	if err := dec.Decode(&trailing); err != io.EOF {
+		if err == nil {
+			return Plan{}, fmt.Errorf("invalid chat JSON: trailing data")
+		}
 		return Plan{}, fmt.Errorf("invalid chat JSON: trailing data: %w", err)
 	}
 	if len(input.Files) == 0 {
@@ -69,10 +71,9 @@ func ParseChatPlan(raw string) (Plan, error) {
 		if file.Action == "delete" && file.Content != "" {
 			return Plan{}, fmt.Errorf("file %d delete action must have empty content", i)
 		}
-		if normalized, normalizeErr := filepath.Abs(filepath.Clean(file.Path)); normalizeErr != nil || filepath.IsAbs(file.Path) || strings.HasPrefix(filepath.ToSlash(file.Path), "../") || strings.Contains(filepath.ToSlash(file.Path), "/../") || filepath.VolumeName(file.Path) != "" || normalized == filepath.Clean(file.Path) {
-			if filepath.IsAbs(file.Path) || strings.HasPrefix(filepath.ToSlash(file.Path), "../") || strings.Contains(filepath.ToSlash(file.Path), "/../") || filepath.VolumeName(file.Path) != "" {
-				return Plan{}, fmt.Errorf("path traversal rejected for %q", file.Path)
-			}
+		rel := filepath.ToSlash(file.Path)
+		if filepath.IsAbs(file.Path) || filepath.VolumeName(file.Path) != "" || rel == "." || rel == ".." || strings.HasPrefix(rel, "../") || strings.Contains(rel, "/../") || strings.HasPrefix(rel, "//") {
+			return Plan{}, fmt.Errorf("path traversal rejected for %q", file.Path)
 		}
 		plan.Files = append(plan.Files, FileChange{Path: file.Path, Content: file.Content, Action: file.Action})
 	}
