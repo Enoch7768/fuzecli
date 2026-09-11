@@ -110,7 +110,7 @@ func (i *Index) Search(query string, limit int) ([]Match, error) {
 			lower := strings.ToLower(text)
 			matched := true
 			for _, term := range terms {
-				if !strings.Contains(lower, term) {
+				if !containsSearchTerm(lower, term) {
 					matched = false
 					break
 				}
@@ -124,8 +124,22 @@ func (i *Index) Search(query string, limit int) ([]Match, error) {
 			}
 		}
 		_ = f.Close()
+		if err := s.Err(); err != nil {
+			continue
+		}
 	}
 	return out, nil
+}
+
+// containsSearchTerm requires a complete token match. This prevents a query such
+// as "hello world" from matching the single identifier "HelloWorld", while still
+// allowing punctuation-separated text such as "hello, world" to match.
+func containsSearchTerm(line, term string) bool {
+	if term == "" {
+		return true
+	}
+	pattern := `(?i)(^|[^[:alnum:]_$])` + regexp.QuoteMeta(term) + `([^[:alnum:]_$]|$)`
+	return regexp.MustCompile(pattern).MatchString(line)
 }
 
 func (i *Index) FindSymbols(query string, limit int) []Symbol {
