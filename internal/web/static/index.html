@@ -15,35 +15,36 @@
       <div class="brand-mark" aria-hidden="true"><svg viewBox="0 0 48 48"><path d="M13 8h24v7H21v6h13v7H21v12h-8V8Z"/><path d="m29 31 7-7 5 5-7 7-5-5Z"/></svg></div>
       <div class="brand-name"><strong>FuzeCLI</strong><span>Local AI workspace</span></div>
     </div>
-    <button class="new-chat" id="newChat"><span>+</span><strong>New chat</strong><kbd>Ctrl K</kbd></button>
-    <div class="history-head"><span>Chats</span><button id="clearHistory" title="Clear local chat history" aria-label="Clear local chat history">•••</button></div>
+    <button class="new-chat" id="newChat" type="button"><span>+</span><strong>New chat</strong><kbd>Ctrl K</kbd></button>
+    <div class="history-head"><span>Chats</span><button id="clearHistory" type="button" title="Clear local chat history" aria-label="Clear local chat history">•••</button></div>
     <div class="history-list" id="historyList"></div>
     <div class="sidebar-bottom">
       <div class="connection"><span class="dot" id="connectionDot"></span><div><strong id="connectionText">Connected</strong><small>localhost</small></div></div>
-      <button class="settings-mini" id="openSettings" aria-label="Open settings">⚙</button>
+      <button class="settings-mini" id="openSettings" type="button" aria-label="Open settings">⚙</button>
     </div>
   </aside>
 
   <main class="main">
     <header class="topbar">
-      <div class="mobile-brand"><button id="menuButton" aria-label="Open menu">☰</button><strong>FuzeCLI</strong></div>
+      <div class="mobile-brand"><button id="menuButton" type="button" aria-label="Open menu">☰</button><strong>FuzeCLI</strong></div>
       <div class="runtime-selects">
         <select id="providerSelect" aria-label="Provider"></select>
         <span>·</span>
         <input id="modelInput" list="modelOptions" aria-label="Model" autocomplete="off" spellcheck="false" placeholder="model">
         <datalist id="modelOptions"></datalist>
       </div>
-      <div class="top-actions"><button id="workspaceButton" class="top-action">Workspace</button><button id="openSettingsTop" class="icon-button" aria-label="Settings">⚙</button></div>
+      <div class="top-actions"><button id="workspaceButton" class="top-action" type="button">Workspace</button><button id="openSettingsTop" class="icon-button" type="button" aria-label="Settings">⚙</button></div>
     </header>
 
     <section class="chat-view" id="chatView">
       <div class="messages" id="conversation">
         <div class="welcome" id="welcome">
+          <div class="welcome-orbit"><span></span><span></span></div>
           <div class="welcome-mark"><svg viewBox="0 0 48 48"><path d="M13 8h24v7H21v6h13v7H21v12h-8V8Z"/><path d="m29 31 7-7 5 5-7 7-5-5Z"/></svg></div>
           <div class="eyebrow">PRIVATE · LOCAL · FOCUSED</div>
-          <h1>What are we <span>building today?</span></h1>
-          <p>Chat with your workspace-aware coding assistant. Ask questions, inspect files, upload context, or describe the implementation you want.</p>
-          <div class="suggestions"><button data-prompt="Explain this project">Explain this project</button><button data-prompt="Review my workspace for problems">Review my workspace</button><button data-prompt="Create a clean landing page">Build a landing page</button></div>
+          <h1>Build something <span>brilliant.</span></h1>
+          <p>Talk to your workspace-aware AI. Inspect code, upload context, solve problems, or describe exactly what you want built.</p>
+          <div class="suggestions"><button type="button" data-prompt="Explain this project">Explain this project</button><button type="button" data-prompt="Review my workspace for problems">Review my workspace</button><button type="button" data-prompt="Create a clean landing page">Build a landing page</button></div>
         </div>
       </div>
 
@@ -51,26 +52,66 @@
         <div class="drop-overlay" id="dropOverlay"><div><strong>Drop files here</strong><span>Text files up to 64 KiB each</span></div></div>
         <div class="attachments" id="attachments"></div>
         <div class="composer">
-          <button class="attach-button" id="attachButton" aria-label="Upload files" title="Upload files">+</button>
-          <textarea id="prompt" rows="1" placeholder="Message FuzeCLI…" aria-label="Message FuzeCLI"></textarea>
-          <button class="send-button" id="send" aria-label="Send">↑</button>
+          <div class="composer-main">
+            <button class="attach-button" id="attachButton" type="button" aria-label="Upload files" title="Upload files"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12.7 5.2 6.8 11.1a4.15 4.15 0 0 0 5.9 5.9l6-6a2.55 2.55 0 0 0-3.6-3.6l-6 6a.95.95 0 0 0 1.35 1.35l5.2-5.2" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+            <textarea id="prompt" rows="1" placeholder="Message FuzeCLI…" aria-label="Message FuzeCLI" spellcheck="true"></textarea>
+            <button class="send-button" id="send" type="button" aria-label="Send"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6.5 4.8 11.7 6.3a1 1 0 0 1 0 1.8L6.5 19.2a1 1 0 0 1-1.4-1.1l1.7-5.5a.8.8 0 0 0 0-.5L5.1 5.9a1 1 0 0 1 1.4-1.1Z" fill="currentColor"/><path d="M7.1 12h9.1" fill="none" stroke="rgba(11,13,16,.65)" stroke-width="1.4" stroke-linecap="round"/></svg></button>
+          </div>
+          <div class="composer-foot"><span>Enter <b>↵</b> to send · <b>Shift+Enter</b> for newline</span><span id="composerStatus">Ready</span></div>
           <input id="fileInput" type="file" multiple hidden>
         </div>
-        <div class="composer-foot"><span>Enter to send · Shift+Enter for newline</span><span id="composerStatus">Ready</span></div>
       </div>
     </section>
 
     <section class="panel-view hidden" id="workspaceView">
-      <div class="panel-content"><div class="panel-heading"><div><span class="eyebrow">WORKSPACE</span><h2>Generated files</h2><p>Files tracked by FuzeCLI in this workspace.</p></div><button class="secondary" id="refreshWorkspace">Refresh</button></div><div class="workspace-root" id="workspaceRoot">Loading…</div><div class="file-list" id="fileList"></div></div>
+      <div class="panel-content"><div class="panel-heading"><div><span class="eyebrow">WORKSPACE</span><h2>Generated files</h2><p>Files tracked by FuzeCLI in this workspace.</p></div><button class="secondary" id="refreshWorkspace" type="button">Refresh</button></div><div class="workspace-root" id="workspaceRoot">Loading…</div><div class="file-list" id="fileList"></div></div>
     </section>
 
     <section class="panel-view hidden" id="settingsView">
-      <div class="panel-content narrow"><div class="panel-heading"><div><span class="eyebrow">SETTINGS</span><h2>Runtime</h2><p>Choose the provider and model used by this local interface.</p></div></div><div class="settings-card"><label>Provider<select id="providerSettings"></select></label><label>Model<input id="modelSettings" list="modelSettingsOptions" autocomplete="off" spellcheck="false"><datalist id="modelSettingsOptions"></datalist></label><div class="settings-row"><button class="primary" id="saveSettings">Save changes</button><span id="settingsStatus"></span></div></div><div class="settings-card compact"><div><strong>API</strong><span>Local HTTP API</span></div><b>127.0.0.1:8787</b><div><strong>MCP</strong><span>stdio server available through the CLI</span></div><b>aicli mcp</b></div></div>
+      <div class="panel-content narrow">
+        <div class="panel-heading settings-heading">
+          <div><span class="eyebrow">SETTINGS</span><h2>Runtime</h2><p>Choose the provider and model used by this local interface.</p></div>
+          <button class="panel-close" id="closeSettings" type="button" aria-label="Close settings" title="Close settings">×</button>
+        </div>
+        <div class="settings-card"><label>Provider<select id="providerSettings"></select></label><label>Model<input id="modelSettings" list="modelSettingsOptions" autocomplete="off" spellcheck="false"><datalist id="modelSettingsOptions"></datalist></label><div class="settings-row"><button class="primary" id="saveSettings" type="button">Save changes</button><span id="settingsStatus"></span></div></div>
+        <div class="settings-card compact"><div><strong>API</strong><span>Local HTTP API</span></div><b>127.0.0.1:8787</b><div><strong>MCP</strong><span>stdio server available through the CLI</span></div><b>aicli mcp</b></div>
+      </div>
     </section>
   </main>
 </div>
 
 <div class="toast" id="toast"></div>
 <script src="/static/app.js"></script>
+<script>
+(() => {
+  const settingsView = document.getElementById('settingsView')
+  const workspaceView = document.getElementById('workspaceView')
+  const chatView = document.getElementById('chatView')
+  const closeSettings = document.getElementById('closeSettings')
+  const status = document.getElementById('composerStatus')
+  const input = document.getElementById('prompt')
+  const closePanel = () => {
+    settingsView.classList.add('hidden')
+    workspaceView.classList.add('hidden')
+    chatView.classList.remove('hidden')
+    input.focus()
+  }
+  closeSettings.addEventListener('click', closePanel)
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && !settingsView.classList.contains('hidden')) {
+      event.preventDefault()
+      closePanel()
+    }
+  })
+  new MutationObserver(() => {
+    if (status.textContent.trim() !== 'Working…' && typeof busy !== 'undefined' && busy) {
+      busy = false
+      if (typeof finishAssistant === 'function') finishAssistant()
+      if (typeof syncComposerState === 'function') syncComposerState()
+      input.focus()
+    }
+  }).observe(status, {childList:true,characterData:true,subtree:true})
+})()
+</script>
 </body>
 </html>
