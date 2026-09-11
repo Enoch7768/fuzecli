@@ -27,8 +27,8 @@ let selectedProvider = ''
 let selectedModel = ''
 let busy = false
 let activeAssistant = null
+let activeAssistantRaw = ''
 let thinkingNode = null
-let lastPrompt = ''
 let queuedFiles = []
 let currentChat = null
 let externalContext = false
@@ -47,13 +47,11 @@ function renderMarkdown(text) {
       const raw = block.slice(3, -3).replace(/^\s*[a-zA-Z0-9_+-]+\s*\n/, '')
       return `<pre><code>${raw}</code></pre>`
     }
-    const paragraphs = block.split(/\n{2,}/g).map(part => {
-      const value = part.replace(/\n/g, '<br>')
-        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-        .replace(/`([^`]+)`/g, '<code>$1</code>')
-      return value ? `<p>${value}</p>` : ''
+    return block.split(/\n{2,}/g).map(part => {
+      if (!part) return ''
+      const value = part.replace(/\n/g, '<br>').replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>').replace(/`([^`]+)`/g, '<code>$1</code>')
+      return `<p>${value}</p>`
     }).join('')
-    return paragraphs
   }).join('')
 }
 
@@ -106,7 +104,7 @@ function deriveTitle(text) {
 }
 
 function archiveCurrentChat() {
-  if (!currentChat || currentChat.messages.length === 0) return
+  if (!currentChat || !currentChat.messages.length) return
   const items = chats().filter(item => item.id !== currentChat.id)
   items.unshift(currentChat)
   saveChats(items)
@@ -140,6 +138,7 @@ function persistCurrentChat() {
 function clearConversationView() {
   conversation.innerHTML = ''
   activeAssistant = null
+  activeAssistantRaw = ''
   thinkingNode = null
 }
 
@@ -197,14 +196,14 @@ function ensureThinking(text = 'Thinking…') {
     bubble.className = 'message-bubble'
     const content = document.createElement('div')
     content.className = 'message-content'
-    content.innerHTML = `<span class="thinking"><i></i><i></i><i></i></span>`
+    content.innerHTML = '<span class="thinking"><i></i><i></i><i></i></span>'
     bubble.appendChild(content)
     row.appendChild(avatar)
     row.appendChild(bubble)
     conversation.appendChild(row)
     thinkingNode = content
   }
-  if (text) thinkingNode.dataset.message = text
+  thinkingNode.dataset.message = text
   conversation.scrollTop = conversation.scrollHeight
 }
 
@@ -218,6 +217,7 @@ function clearThinking() {
 function ensureAssistant() {
   clearThinking()
   if (!activeAssistant) {
+    activeAssistantRaw = ''
     activeAssistant = addMessage('assistant', '', selectedModel || 'streaming')
     activeAssistant.classList.add('streaming')
   }
@@ -226,31 +226,41 @@ function ensureAssistant() {
 
 function appendAssistantDelta(delta) {
   if (!delta) return
+  activeAssistantRaw += delta
   const node = ensureAssistant()
-  node.dataset.raw = (node.dataset.raw || '') + delta
-  node.innerHTML = renderMarkdown(node.dataset.raw)
+  node.dataset.raw = activeAssistantRaw
+  node.innerHTML = renderMarkdown(activeAssistantRaw)
   conversation.scrollTop = conversation.scrollHeight
+}
+
+function persistAssistantReply() {
+  if (!currentChat || !activeAssistantRaw.trim()) return
+  currentChat.messages.push({ role: 'assistant', content: activeAssistantRaw })
+  persistCurrentChat()
 }
 
 function finishAssistant() {
   clearThinking()
-  if (activeAssistant) activeAssistant.classList.remove('streaming')
+  if (activeAssistant) {
+    activeAssistant.classList.remove('streaming')
+    persistAssistantReply()
+  }
   activeAssistant = null
+  activeAssistantRaw = ''
 }
 
 function addGenerationMessage(files, message) {
-  clearThinking()
-  if (activeAssistant) {
-    const row = activeAssistant.closest('.message-row')
-    if (row) row.remove()
-    activeAssistant = null
-  }
+  finishAssistant()
   const content = addMessage('assistant', message || 'Your workspace was updated.')
   const card = document.createElement('div')
   card.className = 'generation-card'
   card.innerHTML = `<strong>Workspace updated</strong><p>${escapeHTML(message || `Updated ${files.length} file${files.length === 1 ? '' : 's'}.`)}</p><div class="generation-files">${files.slice(0, 24).map(path => `<div class="generation-file">${escapeHTML(path)}</div>`).join('')}</div><a class="generation-download" href="/api/download">Download workspace</a>`
   content.innerHTML = ''
   content.appendChild(card)
+  if (currentChat) {
+    currentChat.messages.push({ role: 'assistant', content: message || `Updated ${files.length} file${files.length === 1 ? '' : 's'}.` })
+    persistCurrentChat()
+  }
 }
 
 function addErrorMessage(payload) {
@@ -288,21 +298,19 @@ function renderAttachments() {
 async function readUpload(file) {
   if (file.size > MAX_ATTACHMENT_BYTES) throw new Error(`${file.name} is larger than 64 KiB.`)
   const data = new Uint8Array(await file.arrayBuffer())
-  const decoder = new TextDecoder('utf-8', { fatal: true })
   let content
-  try { content = decoder.decode(data) } catch { throw new Error(`${file.name} is not valid UTF-8 text.`) }
+  try { content = new TextDecoder('utf-8', { fatal: true }).decode(data) } catch { throw new Error(`${file.name} is not valid UTF-8 text.`) }
   return { id: crypto.randomUUID(), name: file.name, size: file.size, content }
 }
 
 async function queueUploads(files) {
   const list = Array.from(files || [])
   if (!list.length) return
-  const combined = queuedFiles.reduce((sum, file) => sum + file.size, 0)
   if (queuedFiles.length + list.length > MAX_ATTACHMENTS) {
-    showToast(`Maximum ${MAX_ATTACHMENTS} files`) 
+    showToast(`Maximum ${MAX_ATTACHMENTS} files`)
     return
   }
-  let total = combined
+  let total = queuedFiles.reduce((sum, file) => sum + file.size, 0)
   for (const file of list) {
     if (total + file.size > MAX_ATTACHMENT_TOTAL) {
       showToast('Attachment limit reached')
@@ -360,18 +368,15 @@ async function loadModels(provider) {
     selectedModel = configured || data.models?.[0] || ''
     modelInput.value = selectedModel
     modelSettings.value = selectedModel
-  } catch (error) {
+  } catch {
     selectedModel = settings?.providers?.[provider]?.default_model || ''
     modelInput.value = selectedModel
     modelSettings.value = selectedModel
   }
-  syncRuntimeLabels()
 }
 
 function syncRuntimeLabels() {
-  const meta = `${selectedProvider || 'provider'} · ${selectedModel || 'model'}`
   document.title = `FuzeCLI · ${selectedModel || selectedProvider || 'Chat'}`
-  composerStatus.dataset.runtime = meta
 }
 
 providerSelect.addEventListener('change', async () => {
@@ -425,17 +430,12 @@ async function loadHistoryFromServer() {
   currentChat.messages = messages.map(message => ({ role: message.role, content: message.content }))
   externalContext = false
   clearConversationView()
-  if (!messages.length) {
-    showWelcome()
-    return
-  }
-  renderConversation(messages)
-  renderHistory()
+  if (!messages.length) showWelcome()
+  else renderConversation(messages)
 }
 
 function renderConversation(messages) {
   clearConversationView()
-  $('welcome')?.remove()
   messages.forEach(message => addMessage(message.role, message.content))
 }
 
@@ -521,7 +521,6 @@ function handleProgressData(data) {
     finishAssistant()
     syncComposerState()
   }
-  syncComposerState()
 }
 
 function handleChatTokenData(data) {
@@ -545,18 +544,10 @@ function handleErrorData(data) {
 function connectEvents() {
   if (source) source.close()
   source = new EventSource('/api/events')
-  source.addEventListener('progress', event => {
-    try { handleProgressData(JSON.parse(event.data)) } catch {}
-  })
-  source.addEventListener('chat_token', event => {
-    try { handleChatTokenData(JSON.parse(event.data)) } catch {}
-  })
-  source.addEventListener('generated', event => {
-    try { handleGeneratedData(JSON.parse(event.data)) } catch {}
-  })
-  source.addEventListener('job_error', event => {
-    try { handleErrorData(JSON.parse(event.data)) } catch {}
-  })
+  source.addEventListener('progress', event => { try { handleProgressData(JSON.parse(event.data)) } catch {} })
+  source.addEventListener('chat_token', event => { try { handleChatTokenData(JSON.parse(event.data)) } catch {} })
+  source.addEventListener('generated', event => { try { handleGeneratedData(JSON.parse(event.data)) } catch {} })
+  source.addEventListener('job_error', event => { try { handleErrorData(JSON.parse(event.data)) } catch {} })
   source.onopen = () => {
     $('connectionText').textContent = 'Connected'
     $('connectionDot').classList.remove('warn')
@@ -575,9 +566,9 @@ async function submit() {
   if (!currentChat) currentChat = makeChat(deriveTitle(text))
   if (!currentChat.messages.length) currentChat.title = deriveTitle(text)
   const outgoing = buildPromptWithFiles(text)
-  lastPrompt = text
   addMessage('user', text, queuedFiles.length ? `${queuedFiles.length} attachment${queuedFiles.length === 1 ? '' : 's'}` : '')
   currentChat.messages.push({ role: 'user', content: text })
+  persistCurrentChat()
   externalContext = false
   prompt.value = ''
   queuedFiles = []
@@ -587,7 +578,6 @@ async function submit() {
   syncComposerState()
   try {
     await fetchJSON('/api/chat', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ prompt: outgoing, provider: selectedProvider, model: selectedModel, code: false, yes: true }) })
-    renderHistory()
   } catch (error) {
     busy = false
     addErrorMessage(error.payload || { title: 'Could not send message', error: error.message })
@@ -638,13 +628,11 @@ $('clearHistory').addEventListener('click', () => {
   renderHistory()
   showToast('Saved chat history cleared')
 })
-
 $('attachButton').addEventListener('click', () => fileInput.click())
 fileInput.addEventListener('change', async () => {
   await queueUploads(fileInput.files)
   fileInput.value = ''
 })
-
 ;['dragenter','dragover'].forEach(type => composerWrap.addEventListener(type, event => {
   event.preventDefault()
   dropOverlay.classList.add('show')
@@ -654,10 +642,7 @@ fileInput.addEventListener('change', async () => {
   if (type === 'dragleave' && event.relatedTarget && composerWrap.contains(event.relatedTarget)) return
   dropOverlay.classList.remove('show')
 }))
-composerWrap.addEventListener('drop', async event => {
-  await queueUploads(event.dataTransfer.files)
-})
-
+composerWrap.addEventListener('drop', async event => { await queueUploads(event.dataTransfer.files) })
 send.addEventListener('click', submit)
 prompt.addEventListener('input', () => {
   prompt.style.height = 'auto'
@@ -670,7 +655,6 @@ prompt.addEventListener('keydown', event => {
     submit()
   }
 })
-
 document.addEventListener('keydown', event => {
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
     event.preventDefault()
