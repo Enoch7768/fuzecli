@@ -7,10 +7,13 @@ import (
 	"os"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/Enoch7768/fuzecli/internal/generation"
 	"github.com/Enoch7768/fuzecli/internal/provider"
 )
+
+const terminalAttachmentLimit = 65536
 
 func (a *App) TerminalChat(ctx context.Context, _ bool) error {
 	if a.Store == nil {
@@ -22,6 +25,7 @@ func (a *App) TerminalChat(ctx context.Context, _ bool) error {
 	if err := a.terminalSessionPreflight(ctx, providerName, model, scanner); err != nil {
 		return err
 	}
+	attachments := make(map[string]string)
 	printTerminalHeader(providerName, model, a.Store.Root)
 	for {
 		fmt.Print("\n\x1b[38;5;111m❯\x1b[0m ")
@@ -64,17 +68,81 @@ func (a *App) TerminalChat(ctx context.Context, _ bool) error {
 			case "/clear":
 				fmt.Print("\x1b[2J\x1b[H")
 				printTerminalHeader(providerName, model, a.Store.Root)
+			case "/file":
+				if value == "" {
+					fmt.Printf("Attached files: %d\n", len(attachments))
+					for path := range attachments {
+						fmt.Printf("  ✓ %s\n", path)
+					}
+					continue
+				}
+				if strings.EqualFold(value, "clear") {
+					clearAttachments(attachments)
+					fmt.Println("\x1b[38;5;244mAttached files cleared.\x1b[0m")
+					continue
+				}
+				path, err := attachTerminalFile(a.Store.Root, value)
+				if err != nil {
+					fmt.Println(formatTerminalError(err))
+					continue
+				}
+				data, err := os.ReadFile(path)
+				if err != nil {
+					fmt.Println(formatTerminalError(err))
+					continue
+				}
+				rel := value
+				if normalized := filepathSlash(rel); normalized != "" {
+					rel = normalized
+				}
+				attachments[rel] = string(data)
+				fmt.Printf("\x1b[38;5;111mAttached\x1b[0m %s\n", rel)
 			default:
 				fmt.Printf("Unknown command %q. Type /help for commands.\n", command)
 			}
 			continue
 		}
-		if err := a.terminalStream(ctx, line, providerName, model); err != nil {
+		if err := a.terminalStream(ctx, line, providerName, model, attachments); err != nil {
 			fmt.Println(formatTerminalError(err))
 		}
 	}
 	go a.RunProfileExtraction(context.Background())
 	return scanner.Err()
+}
+
+func attachTerminalFile(root, rel string) (string, error) {
+	path, err := generation.Resolve(root, rel)
+	if err != nil {
+		return "", err
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return "", fmt.Errorf("cannot attach %s: %w", rel, err)
+	}
+	if info.IsDir() {
+		return "", fmt.Errorf("cannot attach directory %s", rel)
+	}
+	if info.Size() > terminalAttachmentLimit {
+		return "", fmt.Errorf("file %s is larger than 64 KiB", rel)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", fmt.Errorf("read %s: %w", rel, err)
+	}
+	if !utf8.Valid(data) {
+		return "", fmt.Errorf("file %s is not valid UTF-8 text", rel)
+	}
+	return path, nil
+}
+
+func clearAttachments(attachments map[string]string) {
+	for path := range attachments {
+		delete(attachments, path)
+	}
+}
+
+func filepathSlash(value string) string {
+	return strings.ReplaceAll(strings.TrimSpace(value), "\\", "/")
 }
 
 func (a *App) terminalSessionPreflight(ctx context.Context, providerName, model string, scanner *bufio.Scanner) error {
@@ -145,17 +213,20 @@ func printTerminalHeader(providerName, model, root string) {
 	fmt.Println("\x1b[38;5;239m────────────────────────────────────────────────────────────\x1b[0m")
 	fmt.Printf("\x1b[38;5;111mProvider\x1b[0m  %s    \x1b[38;5;111mModel\x1b[0m  %s\n", providerName, model)
 	fmt.Printf("\x1b[38;5;244mWorkspace\x1b[0m %s\n", root)
-	fmt.Println("\x1b[38;5;244mChat only · /provider · /model · /status · /clear · /help · /exit\x1b[0m")
+	fmt.Println("\x1b[38;5;244mChat only · /file · /provider · /model · /status · /clear · /help · /exit\x1b[0m")
 }
 
 func printTerminalHelp() {
 	fmt.Println("\n\x1b[1mChat Commands\x1b[0m")
-	fmt.Println("  /provider <name>  Change provider for this session")
-	fmt.Println("  /model <name>     Change model for this session")
-	fmt.Println("  /status           Show provider, model and workspace")
-	fmt.Println("  /clear            Clear the terminal view")
-	fmt.Println("  /exit             Close the session")
+	fmt.Println("  /file <relative-path>  Attach a workspace text file")
+	fmt.Println("  /file clear            Clear attached files")
+	fmt.Println("  /provider <name>       Change provider for this session")
+	fmt.Println("  /model <name>          Change model for this session")
+	fmt.Println("  /status                Show provider, model and workspace")
+	fmt.Println("  /clear                 Clear the terminal view")
+	fmt.Println("  /exit                  Close the session")
 	fmt.Println()
+	fmt.Println("Use natural language for your prompt after attaching a file. Attached files are supplied directly to the model for the session.")
 	fmt.Println("Project changes are requested naturally in chat. When the model returns valid file JSON, FuzeCLI writes it automatically.")
 }
 
@@ -173,7 +244,7 @@ func formatTerminalError(err error) string {
 	return fmt.Sprintf("\x1b[38;5;214mError:\x1b[0m %s", err.Error())
 }
 
-func (a *App) terminalStream(ctx context.Context, prompt, providerName, model string) error {
+func (a *App) terminalStream(ctx context.Context, prompt, providerName, model string, attachments map[string]string) error {
 	start := time.Now()
 	history, err := a.Store.History(400)
 	if err != nil {
@@ -197,6 +268,12 @@ func (a *App) terminalStream(ctx context.Context, prompt, providerName, model st
 	}
 	if workspaceContext != "" {
 		system += "\nRelevant workspace files read from disk:\n" + workspaceContext
+	}
+	if len(attachments) > 0 {
+		system += "\nUser-attached workspace files:\n"
+		for path, content := range attachments {
+			system += "\n--- " + path + " ---\n" + content + "\n--- end " + path + " ---\n"
+		}
 	}
 	engine := generation.Engine{Registry: a.Registry, Profile: &a.Profile, MaxContextChars: 120000}
 	msgs := engine.Messages(a.Profile.Condensed(), workspaceContext, history, prompt)
