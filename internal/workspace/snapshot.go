@@ -26,7 +26,7 @@ func (s *Store) CreateSnapshot(paths []string) (string, error) {
 	unique := make(map[string]struct{}, len(paths))
 	for _, rel := range paths {
 		rel = filepath.ToSlash(filepath.Clean(rel))
-		if rel == "." || strings.HasPrefix(rel, "../") || strings.Contains(rel, "/../") || policy.Ignored(rel) {
+		if rel == "." || filepath.IsAbs(rel) || filepath.VolumeName(rel) != "" || strings.HasPrefix(rel, "../") || strings.Contains(rel, "/../") || policy.Ignored(rel) {
 			continue
 		}
 		unique[rel] = struct{}{}
@@ -151,13 +151,13 @@ func (s *Store) RestoreSnapshot(snapshot string) ([]string, error) {
 	var restored []string
 	for _, entry := range zr.File {
 		rel := filepath.ToSlash(filepath.Clean(entry.Name))
-		if rel == "." || strings.HasPrefix(rel, "../") || strings.Contains(rel, "/../") || policy.Ignored(rel) {
-			continue
-		}
 		if entry.FileInfo().IsDir() {
 			continue
 		}
-		target := filepath.Join(root, filepath.FromSlash(rel))
+		target, resolveErr := resolveSnapshotPath(root, rel)
+		if resolveErr != nil || policy.Ignored(rel) {
+			continue
+		}
 		if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
 			return restored, err
 		}
@@ -176,6 +176,26 @@ func (s *Store) RestoreSnapshot(snapshot string) ([]string, error) {
 		restored = append(restored, rel)
 	}
 	return restored, nil
+}
+
+func resolveSnapshotPath(root, rel string) (string, error) {
+	normalized := filepath.ToSlash(rel)
+	if rel == "" || normalized == "." || filepath.IsAbs(rel) || filepath.VolumeName(rel) != "" || strings.HasPrefix(normalized, "/") || strings.HasPrefix(normalized, "../") || strings.Contains(normalized, "/../") {
+		return "", fmt.Errorf("unsafe snapshot path %q", rel)
+	}
+	base, err := filepath.Abs(root)
+	if err != nil {
+		return "", err
+	}
+	target, err := filepath.Abs(filepath.Join(base, filepath.FromSlash(rel)))
+	if err != nil {
+		return "", err
+	}
+	relBack, err := filepath.Rel(base, target)
+	if err != nil || relBack == ".." || strings.HasPrefix(relBack, ".."+string(os.PathSeparator)) {
+		return "", fmt.Errorf("snapshot path escapes workspace")
+	}
+	return target, nil
 }
 
 func fileSize(file *os.File) int64 {
