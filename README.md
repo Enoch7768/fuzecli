@@ -1,24 +1,27 @@
 # FuzeCLI
 
-FuzeCLI (`aicli.exe`) is a Windows-native Go CLI for chatting with multiple AI providers and generating code directly into a workspace. It is designed to ship as a single statically linked Windows executable with no Go runtime or CGO dependency.
+FuzeCLI (`aicli.exe`) is a Windows-native Go CLI for chatting with multiple AI providers and generating code directly into a workspace. It is designed to ship as a single Windows executable with no Go runtime or CGO dependency at runtime.
 
 ## Features
 
 - Unified provider interface for OpenAI, Gemini, Groq, Anthropic, and a running llama.cpp server.
 - `--provider auto` fallback across configured providers on rate limits and provider outages.
-- Structured JSON code generation; fenced Markdown parsing is intentionally not used.
+- Structured JSON code generation with automatic application in interactive chat.
 - Workspace-bound path validation to block `..` traversal and writes outside the project root.
-- Diff preview with `y/n/edit` confirmation, plus `--yes` for automation.
+- Interactive Windows file picker for chat attachments with multi-select support.
+- UTF-8 text attachment validation with a 64 KiB per-file limit.
 - Automatic verification for Go, TypeScript, PHP, and Python projects.
 - Verification-driven self-correction with configurable attempts.
 - SQLite conversation history and touched-file context in `.aicli/`.
 - Global developer profile in `%APPDATA%\\aicli\\profile.json`.
 - Streaming chat output where providers support it.
+- Local HTTP API for applications and integrations.
+- MCP server over stdio for MCP-compatible AI clients.
 - No API keys are printed or logged.
 
 ## Build
 
-Requirements for development are Go 1.23+ and a network connection so Go can resolve modules. The SQLite driver is `modernc.org/sqlite`, so Windows release builds use `CGO_ENABLED=0`.
+Requirements for development are Go 1.23+ and a network connection so Go can resolve modules. The SQLite driver is `modernc.org/sqlite`, and the official MCP Go SDK is used for the MCP server.
 
 ```powershell
 git clone your-repository-url
@@ -32,32 +35,7 @@ The resulting `dist/aicli.exe` is the distributable CLI.
 
 ## Configuration
 
-FuzeCLI stores configuration in `%APPDATA%\\aicli\\config.yaml`. Example:
-
-```yaml
-default_provider: groq
-providers:
-  openai:
-    api_key: ""
-    default_model: gpt-4o
-  gemini:
-    api_key: ""
-    default_model: gemini-1.5-pro
-  groq:
-    api_key: ""
-    default_model: llama3-70b-8192
-  anthropic:
-    api_key: ""
-    default_model: claude-sonnet-4-6
-  llamacpp:
-    base_url: http://localhost:8080
-    default_model: local
-fallback_order: [groq, gemini, openai]
-verification:
-  self_correction_attempts: 2
-```
-
-Set provider credentials without exposing them:
+FuzeCLI stores configuration in `%APPDATA%\\aicli\\config.yaml`.
 
 ```powershell
 aicli config set openai.api_key sk-...
@@ -66,7 +44,7 @@ aicli config set default_provider groq
 aicli config show
 ```
 
-`config show` masks all but the last four key characters.
+`config show` masks API keys.
 
 ## Workspace
 
@@ -76,40 +54,67 @@ Initialize from the project root:
 aicli init
 ```
 
-This creates:
+This creates `.aicli/session.db` and workspace state used for history and context.
 
-```text
-.aicli/
-  session.db
-  state.json
-```
-
-The project `.gitignore` is updated with `.aicli/` automatically.
-
-## Usage
+## Interactive chat
 
 ```powershell
 aicli chat
-aicli ask "Create a production-ready Go HTTP health endpoint"
-aicli ask "Refactor this function" --provider groq --model llama3-70b --yes
-type file.txt | aicli ask "Refactor this input into idiomatic Go"
-aicli profile show
-aicli history
 ```
 
-Interactive chat streams ordinary assistant responses. Use `/code <request>` inside chat to invoke structured code generation. `--yes` skips the write confirmation for `/code` and one-shot `ask`.
+Inside chat:
+
+```text
+/file
+```
+
+opens the native Windows multi-file picker. Selected files are attached to the session and supplied directly to the next prompt.
+
+```text
+/file src/app.go
+/file list
+/file clear
+```
+
+You can also attach a file directly by its workspace-relative path.
+
+Project changes are requested naturally. When the model returns valid FuzeCLI file JSON, FuzeCLI applies it automatically.
+
+## API
+
+Start the local application API with:
+
+```powershell
+aicli api
+```
+
+Default endpoint: `http://127.0.0.1:8787`.
+
+See [docs/API.md](docs/API.md) for the HTTP endpoints, request formats, file attachment behavior, and authentication.
+
+## MCP
+
+Start the MCP server with:
+
+```powershell
+aicli mcp
+```
+
+The server communicates over stdio and exposes FuzeCLI chat, workspace file reading, and workspace file listing tools.
+
+See [docs/MCP.md](docs/MCP.md) for MCP client configuration and tool schemas.
 
 ## Safety model
 
-Generated files are always resolved relative to the active workspace. Absolute paths and traversal paths containing `..` are rejected. Provider output is parsed with `encoding/json` and unknown JSON fields are rejected. The CLI never executes arbitrary commands returned in the `commands` array; those commands are shown as suggestions only.
-
-File writes are performed through a temporary file followed by a rename. Verification runs only against the detected project toolchain. Verification failures are returned to the configured provider for a bounded self-correction loop.
+Generated file paths are resolved relative to the active workspace. Absolute paths and traversal paths are rejected. Attached files are read-only inputs and are limited to UTF-8 text files of at most 64 KiB each. The CLI never executes arbitrary commands returned in generated JSON. File writes use a temporary file followed by a rename. API access is loopback by default and can use `FUZECLI_API_TOKEN` for bearer authentication.
 
 ## Development layout
 
 ```text
 cmd/aicli/
 internal/app/
+internal/api/
+internal/mcpserver/
 internal/config/
 internal/provider/
 internal/generation/
@@ -117,10 +122,6 @@ internal/workspace/
 internal/profile/
 internal/verify/
 internal/ui/
+docs/API.md
+docs/MCP.md
 ```
-
-Provider-specific adapters are isolated under `internal/provider/<name>/` and all implement the shared `provider.Provider` interface.
-
-## Release workflow
-
-`.github/workflows/release.yml` runs tests and produces `dist/aicli.exe` with `CGO_ENABLED=0` on every tag matching `v*`, then attaches the executable to the GitHub Release.
