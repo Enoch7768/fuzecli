@@ -42,8 +42,9 @@ func (a *App) SessionWelcome(ctx context.Context, providerName, model string) (s
 	}
 
 	var b strings.Builder
-	b.WriteString("\x1b[1;38;5;117mWelcome back to FuzeCLI\x1b[0m\n")
-	b.WriteString("\x1b[38;5;244m────────────────────────────────────────────────────────────\x1b[0m\n")
+	b.WriteString("\x1b[1;38;5;117mWelcome to FuzeCLI\x1b[0m\n")
+	b.WriteString("\x1b[38;5;244mYour local AI coding workspace is ready.\x1b[0m\n")
+	b.WriteString("\x1b[38;5;239m────────────────────────────────────────────────────────────\x1b[0m\n")
 	fmt.Fprintf(&b, "\x1b[38;5;111mProvider\x1b[0m  %s\n", name)
 	fmt.Fprintf(&b, "\x1b[38;5;111mModel\x1b[0m     %s\n", mdl)
 	fmt.Fprintf(&b, "\x1b[38;5;111mWorkspace\x1b[0m %s\n", a.Store.Root)
@@ -54,5 +55,8 @@ func (a *App) SessionWelcome(ctx context.Context, providerName, model string) (s
 		b.WriteString("\x1b[38;5;244mMemory\x1b[0m    No previous conversation\n")
 	}
 
+	b.WriteString("\x1b[38;5;111mSafety\x1b[0m    Workspace paths validated · commands never auto-executed\n")
+	b.WriteString("\x1b[38;5;111mAI output\x1b[0m Strict instructions active · JSON parser ready for chat and edits\n")
+	b.WriteString("\n\x1b[38;5;244mTry: \x1b[0m\"Explain this project\"  or  \"Fix the failing tests\"\n")
 	return b.String(), nil
 }
