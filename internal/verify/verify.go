@@ -8,21 +8,32 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/Enoch7768/fuzecli/internal/diagnostics"
 )
 
 type Result struct {
-	Tool   string
-	Passed bool
-	Output string
+	Tool        string
+	Passed      bool
+	Output      string
+	Diagnostics []diagnostics.Diagnostic
 }
 
 func Detect(root string, touched []string) (Result, error) {
 	has := func(name string) bool { _, e := os.Stat(filepath.Join(root, name)); return e == nil }
 	switch {
 	case has("go.mod"):
-		return run(root, "go", "build", "./...")
-	case has("tsconfig.json"):
+		return run(root, "go", "test", "./...")
+	case has("package.json") && has("tsconfig.json"):
+		if has("package-lock.json") {
+			return run(root, "npm", "test", "--", "--runInBand")
+		}
 		return run(root, "npx", "--yes", "tsc", "--noEmit")
+	case has("package.json"):
+		if has("package-lock.json") {
+			return run(root, "npm", "test", "--", "--runInBand")
+		}
+		return Result{Tool: "node", Passed: true, Output: "Node project detected; no lockfile-backed test command was inferred."}, nil
 	case has("composer.json"):
 		return lintPHP(root, touched)
 	case has("requirements.txt") || has("pyproject.toml"):
@@ -31,6 +42,7 @@ func Detect(root string, touched []string) (Result, error) {
 		return Result{Tool: "none", Passed: true, Output: "No supported toolchain detected; verification skipped."}, nil
 	}
 }
+
 func run(root string, name string, args ...string) (Result, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
@@ -38,11 +50,15 @@ func run(root string, name string, args ...string) (Result, error) {
 	cmd.Dir = root
 	b, err := cmd.CombinedOutput()
 	out := strings.TrimSpace(string(b))
-	if err != nil {
-		return Result{Tool: name, Passed: false, Output: out}, nil
+	result := Result{Tool: name, Passed: err == nil, Output: out}
+	result.Diagnostics = diagnostics.Parse(out)
+	if ctx.Err() != nil {
+		result.Passed = false
+		result.Output = strings.TrimSpace(out + "\nverification timed out")
 	}
-	return Result{Tool: name, Passed: true, Output: out}, nil
+	return result, nil
 }
+
 func lintPHP(root string, touched []string) (Result, error) {
 	for _, rel := range touched {
 		if filepath.Ext(rel) != ".php" {
@@ -55,6 +71,7 @@ func lintPHP(root string, touched []string) (Result, error) {
 	}
 	return Result{Tool: "php -l", Passed: true, Output: "PHP syntax checks passed for touched PHP files."}, nil
 }
+
 func lintPython(root string, touched []string) (Result, error) {
 	for _, rel := range touched {
 		if filepath.Ext(rel) != ".py" {
@@ -67,10 +84,15 @@ func lintPython(root string, touched []string) (Result, error) {
 	}
 	return Result{Tool: "python -m py_compile", Passed: true, Output: "Python compilation checks passed for touched Python files."}, nil
 }
+
 func Format(r Result) string {
 	status := "PASS"
 	if !r.Passed {
 		status = "FAIL"
 	}
-	return fmt.Sprintf("[%s] %s\n%s", status, r.Tool, r.Output)
+	text := fmt.Sprintf("[%s] %s\n%s", status, r.Tool, r.Output)
+	if len(r.Diagnostics) > 0 {
+		text += "\n" + diagnostics.Summary(r.Diagnostics)
+	}
+	return text
 }

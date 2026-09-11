@@ -9,11 +9,11 @@ import (
 )
 
 type compatibleProvider struct {
-	name      string
-	apiKey    string
-	baseURL   string
-	http      *http.Client
-	env       string
+	name    string
+	apiKey  string
+	baseURL string
+	http    *http.Client
+	env     string
 }
 
 func newCompatibleProvider(spec compatibleSpec, cfg configuredProvider) *compatibleProvider {
@@ -29,12 +29,12 @@ func newCompatibleProvider(spec compatibleSpec, cfg configuredProvider) *compati
 func (p *compatibleProvider) Name() string { return p.name }
 
 type compatibleRequest struct {
-	Model       string    `json:"model"`
-	Messages    []Message `json:"messages"`
-	Temperature float64   `json:"temperature,omitempty"`
-	MaxTokens   int       `json:"max_tokens,omitempty"`
-	Stream      bool      `json:"stream,omitempty"`
-	ResponseFormat any     `json:"response_format,omitempty"`
+	Model          string    `json:"model"`
+	Messages       []Message `json:"messages"`
+	Temperature    float64   `json:"temperature,omitempty"`
+	MaxTokens      int       `json:"max_tokens,omitempty"`
+	Stream         bool      `json:"stream,omitempty"`
+	ResponseFormat any       `json:"response_format,omitempty"`
 }
 
 type compatibleResponse struct {

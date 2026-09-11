@@ -4,6 +4,11 @@ on:
   push:
     branches:
       - main
+      - public-release-hardening
+      - phase1-agent-foundation
+      - phase2-code-intelligence
+      - phase3-debug-test-git
+      - phase4-final-polish
   pull_request:
     branches:
       - main
@@ -13,24 +18,62 @@ permissions:
 
 jobs:
   test:
+    strategy:
+      fail-fast: false
+      matrix:
+        go-version: ['1.23.x', '1.27.x']
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Normalize Git line endings
+        shell: pwsh
+        run: |
+          git config core.autocrlf false
+          git checkout -- .
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.27.x'
-      - name: Tidy modules
+          go-version: ${{ matrix.go-version }}
+          cache: true
+      - name: Verify formatting
+        shell: pwsh
+        run: |
+          $files = gofmt -l .
+          if ($files) {
+            Write-Host "The following files are not gofmt-formatted:"
+            $files
+            exit 1
+          }
+      - name: Verify modules
         shell: pwsh
         run: |
           go mod tidy
-          Write-Host '--- go.mod ---'
-          Get-Content go.mod
-          Write-Host '--- go.sum ---'
-          Get-Content go.sum
+          git diff --exit-code -- go.mod go.sum
       - name: Test
         run: go test ./...
+      - name: Vet
+        run: go vet ./...
       - name: Build
         shell: pwsh
         run: |
           $env:CGO_ENABLED = '0'
           go build -trimpath -ldflags "-s -w" -o dist/aicli.exe ./cmd/aicli
+      - name: Smoke test
+        shell: pwsh
+        run: |
+          & .\dist\aicli.exe version
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & .\dist\aicli.exe --help
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+  vulnerability-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.27.x'
+          cache: true
+      - name: Install govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@latest
+      - name: Scan dependencies and code
+        run: govulncheck ./...

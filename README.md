@@ -19,6 +19,10 @@ FuzeCLI (`aicli.exe`) is a Windows-native Go CLI for chatting with multiple AI p
 - Streaming chat output with an explicit response-end event for the web interface and immediate next-message availability.
 - Local HTTP API for applications and integrations.
 - MCP server over stdio for MCP-compatible AI clients.
+- Repository code-indexing and symbol-search foundations for focused project understanding.
+- Structured diagnostics for verification failures.
+- Workspace snapshots and restoration for recoverable changes.
+- Git status and diff inspection without modifying the repository.
 - Model-provided shell commands are informational only and are never executed automatically.
 - No API keys are printed or returned by the web settings API.
 
@@ -29,9 +33,14 @@ Requirements for development are Go 1.23+ and a network connection so Go can res
 ```powershell
 git clone your-repository-url
 cd fuzecli
+gofmt -w .
+go mod tidy
 go test ./...
+go vet ./...
 $env:CGO_ENABLED="0"
 go build -trimpath -ldflags="-s -w -X main.version=v0.1.0" -o dist/aicli.exe ./cmd/aicli
+.\dist\aicli.exe version
+.\dist\aicli.exe --help
 ```
 
 For memory-constrained Windows development machines:
@@ -40,6 +49,42 @@ For memory-constrained Windows development machines:
 $env:GOMAXPROCS="2"
 go test -p 1 ./...
 go build -p 1 -o dist/aicli.exe ./cmd/aicli
+```
+
+## Quick start
+
+From an existing project:
+
+```powershell
+aicli init
+aicli config set default_provider gemini
+aicli chat
+```
+
+For a one-shot request:
+
+```powershell
+aicli ask "Explain the authentication flow"
+```
+
+Before applying a risky change, inspect the repository and keep a recovery point available:
+
+```powershell
+aicli status
+aicli diff
+aicli snapshot
+```
+
+If you need to recover from a change:
+
+```powershell
+aicli restore
+```
+
+Run diagnostics when something is wrong:
+
+```powershell
+aicli doctor
 ```
 
 ## Configuration
@@ -56,7 +101,7 @@ aicli config show
 
 `config show` masks API keys. The web Settings screen can replace or clear a provider key without exposing the stored value back to the browser.
 
-## Workspace
+## Workspace safety
 
 Initialize from the project root:
 
@@ -65,6 +110,12 @@ aicli init
 ```
 
 This creates `.aicli/session.db` and workspace state used for history and context.
+
+FuzeCLI applies two layers of context protection: project-specific `.aicliignore` rules and a built-in list of sensitive-file patterns that cannot be overridden. This is designed to keep environment files, credentials, private keys, and similar secrets out of AI context.
+
+Snapshots provide an explicit local recovery point. Generated paths are constrained to the workspace and symlink escapes are rejected. These controls are safety boundaries, not a guarantee that third-party source code or dependencies are harmless.
+
+A starter ignore file is available as `.aicliignore.example`.
 
 ## Web app
 
@@ -96,6 +147,7 @@ Inside chat:
 /provider gemini
 /model gemini-2.5-flash
 /status
+/clear
 /help
 /exit
 ```
@@ -138,13 +190,24 @@ These controls reduce the execution surface but cannot make arbitrary user works
 
 See [docs/SECURITY.md](docs/SECURITY.md).
 
+## CI and releases
+
+Every supported development build is validated with formatting checks, module consistency, tests, `go vet`, a CGO-free Windows build, and a CLI smoke test. A separate vulnerability scan runs with `govulncheck`.
+
+Tagged Windows releases are built from a clean checkout and publish both `aicli.exe` and a SHA-256 checksum. GitHub release notes are generated automatically.
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the project quality bar and [CHANGELOG.md](CHANGELOG.md) for release history.
+
 ## Project documentation
 
 ```text
 README.md
+CONTRIBUTING.md
+CHANGELOG.md
 docs/API.md
 docs/MCP.md
 docs/WEB.md
 docs/TERMINAL.md
 docs/SECURITY.md
+.aicliignore.example
 ```

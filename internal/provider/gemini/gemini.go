@@ -92,7 +92,7 @@ func generationJSONSchema() map[string]any {
 					"properties": map[string]any{
 						"path":    map[string]any{"type": "string"},
 						"content": map[string]any{"type": "string"},
-						"action": map[string]any{"type": "string", "enum": []string{"create", "modify", "delete"}},
+						"action":  map[string]any{"type": "string", "enum": []string{"create", "modify", "delete"}},
 					},
 					"required":         []string{"path", "content", "action"},
 					"propertyOrdering": []string{"path", "content", "action"},
