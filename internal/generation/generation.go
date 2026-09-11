@@ -382,7 +382,8 @@ func Resolve(root, rel string) (string, error) {
 	}
 	parent := filepath.Dir(target)
 	for {
-		if info, statErr := os.Lstat(parent); statErr == nil {
+		info, statErr := os.Lstat(parent)
+		if statErr == nil {
 			if info.Mode()&os.ModeSymlink != 0 {
 				realParent, evalErr := filepath.EvalSymlinks(parent)
 				if evalErr != nil {
