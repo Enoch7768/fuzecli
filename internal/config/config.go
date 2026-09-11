@@ -118,178 +118,222 @@ func Set(key, value string) error {
 	}
 	parts := strings.Split(key, ".")
 	switch {
-	case len(parts) == 1 && parts[0] == "default_provider":
+	case key == "default_provider":
+		if value == "" {
+			return fmt.Errorf("default_provider cannot be empty")
+		}
 		c.DefaultProvider = value
-	case len(parts) == 1 && parts[0] == "fallback_order":
-		c.FallbackOrder = splitList(value)
-	case len(parts) == 2 && parts[0] == "verification" && parts[1] == "self_correction_attempts":
+	case key == "fallback_order":
+		order := parseList(value)
+		if len(order) == 0 {
+			return fmt.Errorf("fallback_order cannot be empty")
+		}
+		c.FallbackOrder = order
+	case len(parts) == 3 && parts[0] == "providers":
+		name := parts[1]
+		field := parts[2]
+		p, ok := c.Providers[name]
+		if !ok {
+			p = ProviderConfig{}
+		}
+		switch field {
+		case "api_key":
+			p.APIKey = value
+		case "default_model":
+			p.DefaultModel = value
+		case "base_url":
+			p.BaseURL = value
+		default:
+			return fmt.Errorf("unsupported config field %q", field)
+		}
+		c.Providers[name] = p
+	case key == "verification.self_correction_attempts":
 		n, err := strconv.Atoi(value)
-		if err != nil {
-			return fmt.Errorf("invalid self-correction attempts: %w", err)
+		if err != nil || n < 0 {
+			return fmt.Errorf("invalid self-correction attempt count %q", value)
 		}
 		c.Verification.SelfCorrectionAttempts = n
-	case len(parts) == 2 && parts[0] == "providers":
-		name := parts[1]
-		pc, ok := c.Providers[name]
-		if !ok {
-			pc = ProviderConfig{}
-		}
-		if value == "" {
-			return fmt.Errorf("value is required")
-		}
-		pc.APIKey = value
-		c.Providers[name] = pc
-	case len(parts) == 2 && strings.HasPrefix(parts[0], "provider"):
-		return fmt.Errorf("unknown configuration key: %s", key)
-	case len(parts) == 3 && parts[0] == "providers" && parts[2] == "api_key":
-		pc := c.Providers[parts[1]]
-		pc.APIKey = value
-		c.Providers[parts[1]] = pc
-	case len(parts) == 3 && parts[0] == "providers" && parts[2] == "default_model":
-		pc := c.Providers[parts[1]]
-		pc.DefaultModel = value
-		c.Providers[parts[1]] = pc
-	case len(parts) == 3 && parts[0] == "providers" && parts[2] == "base_url":
-		pc := c.Providers[parts[1]]
-		pc.BaseURL = value
-		c.Providers[parts[1]] = pc
 	default:
-		return fmt.Errorf("unknown configuration key: %s", key)
+		return fmt.Errorf("unsupported config key %q", key)
 	}
 	return Save(c)
 }
 
-func splitList(value string) []string {
-	parts := strings.Split(value, ",")
-	result := make([]string, 0, len(parts))
-	for _, part := range parts {
-		part = strings.TrimSpace(part)
-		if part != "" {
-			result = append(result, part)
-		}
-	}
-	return result
-}
-
-func MaskSecret(value string) string {
-	value = strings.TrimSpace(value)
-	if value == "" {
+func MaskSecret(s string) string {
+	if s == "" {
 		return ""
 	}
-	if len(value) <= 4 {
-		return "****"
+	if len(s) <= 4 {
+		return strings.Repeat("*", len(s))
 	}
-	return "*****" + value[len(value)-4:]
+	return strings.Repeat("*", len(s)-4) + s[len(s)-4:]
+}
+
+func Timestamp() string {
+	return time.Now().UTC().Format(time.RFC3339)
 }
 
 func renderYAML(c Config) string {
 	var b strings.Builder
-	b.WriteString("default_provider: " + c.DefaultProvider + "\n")
+	fmt.Fprintf(&b, "default_provider: %s\n", yamlScalar(c.DefaultProvider))
 	b.WriteString("providers:\n")
-	names := make([]string, 0, len(c.Providers))
-	for name := range c.Providers {
-		names = append(names, name)
-	}
-	sort.Strings(names)
+	names := []string{"openai", "gemini", "groq", "anthropic", "llamacpp"}
+	seen := map[string]bool{}
 	for _, name := range names {
-		p := c.Providers[name]
-		b.WriteString("  " + name + ":\n")
+		p, ok := c.Providers[name]
+		if !ok {
+			continue
+		}
+		seen[name] = true
+		fmt.Fprintf(&b, "  %s:\n", name)
 		if p.APIKey != "" {
-			b.WriteString("    api_key: " + yamlQuote(p.APIKey) + "\n")
+			fmt.Fprintf(&b, "    api_key: %s\n", yamlScalar(p.APIKey))
 		}
 		if p.DefaultModel != "" {
-			b.WriteString("    default_model: " + yamlQuote(p.DefaultModel) + "\n")
+			fmt.Fprintf(&b, "    default_model: %s\n", yamlScalar(p.DefaultModel))
 		}
 		if p.BaseURL != "" {
-			b.WriteString("    base_url: " + yamlQuote(p.BaseURL) + "\n")
+			fmt.Fprintf(&b, "    base_url: %s\n", yamlScalar(p.BaseURL))
 		}
 	}
-	b.WriteString("fallback_order: [" + strings.Join(c.FallbackOrder, ", ") + "]\n")
-	b.WriteString("verification:\n  self_correction_attempts: " + strconv.Itoa(c.Verification.SelfCorrectionAttempts) + "\n")
+	otherNames := make([]string, 0, len(c.Providers))
+	for name := range c.Providers {
+		if !seen[name] {
+			otherNames = append(otherNames, name)
+		}
+	}
+	sort.Strings(otherNames)
+	for _, name := range otherNames {
+		p := c.Providers[name]
+		fmt.Fprintf(&b, "  %s:\n", name)
+		if p.APIKey != "" {
+			fmt.Fprintf(&b, "    api_key: %s\n", yamlScalar(p.APIKey))
+		}
+		if p.DefaultModel != "" {
+			fmt.Fprintf(&b, "    default_model: %s\n", yamlScalar(p.DefaultModel))
+		}
+		if p.BaseURL != "" {
+			fmt.Fprintf(&b, "    base_url: %s\n", yamlScalar(p.BaseURL))
+		}
+	}
+	order := make([]string, len(c.FallbackOrder))
+	for i, providerName := range c.FallbackOrder {
+		order[i] = yamlScalar(providerName)
+	}
+	fmt.Fprintf(&b, "fallback_order: [%s]\n", strings.Join(order, ", "))
+	fmt.Fprintf(&b, "verification:\n  self_correction_attempts: %d\n", c.Verification.SelfCorrectionAttempts)
 	return b.String()
 }
 
-func yamlQuote(value string) string {
-	if value == "" {
+func yamlScalar(s string) string {
+	if s == "" {
 		return "\"\""
 	}
-	if strings.IndexAny(value, ":#[]{}&*!|>'\"%@`\n\r\t, ") >= 0 {
-		return strconv.Quote(value)
+	needsQuote := strings.ContainsAny(s, ":#[]{}\\\",'\t ")
+	if !needsQuote {
+		return s
 	}
-	return value
+	return strconv.Quote(s)
 }
 
-func parseYAML(data string, c *Config) error {
-	lines := strings.Split(data, "\n")
+func parseYAML(text string, c *Config) error {
 	section := ""
-	providerName := ""
-	for _, raw := range lines {
-		line := strings.TrimSpace(raw)
-		if line == "" || strings.HasPrefix(line, "#") {
+	current := ""
+	for _, raw := range strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n") {
+		line := strings.TrimRight(raw, " \t")
+		if strings.TrimSpace(line) == "" || strings.HasPrefix(strings.TrimSpace(line), "#") {
 			continue
 		}
-		indent := len(raw) - len(strings.TrimLeft(raw, " "))
+		trimmed := strings.TrimSpace(line)
+		indent := len(line) - len(strings.TrimLeft(line, " "))
 		if indent == 0 {
-			providerName = ""
-			if strings.HasPrefix(line, "default_provider:") {
-				c.DefaultProvider = strings.TrimSpace(strings.TrimPrefix(line, "default_provider:"))
-				continue
-			}
-			if strings.HasPrefix(line, "fallback_order:") {
-				value := strings.TrimSpace(strings.TrimPrefix(line, "fallback_order:"))
-				value = strings.TrimPrefix(value, "[")
-				value = strings.TrimSuffix(value, "]")
-				c.FallbackOrder = splitList(value)
-				continue
-			}
-			if line == "providers:" {
+			switch {
+			case strings.HasPrefix(trimmed, "default_provider:"):
+				c.DefaultProvider = unquote(strings.TrimSpace(strings.TrimPrefix(trimmed, "default_provider:")))
+				section = ""
+				current = ""
+			case trimmed == "providers:":
 				section = "providers"
-				continue
-			}
-			if line == "verification:" {
+				current = ""
+			case strings.HasPrefix(trimmed, "fallback_order:"):
+				c.FallbackOrder = parseList(strings.TrimSpace(strings.TrimPrefix(trimmed, "fallback_order:")))
+				section = ""
+				current = ""
+			case trimmed == "verification:":
 				section = "verification"
-				continue
+				current = ""
+			default:
+				section = ""
+				current = ""
 			}
 			continue
 		}
-		if section == "providers" && indent == 2 && strings.HasSuffix(line, ":") {
-			providerName = strings.TrimSuffix(line, ":")
-			if _, ok := c.Providers[providerName]; !ok {
-				c.Providers[providerName] = ProviderConfig{}
+		if section == "providers" && indent == 2 && strings.HasSuffix(trimmed, ":") {
+			current = strings.TrimSuffix(trimmed, ":")
+			if _, ok := c.Providers[current]; !ok {
+				c.Providers[current] = ProviderConfig{}
 			}
 			continue
 		}
-		if section == "providers" && indent >= 4 && providerName != "" {
-			parts := strings.SplitN(line, ":", 2)
-			if len(parts) != 2 {
-				continue
-			}
-			p := c.Providers[providerName]
-			key := strings.TrimSpace(parts[0])
-			value := strings.TrimSpace(parts[1])
-			value = strings.Trim(value, "\"")
+		if section == "providers" && indent >= 4 && current != "" {
+			key, value := splitKV(trimmed)
+			p := c.Providers[current]
 			switch key {
 			case "api_key":
-				p.APIKey = value
+				p.APIKey = unquote(value)
 			case "default_model":
-				p.DefaultModel = value
+				p.DefaultModel = unquote(value)
 			case "base_url":
-				p.BaseURL = value
+				p.BaseURL = unquote(value)
 			}
-			c.Providers[providerName] = p
+			c.Providers[current] = p
 			continue
 		}
-		if section == "verification" && indent >= 2 && strings.HasPrefix(line, "self_correction_attempts:") {
-			n, err := strconv.Atoi(strings.TrimSpace(strings.TrimPrefix(line, "self_correction_attempts:")))
-			if err != nil {
-				return fmt.Errorf("invalid self-correction attempts: %w", err)
+		if section == "verification" && indent >= 2 {
+			key, value := splitKV(trimmed)
+			if key == "self_correction_attempts" {
+				n, err := strconv.Atoi(unquote(value))
+				if err != nil {
+					return fmt.Errorf("parse self_correction_attempts: %w", err)
+				}
+				c.Verification.SelfCorrectionAttempts = n
 			}
-			c.Verification.SelfCorrectionAttempts = n
 		}
 	}
 	return nil
 }
 
-func init() {
-	_ = time.Now()
+func splitKV(s string) (string, string) {
+	index := strings.IndexByte(s, ':')
+	if index < 0 {
+		return s, ""
+	}
+	return strings.TrimSpace(s[:index]), strings.TrimSpace(s[index+1:])
+}
+
+func unquote(s string) string {
+	s = strings.TrimSpace(s)
+	if value, err := strconv.Unquote(s); err == nil {
+		return value
+	}
+	return s
+}
+
+func parseList(s string) []string {
+	s = strings.TrimSpace(s)
+	if strings.HasPrefix(s, "[") && strings.HasSuffix(s, "]") {
+		s = strings.TrimSpace(s[1 : len(s)-1])
+	}
+	if s == "" {
+		return nil
+	}
+	parts := strings.Split(s, ",")
+	result := make([]string, 0, len(parts))
+	for _, part := range parts {
+		value := unquote(strings.TrimSpace(part))
+		if value != "" {
+			result = append(result, value)
+		}
+	}
+	return result
 }
