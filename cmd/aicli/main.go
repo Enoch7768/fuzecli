@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -19,14 +20,19 @@ var version = "Revision 2.3"
 
 func main() {
 	if err := run(os.Args[1:]); err != nil {
-		fmt.Fprintln(os.Stderr, "error:", err)
+		fmt.Fprintln(os.Stderr, "\nFuzeCLI could not complete that request.")
+		fmt.Fprintln(os.Stderr, "Reason:", err)
+		fmt.Fprintln(os.Stderr, "\nUseful next steps:")
+		fmt.Fprintln(os.Stderr, "  aicli doctor    Diagnose provider/workspace problems")
+		fmt.Fprintln(os.Stderr, "  aicli setup     Configure your provider and model")
+		fmt.Fprintln(os.Stderr, "  aicli --help   Show all commands")
 		os.Exit(1)
 	}
 }
 
 func run(args []string) error {
 	if len(args) == 0 {
-		return usage()
+		return entryScreen()
 	}
 	switch args[0] {
 	case "version", "--version":
@@ -34,6 +40,8 @@ func run(args []string) error {
 		return nil
 	case "init":
 		return app.InitWorkspace(".")
+	case "setup":
+		return setupCommand()
 	case "config":
 		return configCommand(args[1:])
 	case "models":
@@ -63,8 +71,102 @@ func run(args []string) error {
 	case "help", "--help", "-h":
 		return usage()
 	default:
-		return fmt.Errorf("unknown command %q\n%s", args[0], usageText)
+		return fmt.Errorf("unknown command %q", args[0])
 	}
+}
+
+func entryScreen() error {
+	fmt.Println()
+	fmt.Println("\x1b[1;38;5;117m  F U Z E C L I\x1b[0m")
+	fmt.Println("\x1b[38;5;244m  AI coding workspace for developers\x1b[0m")
+	fmt.Println("\x1b[38;5;239m  ────────────────────────────────────────────────────────────\x1b[0m")
+	fmt.Println()
+	fmt.Println("  Build, inspect, debug and change your project from one terminal.")
+	fmt.Println("  FuzeCLI keeps the developer in control: generated commands are never")
+	fmt.Println("  executed automatically, workspace paths are validated, and changes")
+	fmt.Println("  can be reviewed and recovered locally.")
+	fmt.Println()
+	fmt.Println("\x1b[1m  Get started\x1b[0m")
+	fmt.Println("    aicli setup        Configure your AI provider")
+	fmt.Println("    aicli init         Initialize this workspace")
+	fmt.Println("    aicli chat         Start an interactive coding session")
+	fmt.Println("    aicli doctor       Check your environment")
+	fmt.Println()
+	fmt.Println("  Already configured?")
+	fmt.Println("    aicli chat         Jump straight into your workspace")
+	fmt.Println("    aicli ask \"...\"   Run a one-shot request")
+	fmt.Println()
+	fmt.Println("  Tip: run 'aicli --help' for the complete command reference.")
+	return nil
+}
+
+func setupCommand() error {
+	reader := bufio.NewReader(os.Stdin)
+	current, err := config.Load()
+	if err != nil {
+		return err
+	}
+
+	fmt.Println("\n\x1b[1;38;5;117mFuzeCLI SETUP\x1b[0m")
+	fmt.Println("\x1b[38;5;244mConfigure the provider FuzeCLI should use by default.\x1b[0m")
+	fmt.Println("\x1b[38;5;244mYour API key is stored locally in the FuzeCLI config directory.\x1b[0m\n")
+
+	fmt.Printf("Provider [%s] (gemini/openai/groq/anthropic/llamacpp): ", current.DefaultProvider)
+	providerName, err := readSetupLine(reader)
+	if err != nil {
+		return err
+	}
+	if providerName == "" {
+		providerName = current.DefaultProvider
+	}
+	if _, ok := current.Providers[providerName]; !ok {
+		return fmt.Errorf("unknown provider %q; choose gemini, openai, groq, anthropic, or llamacpp", providerName)
+	}
+
+	providerConfig := current.Providers[providerName]
+	fmt.Printf("Model [%s]: ", providerConfig.DefaultModel)
+	model, err := readSetupLine(reader)
+	if err != nil {
+		return err
+	}
+	if model != "" {
+		providerConfig.DefaultModel = model
+	}
+
+	if providerName != "llamacpp" {
+		fmt.Print("API key (leave blank to keep the current key): ")
+		key, err := readSetupLine(reader)
+		if err != nil {
+			return err
+		}
+		if key != "" {
+			providerConfig.APIKey = key
+		}
+	}
+
+	current.Providers[providerName] = providerConfig
+	current.DefaultProvider = providerName
+	if err := config.Save(current); err != nil {
+		return err
+	}
+	if err := app.InitWorkspace("."); err != nil {
+		return err
+	}
+
+	fmt.Println("\n\x1b[38;5;111m✓ Setup saved.\x1b[0m")
+	fmt.Printf("  Provider: %s\n  Model:    %s\n", providerName, providerConfig.DefaultModel)
+	fmt.Println("\nNext steps:")
+	fmt.Println("  aicli doctor   Verify the provider and workspace")
+	fmt.Println("  aicli chat     Start coding with FuzeCLI")
+	return nil
+}
+
+func readSetupLine(reader *bufio.Reader) (string, error) {
+	line, err := reader.ReadString('\n')
+	if err != nil && len(line) == 0 {
+		return "", err
+	}
+	return strings.TrimSpace(line), nil
 }
 
 func askCommand(args []string) error {
@@ -409,6 +511,7 @@ func usage() error { fmt.Println(usageText); return nil }
 const usageText = `FuzeCLI - unified AI coding workspace
 
 Commands:
+  aicli setup
   aicli init
   aicli config set <key> <value>
   aicli config show
@@ -432,6 +535,7 @@ Safety:
   Known secret-bearing files are always excluded from AI workspace context.
   snapshot/restore provides explicit local recovery points.
   status/diff inspect Git state without modifying the repository.
+  Model-provided shell commands are informational only and are never executed automatically.
 
 Chat commands:
   /file
