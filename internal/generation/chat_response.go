@@ -26,14 +26,18 @@ type chatPlan struct {
 
 func LooksLikeChatPlanPrefix(raw string) bool {
 	text := strings.TrimSpace(strings.TrimPrefix(raw, "\ufeff"))
-	if text == "" || text[0] != '{' {
+	if text == "" {
 		return false
 	}
-	prefix := text
-	if len(prefix) > 4096 {
-		prefix = prefix[:4096]
+	if strings.HasPrefix(text, "{") {
+		prefix := text
+		if len(prefix) > 4096 {
+			prefix = prefix[:4096]
+		}
+		return strings.Contains(prefix, `"files"`) || strings.Contains(prefix, `"explanation"`) || strings.HasPrefix(prefix, `{"files")
 	}
-	return strings.Contains(prefix, `"files"`) || strings.Contains(prefix, `"explanation"`)
+	lower := strings.ToLower(text)
+	return strings.HasPrefix(lower, "```json") || strings.HasPrefix(lower, "```\n{")
 }
 
 func ParseChatPlan(raw string) (Plan, error) {
