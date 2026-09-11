@@ -1,10 +1,8 @@
 package generation
 
 import (
-	"context"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 )
 
@@ -74,12 +72,3 @@ func ApplyChatPlan(root string, plan Plan) ([]string, error) {
 	}
 	return Apply(root, resolved)
 }
-
-// Keep this helper available for legacy normalization callers that need a
-// provider-backed recovery after the local parser rejects a response.
-func normalizeWithConfiguredProvider(ctx context.Context, raw string, parseErr error) (Plan, error) {
-	return Plan{}, fmt.Errorf("provider-backed chat normalization is available through Engine.ParseChatPlan: %w", parseErr)
-}
-
-var _ = context.Background
-var _ = filepath.Separator
