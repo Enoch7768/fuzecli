@@ -6,13 +6,14 @@
 <meta name="theme-color" content="#0d0f13">
 <meta name="description" content="FuzeCLI local AI coding workspace">
 <title>FuzeCLI</title>
+<link rel="icon" href="/icon-mark.png">
 <link rel="stylesheet" href="/static/app.css">
 </head>
 <body>
 <div class="app">
   <aside class="sidebar" id="sidebar">
     <div class="brand-row">
-      <div class="brand-mark" aria-hidden="true"><svg viewBox="0 0 48 48"><path d="M13 8h24v7H21v6h13v7H21v12h-8V8Z"/><path d="m29 31 7-7 5 5-7 7-5-5Z"/></svg></div>
+      <div class="brand-mark" aria-hidden="true"><img src="/icon-mark.png" alt=""></div>
       <div class="brand-name"><strong>FuzeCLI</strong><span>Local AI workspace</span></div>
     </div>
     <button class="new-chat" id="newChat" type="button"><span>+</span><strong>New chat</strong><kbd>Ctrl K</kbd></button>
@@ -40,7 +41,7 @@
       <div class="messages" id="conversation">
         <div class="welcome" id="welcome">
           <div class="welcome-orbit"><span></span><span></span></div>
-          <div class="welcome-mark"><svg viewBox="0 0 48 48"><path d="M13 8h24v7H21v6h13v7H21v12h-8V8Z"/><path d="m29 31 7-7 5 5-7-7Z"/></svg></div>
+          <div class="welcome-mark"><img src="/icon-mark.png" alt="FuzeCLI"></div>
           <div class="eyebrow">PRIVATE · LOCAL · FOCUSED</div>
           <h1>Build something <span>brilliant.</span></h1>
           <p>Talk to your workspace-aware AI. Inspect code, upload context, solve problems, or describe exactly what you want built.</p>
@@ -70,10 +71,17 @@
     <section class="panel-view hidden" id="settingsView">
       <div class="panel-content narrow">
         <div class="panel-heading settings-heading">
-          <div><span class="eyebrow">SETTINGS</span><h2>Runtime</h2><p>Choose the provider and model used by this local interface.</p></div>
+          <div><span class="eyebrow">SETTINGS</span><h2>Runtime</h2><p>Choose the provider, model, and local credentials used by FuzeCLI.</p></div>
           <button class="panel-close" id="closeSettings" type="button" aria-label="Close settings" title="Close settings">×</button>
         </div>
-        <div class="settings-card"><label>Provider<select id="providerSettings"></select></label><label>Model<input id="modelSettings" list="modelSettingsOptions" autocomplete="off" spellcheck="false"><datalist id="modelSettingsOptions"></datalist></label><div class="settings-row"><button class="primary" id="saveSettings" type="button">Save changes</button><span id="settingsStatus"></span></div></div>
+        <div class="settings-card">
+          <label>Provider<select id="providerSettings"></select></label>
+          <label>Model<input id="modelSettings" list="modelSettingsOptions" autocomplete="off" spellcheck="false" placeholder="provider model"><datalist id="modelSettingsOptions"></datalist></label>
+          <label>API key<input id="apiKeySettings" type="password" autocomplete="new-password" spellcheck="false" placeholder="Enter provider API key"></label>
+          <div class="settings-row"><label><input id="showApiKey" type="checkbox"> Show key</label><button class="secondary" id="clearApiKey" type="button">Clear key</button><span id="apiKeyStatus"></span></div>
+          <p>API keys stay on this machine and are never returned to the browser after saving.</p>
+          <div class="settings-row"><button class="primary" id="saveSettings" type="button">Save changes</button><span id="settingsStatus"></span></div>
+        </div>
         <div class="settings-card compact"><div><strong>API</strong><span>Local HTTP API</span></div><b>127.0.0.1:8787</b><div><strong>MCP</strong><span>stdio server available through the CLI</span></div><b>aicli mcp</b></div>
       </div>
     </section>
@@ -82,55 +90,5 @@
 
 <div class="toast" id="toast"></div>
 <script src="/static/app.js"></script>
-<script>
-(() => {
-  const settingsView = document.getElementById('settingsView')
-  const workspaceView = document.getElementById('workspaceView')
-  const chatView = document.getElementById('chatView')
-  const closeSettings = document.getElementById('closeSettings')
-  const status = document.getElementById('composerStatus')
-  const input = document.getElementById('prompt')
-  const messages = document.getElementById('conversation')
-  const composerWrap = document.getElementById('composerWrap')
-
-  const syncMessageViewport = () => {
-    if (!messages || !composerWrap) return
-    messages.style.paddingBottom = `${composerWrap.getBoundingClientRect().height + 34}px`
-    messages.querySelectorAll('.message-row, .message-bubble, .message-content').forEach(node => {
-      node.style.minWidth = '0'
-    })
-  }
-
-  const closePanel = () => {
-    settingsView.classList.add('hidden')
-    workspaceView.classList.add('hidden')
-    chatView.classList.remove('hidden')
-    syncMessageViewport()
-    input.focus()
-  }
-
-  closeSettings.addEventListener('click', closePanel)
-  window.addEventListener('resize', syncMessageViewport)
-  new ResizeObserver(syncMessageViewport).observe(composerWrap)
-  new MutationObserver(syncMessageViewport).observe(messages, {childList:true,subtree:true})
-  syncMessageViewport()
-
-  document.addEventListener('keydown', event => {
-    if (event.key === 'Escape' && !settingsView.classList.contains('hidden')) {
-      event.preventDefault()
-      closePanel()
-    }
-  })
-
-  new MutationObserver(() => {
-    if (status.textContent.trim() !== 'Working…' && typeof busy !== 'undefined' && busy) {
-      busy = false
-      if (typeof finishAssistant === 'function') finishAssistant()
-      if (typeof syncComposerState === 'function') syncComposerState()
-      input.focus()
-    }
-  }).observe(status, {childList:true,characterData:true,subtree:true})
-})()
-</script>
 </body>
 </html>
