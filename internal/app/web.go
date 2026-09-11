@@ -91,7 +91,7 @@ func (a *App) ChatStreamRequest(ctx context.Context, prompt, providerName, model
 	if err != nil {
 		return err
 	}
-	system := generation.StrictExecutionMode + "\n\nYou are FuzeCLI, a practical coding assistant. For ordinary questions, answer naturally in plain text. When the user asks you to create, modify, or delete files and the response can be represented by the FuzeCLI generation schema, return ONLY that valid generation JSON so FuzeCLI can apply it safely. Never use markdown fences for generation JSON."
+	system := generation.StrictExecutionMode + "\n\nYou are FuzeCLI, a practical coding assistant. For ordinary questions, answer naturally in plain text. For requests that create, modify, or delete project files, return ONLY one valid JSON object with this shape: {\"files\":[{\"path\":\"relative/path.ext\",\"line_start\":1,\"line_end\":1000,\"content\":\"full file content\"}],\"explanation\":\"brief explanation\",\"commands\":[]}. The line_start and line_end fields are optional metadata. The action field is optional; when absent, FuzeCLI infers create or modify from the actual workspace. Never use markdown fences around generation JSON."
 	if a.Profile.Condensed() != "" {
 		system += "\nDeveloper profile:\n" + a.Profile.Condensed()
 	}
@@ -105,7 +105,7 @@ func (a *App) ChatStreamRequest(ctx context.Context, prompt, providerName, model
 	if err := a.Store.AddMessage(provider.Message{Role: "user", Content: prompt}); err != nil {
 		return err
 	}
-	stream, err := a.Registry.Stream(ctx, name, msgs, provider.RequestOptions{Model: mdl, Temperature: 0.3, MaxTokens: 4000})
+	stream, err := a.Registry.Stream(ctx, name, msgs, provider.RequestOptions{Model: mdl, Temperature: 0.3, MaxTokens: 16000})
 	if err != nil {
 		return err
 	}
@@ -150,8 +150,8 @@ func (a *App) ChatStreamRequest(ctx context.Context, prompt, providerName, model
 	if text == "" {
 		return context.Canceled
 	}
-	if plan, parseErr := generation.ParsePlan(response.String()); parseErr == nil {
-		written, applyErr := generation.Apply(a.Store.Root, plan)
+	if plan, parseErr := generation.ParseChatPlan(response.String()); parseErr == nil {
+		written, applyErr := generation.ApplyChatPlan(a.Store.Root, plan)
 		if applyErr != nil {
 			return applyErr
 		}
