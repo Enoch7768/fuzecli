@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
-	"time"
 	"unicode/utf8"
 
 	"github.com/Enoch7768/fuzecli/internal/generation"
@@ -81,7 +80,6 @@ func (a *App) TerminalChat(ctx context.Context, _ bool) error {
 					for _, selected := range paths {
 						if err := attachSelectedTerminalFile(a.Store.Root, selected, attachments); err != nil {
 							fmt.Println(formatTerminalError(err))
-							continue
 						}
 					}
 					continue
@@ -142,9 +140,6 @@ func pickTerminalFiles(root string) ([]string, error) {
 		if line != "" {
 			paths = append(paths, line)
 		}
-	}
-	if len(paths) == 0 {
-		return nil, nil
 	}
 	return paths, nil
 }
@@ -223,13 +218,9 @@ func filepathSlash(value string) string {
 }
 
 func (a *App) terminalSessionPreflight(ctx context.Context, providerName, model string, scanner *bufio.Scanner) error {
-	fmt.Println("\n\x1b[1;38;5;117mFuzeCLI SESSION PREFLIGHT\x1b[0m")
+	fmt.Println("\n\x1b[1;38;5;117mFuzeCLI SESSION\x1b[0m")
 	fmt.Println("\x1b[38;5;244m────────────────────────────────────────────────────────────\x1b[0m")
-	fmt.Println("Choose how this session should handle conversation memory.")
-	fmt.Println()
-	fmt.Println("\x1b[1mMemory mode\x1b[0m")
-	fmt.Println("  [M] Continue with memory")
-	fmt.Println("  [F] Start fresh and clear memory")
+	fmt.Println("[M] Continue with memory   [F] Start fresh")
 	fmt.Print("\n\x1b[38;5;111mChoice\x1b[0m: ")
 	for scanner.Scan() {
 		choice := strings.ToLower(strings.TrimSpace(scanner.Text()))
@@ -250,29 +241,17 @@ func (a *App) terminalSessionPreflight(ctx context.Context, providerName, model 
 	if err := scanner.Err(); err != nil {
 		return err
 	}
-	fmt.Println("\n\x1b[1mPreflight\x1b[0m")
-	fmt.Println("\x1b[38;5;244mPreparing strict instructions, memory, and workspace access.\x1b[0m")
-	ticker := time.NewTicker(time.Second)
-	defer ticker.Stop()
-	remaining := 5
-	for remaining > 0 {
-		fmt.Printf("\r\x1b[K\x1b[38;5;111mSession prepares in %02d seconds\x1b[0m", remaining)
-		select {
-		case <-ctx.Done():
-			fmt.Println()
-			return ctx.Err()
-		case <-ticker.C:
-			remaining--
-		}
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
 	}
-	fmt.Print("\r\x1b[K")
-	fmt.Println("\n\x1b[38;5;111mFuzeCLI\x1b[0m is ready for chat.")
 	welcome, err := a.SessionWelcome(ctx, providerName, model)
 	if err != nil {
 		return err
 	}
 	fmt.Printf("\n%s\n", welcome)
-	fmt.Println("\n\x1b[38;5;244mSession ready. Use natural language for both conversation and project changes.\x1b[0m")
+	fmt.Println("\n\x1b[38;5;244mSession ready. Use natural language for conversation and project changes.\x1b[0m")
 	return nil
 }
 
@@ -290,7 +269,7 @@ func printTerminalHeader(providerName, model, root string) {
 	fmt.Println("\x1b[38;5;239m────────────────────────────────────────────────────────────\x1b[0m")
 	fmt.Printf("\x1b[38;5;111mProvider\x1b[0m  %s    \x1b[38;5;111mModel\x1b[0m  %s\n", providerName, model)
 	fmt.Printf("\x1b[38;5;244mWorkspace\x1b[0m %s\n", root)
-	fmt.Println("\x1b[38;5;244mChat only · /file · /provider · /model · /status · /clear · /help · /exit\x1b[0m")
+	fmt.Println("\x1b[38;5;244mChat · /file · /provider · /model · /status · /clear · /help · /exit\x1b[0m")
 }
 
 func printTerminalHelp() {
@@ -305,8 +284,8 @@ func printTerminalHelp() {
 	fmt.Println("  /clear                Clear the terminal view")
 	fmt.Println("  /exit                 Close the session")
 	fmt.Println()
-	fmt.Println("Attach files, then use natural language for your prompt. Attached files are supplied directly to the model for the session.")
-	fmt.Println("Project changes are requested naturally in chat. When the model returns valid file JSON, FuzeCLI writes it automatically.")
+	fmt.Println("Project changes are requested naturally. When valid FuzeCLI file JSON is complete, files are applied immediately and the response ends.")
+	fmt.Println("Model-provided shell commands are informational only and are never executed automatically.")
 }
 
 func printTerminalStatus(providerName, model, root string) {
@@ -324,7 +303,6 @@ func formatTerminalError(err error) string {
 }
 
 func (a *App) terminalStream(ctx context.Context, prompt, providerName, model string, attachments map[string]string) error {
-	start := time.Now()
 	history, err := a.Store.History(400)
 	if err != nil {
 		return err
@@ -341,7 +319,7 @@ func (a *App) terminalStream(ctx context.Context, prompt, providerName, model st
 	if err != nil {
 		return err
 	}
-	system := generation.StrictExecutionMode + "\n\nYou are FuzeCLI, a practical coding assistant. The workspace context was read directly from the user's local workspace. Never ask the user to paste a file that exists there. Use natural language for ordinary conversation. For any request that creates, modifies, or deletes project files, return ONLY one valid JSON object with this shape: {\"files\":[{\"path\":\"relative/path.ext\",\"line_start\":1,\"line_end\":1000,\"content\":\"full file content\"}],\"explanation\":\"brief explanation\",\"commands\":[]}. The line_start and line_end fields are optional metadata. The action field is optional; when it is absent, FuzeCLI infers create or modify from the actual workspace. Never use markdown fences around generation JSON. Never return a request asking the user to provide source files that FuzeCLI already supplied."
+	system := generation.StrictExecutionMode + "\n\nYou are FuzeCLI, a practical coding assistant. The workspace context was read directly from the user's local workspace. Never ask the user to paste a file that exists there. Use natural language for ordinary conversation. For any request that creates, modifies, or deletes project files, return ONLY one valid JSON object with this shape: {\"files\":[{\"path\":\"relative/path.ext\",\"line_start\":1,\"line_end\":1000,\"content\":\"full file content\"}],\"explanation\":\"brief explanation\",\"commands\":[]}. The line_start and line_end fields are optional metadata. The action field is optional; when it is absent, FuzeCLI infers create or modify from the actual workspace. Never use markdown fences around generation JSON. Never return a request asking the user to provide source files that FuzeCLI already supplied. Generated commands are informational only and are never executed automatically."
 	if profileText := a.Profile.Condensed(); profileText != "" {
 		system += "\nDeveloper profile:\n" + profileText
 	}
@@ -360,22 +338,18 @@ func (a *App) terminalStream(ctx context.Context, prompt, providerName, model st
 	if err := a.Store.AddMessage(provider.Message{Role: "user", Content: prompt}); err != nil {
 		return err
 	}
-	stream, err := a.Registry.Stream(ctx, name, msgs, provider.RequestOptions{Model: mdl, Temperature: 0.3, MaxTokens: 16000})
+	streamCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	stream, err := a.Registry.Stream(streamCtx, name, msgs, provider.RequestOptions{Model: mdl, Temperature: 0.3, MaxTokens: 16000})
 	if err != nil {
 		return err
 	}
 	var response strings.Builder
-	for chunk := range stream {
-		if chunk.Error != nil {
-			return chunk.Error
-		}
-		response.WriteString(chunk.Delta)
-	}
-	text := strings.TrimSpace(response.String())
-	if text == "" {
-		return fmt.Errorf("provider returned an empty response")
-	}
-	if plan, parseErr := generation.ParseChatPlan(text); parseErr == nil {
+	var candidate strings.Builder
+	jsonPossible := false
+	applied := false
+	var appliedPlan generation.Plan
+	applyPlan := func(plan generation.Plan) error {
 		written, applyErr := generation.ApplyChatPlan(a.Store.Root, plan)
 		if applyErr != nil {
 			return applyErr
@@ -386,22 +360,77 @@ func (a *App) terminalStream(ctx context.Context, prompt, providerName, model st
 		st, _ := a.Store.LoadState()
 		st.ActiveProvider = name
 		st.ActiveModel = mdl
-		_ = a.Store.SaveState(st)
-		_ = a.Store.RefreshHashes(written)
-		if len(written) == 1 {
-			fmt.Printf("\n\x1b[38;5;111mFuzeCLI\x1b[0m\nWritten 1 file: %s\n", written[0])
-		} else {
-			fmt.Printf("\n\x1b[38;5;111mFuzeCLI\x1b[0m\nWritten %d files:\n", len(written))
-			for _, path := range written {
-				fmt.Printf("  ✓ %s\n", path)
+		if err := a.Store.SaveState(st); err != nil {
+			return err
+		}
+		if err := a.Store.RefreshHashes(written); err != nil {
+			return err
+		}
+		appliedPlan = plan
+		applied = true
+		cancel()
+		return nil
+	}
+	fmt.Print("\n")
+	for chunk := range stream {
+		if chunk.Error != nil {
+			if applied && (chunk.Error == context.Canceled || strings.Contains(chunk.Error.Error(), "context canceled")) {
+				break
+			}
+			return chunk.Error
+		}
+		if chunk.Delta != "" {
+			response.WriteString(chunk.Delta)
+			trimmed := strings.TrimSpace(response.String())
+			if !jsonPossible && generation.LooksLikeChatPlanPrefix(trimmed) {
+				jsonPossible = true
+			}
+			if jsonPossible {
+				candidate.WriteString(chunk.Delta)
+				if plan, parseErr := generation.ParseChatPlan(candidate.String()); parseErr == nil {
+					if err := applyPlan(plan); err != nil {
+						return err
+					}
+					break
+				}
+				if candidate.Len() >= 512 && !strings.Contains(candidate.String(), `"files"`) && !strings.Contains(candidate.String(), `"explanation"`) {
+					jsonPossible = false
+					fmt.Print(candidate.String())
+					candidate.Reset()
+				}
+			} else {
+				fmt.Print(chunk.Delta)
 			}
 		}
-		if plan.Explanation != "" {
-			fmt.Printf("\n%s\n", plan.Explanation)
+		if chunk.Done {
+			break
 		}
-	} else {
-		fmt.Printf("\n\x1b[38;5;111mFuzeCLI\x1b[0m\n%s\n", response.String())
 	}
-	_ = start
+	if applied {
+		if len(appliedPlan.Files) == 1 {
+			fmt.Printf("\n\x1b[38;5;111m✓ Applied\x1b[0m %s\n", appliedPlan.Files[0].Path)
+		} else {
+			fmt.Printf("\n\x1b[38;5;111m✓ Applied\x1b[0m %d files\n", len(appliedPlan.Files))
+		}
+		if appliedPlan.Explanation != "" {
+			fmt.Printf("%s\n", appliedPlan.Explanation)
+		}
+		fmt.Println("\x1b[38;5;244mResponse complete.\x1b[0m")
+		return a.Store.AddMessage(provider.Message{Role: "assistant", Content: appliedPlan.Explanation})
+	}
+	if jsonPossible {
+		if plan, parseErr := generation.ParseChatPlan(candidate.String()); parseErr != nil {
+			return fmt.Errorf("incomplete generation response: %w", parseErr)
+		} else {
+			if err := applyPlan(plan); err != nil {
+				return err
+			}
+		}
+	}
+	text := strings.TrimSpace(response.String())
+	if text == "" {
+		return fmt.Errorf("provider returned an empty response")
+	}
+	fmt.Print("\n\x1b[38;5;244mResponse complete.\x1b[0m\n")
 	return a.Store.AddMessage(provider.Message{Role: "assistant", Content: response.String()})
 }
