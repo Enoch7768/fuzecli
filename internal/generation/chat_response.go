@@ -76,7 +76,7 @@ func ParseChatPlan(raw string) (Plan, error) {
 			return Plan{}, fmt.Errorf("file %d delete action must have empty content", i)
 		}
 		rel := filepath.ToSlash(file.Path)
-		if filepath.IsAbs(file.Path) || filepath.VolumeName(file.Path) != "" || rel == "." || rel == ".." || strings.HasPrefix(rel, "../") || strings.Contains(rel, "/../") || strings.HasPrefix(rel, "//") {
+		if filepath.IsAbs(file.Path) || filepath.VolumeName(file.Path) != "" || rel == "." || rel == ".." || strings.HasPrefix(rel, "/") || strings.HasPrefix(rel, "../") || strings.Contains(rel, "/../") {
 			return Plan{}, fmt.Errorf("path traversal rejected for %q", file.Path)
 		}
 		plan.Files = append(plan.Files, FileChange{Path: file.Path, Content: file.Content, Action: file.Action})
