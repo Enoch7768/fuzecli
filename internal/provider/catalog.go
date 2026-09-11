@@ -79,54 +79,12 @@ var compatibleCatalog = []compatibleSpec{
 	{Name: "custom-1", BaseURL: "", EnvKey: "FUZECLI_CUSTOM_1_API_KEY", MinInterval: 3 * time.Second, MaxInputChars: 20000, MaxOutputTokens: 3000, JSONOutputTokens: 2500},
 	{Name: "custom-2", BaseURL: "", EnvKey: "FUZECLI_CUSTOM_2_API_KEY", MinInterval: 3 * time.Second, MaxInputChars: 20000, MaxOutputTokens: 3000, JSONOutputTokens: 2500},
 	{Name: "custom-3", BaseURL: "", EnvKey: "FUZECLI_CUSTOM_3_API_KEY", MinInterval: 3 * time.Second, MaxInputChars: 20000, MaxOutputTokens: 3000, JSONOutputTokens: 2500},
+	{Name: "gemini-normalizer", BaseURL: "https://generativelanguage.googleapis.com/v1beta/openai", EnvKey: "FUZECLI_GEMINI_NORMALIZER_API_KEY", MinInterval: 2 * time.Second, MaxInputChars: 30000, MaxOutputTokens: 12000, JSONOutputTokens: 12000},
 }
 
-func Configure(name, apiKey, baseURL string) {
-	configuredMu.Lock()
-	configured[strings.ToLower(strings.TrimSpace(name))] = configuredProvider{APIKey: apiKey, BaseURL: baseURL}
-	configuredMu.Unlock()
-}
-
-func configuredFor(name string) configuredProvider {
-	configuredMu.RLock()
-	cfg := configured[strings.ToLower(name)]
-	configuredMu.RUnlock()
-	return cfg
-}
-
-func compatibleSpecFor(name string) (compatibleSpec, bool) {
-	for _, spec := range compatibleCatalog {
-		if strings.EqualFold(spec.Name, name) {
-			return spec, true
-		}
-	}
-	return compatibleSpec{}, false
-}
-
-func CompatibleProviderNames() []string {
-	out := make([]string, 0, len(compatibleCatalog))
-	for _, spec := range compatibleCatalog {
-		out = append(out, spec.Name)
-	}
-	sort.Strings(out)
-	return out
-}
-
-func NewAllCompatibleProviders(resolve func(string) (string, string)) []Provider {
-	providers := make([]Provider, 0, len(compatibleCatalog))
-	for _, spec := range compatibleCatalog {
-		apiKey, baseURL := "", ""
-		if resolve != nil {
-			apiKey, baseURL = resolve(spec.Name)
-		}
-		providers = append(providers, newCompatibleProvider(spec, configuredProvider{APIKey: apiKey, BaseURL: baseURL}))
-	}
-	return providers
-}
-
-func ProviderPolicy(name string) compatibleSpec {
-	if spec, ok := compatibleSpecFor(name); ok {
-		return spec
-	}
-	return compatibleSpec{Name: name, MinInterval: 3 * time.Second, MaxInputChars: 16000, MaxOutputTokens: 2600, JSONOutputTokens: 2000}
-}
+func Configure(name, apiKey, baseURL string) { configuredMu.Lock(); configured[strings.ToLower(strings.TrimSpace(name))] = configuredProvider{APIKey: apiKey, BaseURL: baseURL}; configuredMu.Unlock() }
+func configuredFor(name string) configuredProvider { configuredMu.RLock(); cfg := configured[strings.ToLower(name)]; configuredMu.RUnlock(); return cfg }
+func compatibleSpecFor(name string) (compatibleSpec, bool) { for _, spec := range compatibleCatalog { if strings.EqualFold(spec.Name, name) { return spec, true } }; return compatibleSpec{}, false }
+func CompatibleProviderNames() []string { out := make([]string,0,len(compatibleCatalog));for _,spec:=range compatibleCatalog{out=append(out,spec.Name)};sort.Strings(out);return out }
+func NewAllCompatibleProviders(resolve func(string)(string,string)) []Provider { providers:=make([]Provider,0,len(compatibleCatalog));for _,spec:=range compatibleCatalog{apiKey,baseURL:="","";if resolve!=nil{apiKey,baseURL=resolve(spec.Name)};providers=append(providers,newCompatibleProvider(spec,configuredProvider{APIKey:apiKey,BaseURL:baseURL}))};return providers }
+func ProviderPolicy(name string) compatibleSpec { if spec,ok:=compatibleSpecFor(name);ok{return spec};return compatibleSpec{Name:name,MinInterval:3*time.Second,MaxInputChars:16000,MaxOutputTokens:2600,JSONOutputTokens:2000} }

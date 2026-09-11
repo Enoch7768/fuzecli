@@ -1,4 +1,0 @@
-.brand-mark,.welcome-mark{display:grid;place-items:center;overflow:hidden;isolation:isolate}
-.brand-mark img,.welcome-mark img{display:block;flex:none;width:auto;height:auto;max-width:100%;max-height:100%;object-fit:contain;object-position:center;margin:0;padding:0}
-.brand-mark img{width:24px;height:24px;max-width:24px;max-height:24px}
-.welcome-mark img{width:36px;height:36px;max-width:36px;max-height:36px;filter:drop-shadow(0 0 18px rgba(169,196,255,.2))}
