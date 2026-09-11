@@ -373,6 +373,7 @@ async function loadModels(provider) {
     modelInput.value = selectedModel
     modelSettings.value = selectedModel
   }
+  syncRuntimeLabels()
 }
 
 function syncRuntimeLabels() {
@@ -426,7 +427,8 @@ $('saveSettings').addEventListener('click', async () => {
 async function loadHistoryFromServer() {
   const data = await fetchJSON('/api/history')
   const messages = data.messages || []
-  currentChat = makeChat(messages.find(m => m.role === 'user')?.content ? deriveTitle(messages.find(m => m.role === 'user').content) : 'Current chat')
+  const firstUser = messages.find(message => message.role === 'user')
+  currentChat = makeChat(firstUser ? deriveTitle(firstUser.content) : 'Current chat')
   currentChat.messages = messages.map(message => ({ role: message.role, content: message.content }))
   externalContext = false
   clearConversationView()
@@ -459,6 +461,12 @@ function bindSuggestions() {
   })
 }
 
+async function resetServerConversation() {
+  try {
+    await fetchJSON('/api/session', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ memory: 'clear', provider: selectedProvider, model: selectedModel }) })
+  } catch {}
+}
+
 async function newChat() {
   if (busy) return
   archiveCurrentChat()
@@ -469,15 +477,13 @@ async function newChat() {
   clearConversationView()
   showWelcome()
   renderHistory()
-  try {
-    await fetchJSON('/api/session', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ memory: 'clear', provider: selectedProvider, model: selectedModel }) })
-  } catch {}
+  await resetServerConversation()
   prompt.focus()
   closeSidebarMobile()
   syncComposerState()
 }
 
-function openSavedChat(id) {
+async function openSavedChat(id) {
   if (busy) return
   const item = chats().find(chat => chat.id === id)
   if (!item) return
@@ -488,6 +494,7 @@ function openSavedChat(id) {
   if (currentChat.messages.length) renderConversation(currentChat.messages)
   else showWelcome()
   renderHistory()
+  await resetServerConversation()
   closeSidebarMobile()
 }
 
