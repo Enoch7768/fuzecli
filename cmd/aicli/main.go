@@ -13,6 +13,8 @@ import (
 	"github.com/Enoch7768/fuzecli/internal/config"
 	"github.com/Enoch7768/fuzecli/internal/mcpserver"
 	"github.com/Enoch7768/fuzecli/internal/profile"
+	"github.com/Enoch7768/fuzecli/internal/progress"
+	"github.com/Enoch7768/fuzecli/internal/web"
 )
 
 var version = "Revision 2.1"
@@ -47,6 +49,8 @@ func run(args []string) error {
 		return askCommand(args[1:])
 	case "chat":
 		return chatCommand(args[1:])
+	case "app":
+		return appCommand(args[1:])
 	case "api":
 		return apiCommand(args[1:])
 	case "mcp":
@@ -153,6 +157,37 @@ Commands inside chat:
 	}
 
 	return a.TerminalChat(context.Background(), yes)
+}
+
+func appCommand(args []string) error {
+	addr := "127.0.0.1:8787"
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--addr":
+			if i+1 >= len(args) {
+				return fmt.Errorf("missing value for --addr")
+			}
+			addr = args[i+1]
+			i++
+		case "--help", "-h":
+			fmt.Println("Usage: aicli app [--addr 127.0.0.1:8787]")
+			return nil
+		default:
+			return fmt.Errorf("unknown app option %q", args[i])
+		}
+	}
+	a, err := app.Load()
+	if err != nil {
+		return err
+	}
+	defer a.Close()
+	if err := a.AttachWorkspace("."); err != nil {
+		return err
+	}
+	server := web.New(a, progress.New())
+	server.Addr = addr
+	fmt.Printf("FuzeCLI app listening on http://%s\n", addr)
+	return server.ListenAndServe(context.Background())
 }
 
 func apiCommand(args []string) error {
@@ -331,6 +366,7 @@ Commands:
   aicli models [--provider name]
   aicli chat [--yes]
   aicli ask "prompt" [--provider name|auto] [--model name] [--yes]
+  aicli app [--addr 127.0.0.1:8787]
   aicli api [--addr 127.0.0.1:8787]
   aicli mcp
   aicli profile show
