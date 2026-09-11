@@ -18,13 +18,17 @@ func (a *App) BuildCodeIndex() (*intelligence.Index, error) {
 // SearchCode searches indexed source lines for all terms in query.
 func (a *App) SearchCode(query string, limit int) ([]intelligence.Match, error) {
 	idx, err := a.BuildCodeIndex()
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	return idx.Search(query, limit)
 }
 
 // FindCodeSymbols finds functions, classes and types by name, kind or path.
 func (a *App) FindCodeSymbols(query string, limit int) ([]intelligence.Symbol, error) {
 	idx, err := a.BuildCodeIndex()
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	return idx.FindSymbols(query, limit), nil
 }

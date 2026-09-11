@@ -74,11 +74,17 @@ func askCommand(args []string) error {
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
 		case "--provider":
-			if i+1 >= len(args) { return fmt.Errorf("missing value for --provider") }
-			providerName = args[i+1]; i++
+			if i+1 >= len(args) {
+				return fmt.Errorf("missing value for --provider")
+			}
+			providerName = args[i+1]
+			i++
 		case "--model":
-			if i+1 >= len(args) { return fmt.Errorf("missing value for --model") }
-			model = args[i+1]; i++
+			if i+1 >= len(args) {
+				return fmt.Errorf("missing value for --model")
+			}
+			model = args[i+1]
+			i++
 		case "--yes":
 			yes = true
 		case "--help", "-h":
@@ -90,12 +96,20 @@ func askCommand(args []string) error {
 		}
 	}
 	prompt, err := app.ReadPrompt(promptParts)
-	if err != nil { return err }
-	if strings.TrimSpace(prompt) == "" { return fmt.Errorf("ask requires a prompt or stdin input") }
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(prompt) == "" {
+		return fmt.Errorf("ask requires a prompt or stdin input")
+	}
 	a, err := app.Load()
-	if err != nil { return err }
+	if err != nil {
+		return err
+	}
 	defer a.Close()
-	if err := a.AttachWorkspace("."); err != nil { return err }
+	if err := a.AttachWorkspace("."); err != nil {
+		return err
+	}
 	defer func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
@@ -109,7 +123,8 @@ func chatCommand(args []string) error {
 	var yes bool
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
-		case "--yes": yes = true
+		case "--yes":
+			yes = true
 		case "--help", "-h":
 			fmt.Println(`Usage:
   aicli chat [--yes]
@@ -126,13 +141,18 @@ Commands inside chat:
   /help
   /exit`)
 			return nil
-		default: return fmt.Errorf("unknown chat option %q", args[i])
+		default:
+			return fmt.Errorf("unknown chat option %q", args[i])
 		}
 	}
 	a, err := app.Load()
-	if err != nil { return err }
+	if err != nil {
+		return err
+	}
 	defer a.Close()
-	if err := a.AttachWorkspace("."); err != nil { return err }
+	if err := a.AttachWorkspace("."); err != nil {
+		return err
+	}
 	return a.TerminalChat(context.Background(), yes)
 }
 
@@ -141,18 +161,26 @@ func apiCommand(args []string) error {
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
 		case "--addr":
-			if i+1 >= len(args) { return fmt.Errorf("missing value for --addr") }
-			addr = args[i+1]; i++
+			if i+1 >= len(args) {
+				return fmt.Errorf("missing value for --addr")
+			}
+			addr = args[i+1]
+			i++
 		case "--help", "-h":
 			fmt.Println("Usage: aicli api [--addr 127.0.0.1:8787]")
 			return nil
-		default: return fmt.Errorf("unknown api option %q", args[i])
+		default:
+			return fmt.Errorf("unknown api option %q", args[i])
 		}
 	}
 	a, err := app.Load()
-	if err != nil { return err }
+	if err != nil {
+		return err
+	}
 	defer a.Close()
-	if err := a.AttachWorkspace("."); err != nil { return err }
+	if err := a.AttachWorkspace("."); err != nil {
+		return err
+	}
 	server := api.NewServer(api.NewService(a), api.TokenFromEnvironment())
 	fmt.Printf("FuzeCLI API listening on http://%s\n", addr)
 	return server.ListenAndServe(addr)
@@ -160,64 +188,102 @@ func apiCommand(args []string) error {
 
 func mcpCommand() error {
 	a, err := app.Load()
-	if err != nil { return err }
+	if err != nil {
+		return err
+	}
 	defer a.Close()
-	if err := a.AttachWorkspace("."); err != nil { return err }
+	if err := a.AttachWorkspace("."); err != nil {
+		return err
+	}
 	return mcpserver.Run(context.Background(), a)
 }
 
 func doctorCommand() error {
 	a, err := app.Load()
-	if err != nil { return err }
+	if err != nil {
+		return err
+	}
 	defer a.Close()
-	if err := a.AttachWorkspace("."); err != nil { return err }
+	if err := a.AttachWorkspace("."); err != nil {
+		return err
+	}
 	return a.Doctor()
 }
 
 func snapshotCommand() error {
 	a, err := app.Load()
-	if err != nil { return err }
+	if err != nil {
+		return err
+	}
 	defer a.Close()
-	if err := a.AttachWorkspace("."); err != nil { return err }
+	if err := a.AttachWorkspace("."); err != nil {
+		return err
+	}
 	paths, err := a.Store.Touched()
-	if err != nil { return err }
-	if len(paths) == 0 { return fmt.Errorf("no touched files are available for a snapshot") }
+	if err != nil {
+		return err
+	}
+	if len(paths) == 0 {
+		return fmt.Errorf("no touched files are available for a snapshot")
+	}
 	snapshot, err := a.Store.CreateSnapshot(paths)
-	if err != nil { return err }
+	if err != nil {
+		return err
+	}
 	fmt.Println("Snapshot created:", snapshot)
 	return nil
 }
 
 func restoreCommand(args []string) error {
-	if len(args) > 1 { return fmt.Errorf("usage: aicli restore [snapshot.zip]") }
+	if len(args) > 1 {
+		return fmt.Errorf("usage: aicli restore [snapshot.zip]")
+	}
 	a, err := app.Load()
-	if err != nil { return err }
+	if err != nil {
+		return err
+	}
 	defer a.Close()
-	if err := a.AttachWorkspace("."); err != nil { return err }
+	if err := a.AttachWorkspace("."); err != nil {
+		return err
+	}
 	snapshot := ""
-	if len(args) == 1 { snapshot = args[0] } else {
+	if len(args) == 1 {
+		snapshot = args[0]
+	} else {
 		snapshot, err = a.Store.LatestSnapshot()
-		if err != nil { return err }
+		if err != nil {
+			return err
+		}
 	}
 	paths, err := a.Store.RestoreSnapshot(snapshot)
-	if err != nil { return err }
+	if err != nil {
+		return err
+	}
 	fmt.Printf("Restored %d file(s) from %s\n", len(paths), snapshot)
 	return nil
 }
 
 func gitStatusCommand() error {
 	a, err := app.Load()
-	if err != nil { return err }
+	if err != nil {
+		return err
+	}
 	defer a.Close()
-	if err := a.AttachWorkspace("."); err != nil { return err }
+	if err := a.AttachWorkspace("."); err != nil {
+		return err
+	}
 	return app.GitStatus(a.Store.Root)
 }
 
 func gitDiffCommand() error {
 	a, err := app.Load()
-	if err != nil { return err }
+	if err != nil {
+		return err
+	}
 	defer a.Close()
-	if err := a.AttachWorkspace("."); err != nil { return err }
+	if err := a.AttachWorkspace("."); err != nil {
+		return err
+	}
 	return app.GitDiff(a.Store.Root)
 }
 
@@ -226,50 +292,79 @@ func modelsCommand(args []string) error {
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
 		case "--provider":
-			if i+1 >= len(args) { return fmt.Errorf("missing value for --provider") }
-			providerName = args[i+1]; i++
+			if i+1 >= len(args) {
+				return fmt.Errorf("missing value for --provider")
+			}
+			providerName = args[i+1]
+			i++
 		case "--help", "-h":
 			fmt.Println("Usage: aicli models [--provider name]")
 			return nil
-		default: return fmt.Errorf("unknown models option %q", args[i])
+		default:
+			return fmt.Errorf("unknown models option %q", args[i])
 		}
 	}
-	if providerName == "auto" { return fmt.Errorf("models requires a specific provider") }
+	if providerName == "auto" {
+		return fmt.Errorf("models requires a specific provider")
+	}
 	a, err := app.Load()
-	if err != nil { return err }
+	if err != nil {
+		return err
+	}
 	defer a.Close()
 	models, err := a.Registry.ListModels(context.Background(), providerName)
-	if err != nil { return err }
-	if len(models) == 0 { fmt.Printf("No models available for %s.\n", providerName); return nil }
+	if err != nil {
+		return err
+	}
+	if len(models) == 0 {
+		fmt.Printf("No models available for %s.\n", providerName)
+		return nil
+	}
 	fmt.Printf("%s models:\n", providerName)
-	for _, model := range models { fmt.Println("  " + model) }
+	for _, model := range models {
+		fmt.Println("  " + model)
+	}
 	return nil
 }
 
 func historyCommand() error {
 	a, err := app.Load()
-	if err != nil { return err }
+	if err != nil {
+		return err
+	}
 	defer a.Close()
-	if err := a.AttachWorkspace("."); err != nil { return err }
+	if err := a.AttachWorkspace("."); err != nil {
+		return err
+	}
 	return app.ShowHistory(".")
 }
 
 func configCommand(args []string) error {
-	if len(args) == 0 { return fmt.Errorf("config requires set or show") }
+	if len(args) == 0 {
+		return fmt.Errorf("config requires set or show")
+	}
 	switch args[0] {
 	case "set":
-		if len(args) != 3 { return fmt.Errorf("usage: aicli config set <key> <value>") }
+		if len(args) != 3 {
+			return fmt.Errorf("usage: aicli config set <key> <value>")
+		}
 		return config.Set(args[1], args[2])
 	case "show":
 		c, err := config.Load()
-		if err != nil { return err }
+		if err != nil {
+			return err
+		}
 		names := []string{"openai", "gemini", "gemini-normalizer", "groq", "anthropic", "llamacpp"}
 		for _, name := range names {
 			p, ok := c.Providers[name]
-			if !ok { continue }
+			if !ok {
+				continue
+			}
 			fmt.Printf("providers.%s.api_key: %s\n", name, config.MaskSecret(p.APIKey))
 			fmt.Printf("providers.%s.default_model: %s\n", name, p.DefaultModel)
-			if p.BaseURL != "" { fmt.Printf("providers.%s.base_url: %s\n", name, p.BaseURL) }
+			if p.BaseURL != "" {
+				fmt.Printf("providers.%s.base_url: %s\n", name, p.BaseURL)
+			}
 		}
 		fmt.Println("default_provider:", c.DefaultProvider)
 		fmt.Println("fallback_order:", strings.Join(c.FallbackOrder, ", "))
@@ -278,25 +373,34 @@ func configCommand(args []string) error {
 	case "--help", "-h":
 		fmt.Println("Usage: aicli config set <key> <value>\naicli config show")
 		return nil
-	default: return fmt.Errorf("unknown config command %q", args[0])
+	default:
+		return fmt.Errorf("unknown config command %q", args[0])
 	}
 }
 
 func profileCommand(args []string) error {
-	if len(args) == 0 { return fmt.Errorf("profile requires show or reset") }
+	if len(args) == 0 {
+		return fmt.Errorf("profile requires show or reset")
+	}
 	switch args[0] {
 	case "show":
 		p, err := profile.Load()
-		if err != nil { return err }
+		if err != nil {
+			return err
+		}
 		data, err := json.MarshalIndent(p, "", "  ")
-		if err != nil { return err }
+		if err != nil {
+			return err
+		}
 		fmt.Println(string(data))
 		return nil
-	case "reset": return profile.Save(profile.Default())
+	case "reset":
+		return profile.Save(profile.Default())
 	case "--help", "-h":
 		fmt.Println("Usage: aicli profile show\naicli profile reset")
 		return nil
-	default: return fmt.Errorf("unknown profile command %q", args[0])
+	default:
+		return fmt.Errorf("unknown profile command %q", args[0])
 	}
 }
 

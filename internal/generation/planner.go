@@ -58,7 +58,7 @@ func PlannerSchema() map[string]any {
 		"type": "object",
 		"properties": map[string]any{
 			"project": map[string]any{"type": "string"},
-			"summary":  map[string]any{"type": "string"},
+			"summary": map[string]any{"type": "string"},
 			"files": map[string]any{
 				"type": "array",
 				"items": map[string]any{

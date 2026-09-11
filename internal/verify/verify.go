@@ -13,10 +13,10 @@ import (
 )
 
 type Result struct {
-	Tool         string
-	Passed       bool
-	Output       string
-	Diagnostics  []diagnostics.Diagnostic
+	Tool        string
+	Passed      bool
+	Output      string
+	Diagnostics []diagnostics.Diagnostic
 }
 
 func Detect(root string, touched []string) (Result, error) {
@@ -61,25 +61,35 @@ func run(root string, name string, args ...string) (Result, error) {
 
 func lintPHP(root string, touched []string) (Result, error) {
 	for _, rel := range touched {
-		if filepath.Ext(rel) != ".php" { continue }
+		if filepath.Ext(rel) != ".php" {
+			continue
+		}
 		r, _ := run(root, "php", "-l", filepath.FromSlash(rel))
-		if !r.Passed { return r, nil }
+		if !r.Passed {
+			return r, nil
+		}
 	}
 	return Result{Tool: "php -l", Passed: true, Output: "PHP syntax checks passed for touched PHP files."}, nil
 }
 
 func lintPython(root string, touched []string) (Result, error) {
 	for _, rel := range touched {
-		if filepath.Ext(rel) != ".py" { continue }
+		if filepath.Ext(rel) != ".py" {
+			continue
+		}
 		r, _ := run(root, "python", "-m", "py_compile", filepath.FromSlash(rel))
-		if !r.Passed { return r, nil }
+		if !r.Passed {
+			return r, nil
+		}
 	}
 	return Result{Tool: "python -m py_compile", Passed: true, Output: "Python compilation checks passed for touched Python files."}, nil
 }
 
 func Format(r Result) string {
 	status := "PASS"
-	if !r.Passed { status = "FAIL" }
+	if !r.Passed {
+		status = "FAIL"
+	}
 	text := fmt.Sprintf("[%s] %s\n%s", status, r.Tool, r.Output)
 	if len(r.Diagnostics) > 0 {
 		text += "\n" + diagnostics.Summary(r.Diagnostics)
