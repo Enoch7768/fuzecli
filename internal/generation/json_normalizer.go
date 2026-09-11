@@ -2,33 +2,14 @@ package generation
 
 import (
 	"context"
-	"sync"
 
 	"github.com/Enoch7768/fuzecli/internal/provider"
 )
 
-var normalizerState struct {
-	sync.RWMutex
-	registry *provider.Registry
-}
-
-func ConfigureJSONNormalizer(registry *provider.Registry) {
-	normalizerState.Lock()
-	normalizerState.registry = registry
-	normalizerState.Unlock()
-}
-
-func configuredJSONNormalizer() *provider.Registry {
-	normalizerState.RLock()
-	defer normalizerState.RUnlock()
-	return normalizerState.registry
-}
+const JSONNormalizerProvider = "gemini-normalizer"
 
 func normalizeWithConfiguredProvider(ctx context.Context, raw string, parseErr error) (ChatResponse, error) {
-	registry := configuredJSONNormalizer()
-	if registry == nil {
-		return ChatResponse{}, parseErr
-	}
+	registry := provider.NewRegistry([]string{JSONNormalizerProvider}, map[string]string{JSONNormalizerProvider: "gemini-2.5-flash"})
 	engine := &Engine{Registry: registry}
 	return engine.normalizeChatResponse(ctx, raw, parseErr)
 }
