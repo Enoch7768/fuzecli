@@ -510,7 +510,7 @@ func (s *Server) config(w http.ResponseWriter, r *http.Request) {
 		pc.BaseURL = request.BaseURL
 	}
 	if pc.DefaultModel == "" && request.Provider != "llamacpp" {
-		writeUserError(w, http.StatusBadRequest, diagnostics.Interpret(fmt.Errorf("no model configured for %s"), request.Provider, request.Model))
+		writeUserError(w, http.StatusBadRequest, diagnostics.Interpret(fmt.Errorf("no model configured for %s", request.Provider), request.Provider, request.Model))
 		return
 	}
 	s.mu.Lock()
@@ -700,13 +700,12 @@ func secureHeaders(w http.ResponseWriter) {
 	w.Header().Set("Content-Security-Policy", "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'")
 }
 
-func writeSSE(w http.ResponseWriter, eventType string, event progress.Event) {
-	data, _ := json.Marshal(event)
-	fmt.Fprintf(w, "event: %s\ndata: %s\n\n", eventType, data)
-}
-
-func writeUserError(w http.ResponseWriter, status int, err diagnostics.UserError) {
-	writeJSON(w, status, map[string]any{"error": err.Message, "title": err.Title, "recovery": err.Recovery, "retryable": err.Retryable, "provider": err.Provider, "model": err.Model, "retry_after": err.RetryAfter, "status_code": err.StatusCode, "technical": err.Technical})
+func writeSSE(w http.ResponseWriter, eventType string, value any) {
+	data, err := json.Marshal(value)
+	if err != nil {
+		return
+	}
+	_, _ = fmt.Fprintf(w, "event: %s\ndata: %s\n\n", eventType, data)
 }
 
 func writeJSON(w http.ResponseWriter, status int, value any) {
@@ -714,4 +713,8 @@ func writeJSON(w http.ResponseWriter, status int, value any) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(value)
+}
+
+func writeUserError(w http.ResponseWriter, status int, value diagnostics.UserError) {
+	writeJSON(w, status, map[string]any{"error": value.Message, "title": value.Title, "recovery": value.Recovery, "technical": value.Technical, "provider": value.Provider, "model": value.Model, "status": value.StatusCode, "retry_after": value.RetryAfter})
 }
