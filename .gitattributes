@@ -1,0 +1,10 @@
+# Keep Go source canonical across Windows, macOS, and Linux.
+# gofmt verification compares exact file bytes, so Go files must use LF.
+*.go text eol=lf
+
+# Keep Go module metadata stable across platforms.
+go.mod text eol=lf
+go.sum text eol=lf
+
+# Common text/config files may use the platform checkout convention.
+* text=auto
