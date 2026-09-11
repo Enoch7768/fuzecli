@@ -57,8 +57,12 @@ func (p *Provider) Send(ctx context.Context, messages []provider.Message, opts p
 	}
 	return &provider.Response{Content: out.Choices[0].Message.Content, Model: out.Model, ProviderName: p.Name(), Usage: provider.Usage{PromptTokens: out.Usage.Prompt, CompletionTokens: out.Usage.Completion, TotalTokens: out.Usage.Total}}, nil
 }
+
 func (p *Provider) Stream(ctx context.Context, messages []provider.Message, opts provider.RequestOptions) (<-chan provider.StreamChunk, error) {
-	reqBody, _ := json.Marshal(request{Model: opts.Model, Messages: messages, Temperature: opts.Temperature, MaxTokens: opts.MaxTokens, Stream: true})
+	reqBody, err := json.Marshal(request{Model: opts.Model, Messages: messages, Temperature: opts.Temperature, MaxTokens: opts.MaxTokens, Stream: true})
+	if err != nil {
+		return nil, fmt.Errorf("openai: encode stream request: %w", err)
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.BaseURL+"/chat/completions", strings.NewReader(string(reqBody)))
 	if err != nil {
 		return nil, err
@@ -75,7 +79,7 @@ func (p *Provider) Stream(ctx context.Context, messages []provider.Message, opts
 	ch := make(chan provider.StreamChunk)
 	go func() {
 		defer close(ch)
-		_ = provider.ReadSSE(ctx, resp, func(data string) error {
+		streamErr := provider.ReadSSE(ctx, resp, func(data string) error {
 			if data == "[DONE]" {
 				ch <- provider.StreamChunk{Done: true}
 				return nil
@@ -95,9 +99,16 @@ func (p *Provider) Stream(ctx context.Context, messages []provider.Message, opts
 			}
 			return nil
 		})
+		if streamErr != nil {
+			select {
+			case ch <- provider.StreamChunk{Error: streamErr}:
+			case <-ctx.Done():
+			}
+		}
 	}()
 	return ch, nil
 }
+
 func (p *Provider) ListModels(ctx context.Context) ([]string, error) {
 	var out struct {
 		Data []struct {
@@ -114,6 +125,7 @@ func (p *Provider) ListModels(ctx context.Context) ([]string, error) {
 	}
 	return r, nil
 }
+
 func providerErrFromResponse(resp *http.Response, name string) error {
 	b, _ := io.ReadAll(resp.Body)
 	_ = resp.Body.Close()
