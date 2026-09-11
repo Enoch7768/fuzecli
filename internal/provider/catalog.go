@@ -17,7 +17,10 @@ type compatibleSpec struct {
 	JSONOutputTokens  int
 }
 
-type configuredProvider struct { APIKey string; BaseURL string }
+type configuredProvider struct {
+	APIKey  string
+	BaseURL string
+}
 
 var configuredMu sync.RWMutex
 var configured = map[string]configuredProvider{}
@@ -82,6 +85,6 @@ var compatibleCatalog = []compatibleSpec{
 func Configure(name, apiKey, baseURL string) { configuredMu.Lock(); configured[strings.ToLower(strings.TrimSpace(name))] = configuredProvider{APIKey: apiKey, BaseURL: baseURL}; configuredMu.Unlock() }
 func configuredFor(name string) configuredProvider { configuredMu.RLock(); cfg := configured[strings.ToLower(name)]; configuredMu.RUnlock(); return cfg }
 func compatibleSpecFor(name string) (compatibleSpec, bool) { for _, spec := range compatibleCatalog { if strings.EqualFold(spec.Name, name) { return spec, true } }; return compatibleSpec{}, false }
-func CompatibleProviderNames() []string { out := make([]string, 0, len(compatibleCatalog)); for _, spec := range compatibleCatalog { out = append(out, spec.Name) }; sort.Strings(out); return out }
-func NewAllCompatibleProviders(resolve func(string) (string, string)) []Provider { providers := make([]Provider, 0, len(compatibleCatalog)); for _, spec := range compatibleCatalog { apiKey, baseURL := "", ""; if resolve != nil { apiKey, baseURL = resolve(spec.Name) }; providers = append(providers, newCompatibleProvider(spec, configuredProvider{APIKey: apiKey, BaseURL: baseURL})) }; return providers }
-func ProviderPolicy(name string) compatibleSpec { if spec, ok := compatibleSpecFor(name); ok { return spec }; return compatibleSpec{Name: name, MinInterval: 3 * time.Second, MaxInputChars: 16000, MaxOutputTokens: 2600, JSONOutputTokens: 2000} }
+func CompatibleProviderNames() []string { out := make([]string,0,len(compatibleCatalog));for _,spec:=range compatibleCatalog{out=append(out,spec.Name)};sort.Strings(out);return out }
+func NewAllCompatibleProviders(resolve func(string)(string,string)) []Provider { providers:=make([]Provider,0,len(compatibleCatalog));for _,spec:=range compatibleCatalog{apiKey,baseURL:="","";if resolve!=nil{apiKey,baseURL=resolve(spec.Name)};providers=append(providers,newCompatibleProvider(spec,configuredProvider{APIKey:apiKey,BaseURL:baseURL}))};return providers }
+func ProviderPolicy(name string) compatibleSpec { if spec,ok:=compatibleSpecFor(name);ok{return spec};return compatibleSpec{Name:name,MinInterval:3*time.Second,MaxInputChars:16000,MaxOutputTokens:2600,JSONOutputTokens:2000} }
