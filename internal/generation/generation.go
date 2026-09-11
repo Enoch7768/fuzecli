@@ -365,6 +365,10 @@ func Resolve(root, rel string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	baseReal, err := filepath.EvalSymlinks(base)
+	if err != nil {
+		return "", fmt.Errorf("resolve workspace root: %w", err)
+	}
 	target, err := filepath.Abs(filepath.Join(base, clean))
 	if err != nil {
 		return "", err
@@ -372,6 +376,33 @@ func Resolve(root, rel string) (string, error) {
 	relBack, err := filepath.Rel(base, target)
 	if err != nil || relBack == ".." || strings.HasPrefix(relBack, ".."+string(os.PathSeparator)) {
 		return "", fmt.Errorf("path escapes workspace: %q", rel)
+	}
+	if info, statErr := os.Lstat(target); statErr == nil && info.Mode()&os.ModeSymlink != 0 {
+		return "", fmt.Errorf("symlink target rejected: %q", rel)
+	}
+	parent := filepath.Dir(target)
+	for {
+		if info, statErr := os.Lstat(parent); statErr == nil {
+			if info.Mode()&os.ModeSymlink != 0 {
+				realParent, evalErr := filepath.EvalSymlinks(parent)
+				if evalErr != nil {
+					return "", fmt.Errorf("resolve workspace path: %w", evalErr)
+				}
+				relReal, relErr := filepath.Rel(baseReal, realParent)
+				if relErr != nil || relReal == ".." || strings.HasPrefix(relReal, ".."+string(os.PathSeparator)) {
+					return "", fmt.Errorf("symlink escapes workspace: %q", rel)
+				}
+			}
+			break
+		}
+		if !os.IsNotExist(statErr) {
+			return "", fmt.Errorf("inspect workspace path: %w", statErr)
+		}
+		next := filepath.Dir(parent)
+		if next == parent {
+			break
+		}
+		parent = next
 	}
 	return target, nil
 }
