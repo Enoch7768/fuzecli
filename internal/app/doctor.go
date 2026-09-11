@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/Enoch7768/fuzecli/internal/workspace"
 )
 
 // Doctor performs local, non-network checks that are safe to run before using
@@ -23,7 +25,19 @@ func (a *App) Doctor() error {
 	}{
 		{"workspace", a.Store.Root != "", nil},
 		{".aicli directory", directoryExists(filepath.Join(a.Store.Root, ".aicli")), nil},
-		{".aicliignore policy", filePolicyLoads(a.Store.Root), nil},
+	}
+	if _, err := workspace.LoadIgnorePolicy(a.Store.Root); err != nil {
+		checks = append(checks, struct {
+			name string
+			ok   bool
+			err  error
+		}{".aicliignore policy", false, err})
+	} else {
+		checks = append(checks, struct {
+			name string
+			ok   bool
+			err  error
+		}{".aicliignore policy", true, nil})
 	}
 
 	failed := false
@@ -59,17 +73,4 @@ func (a *App) Doctor() error {
 func directoryExists(path string) bool {
 	info, err := os.Stat(path)
 	return err == nil && info.IsDir()
-}
-
-func filePolicyLoads(root string) bool {
-	_, err := workspacePolicy(root)
-	return err == nil
-}
-
-func workspacePolicy(root string) (string, error) {
-	policy, err := loadPolicy(root)
-	if err != nil {
-		return "", err
-	}
-	return policy, nil
 }
