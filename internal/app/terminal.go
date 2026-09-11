@@ -3,19 +3,16 @@ package app
 import (
 	"bufio"
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
-	"sync"
 	"time"
 
-	"github.com/Enoch7768/fuzecli/internal/diagnostics"
 	"github.com/Enoch7768/fuzecli/internal/generation"
 	"github.com/Enoch7768/fuzecli/internal/provider"
 )
 
-func (a *App) TerminalChat(ctx context.Context, yes bool) error {
+func (a *App) TerminalChat(ctx context.Context, _ bool) error {
 	if a.Store == nil {
 		return fmt.Errorf("workspace not initialized; run aicli init")
 	}
@@ -49,7 +46,7 @@ func (a *App) TerminalChat(ctx context.Context, yes bool) error {
 					continue
 				}
 				if _, _, err := a.ProviderAndModel(value, ""); err != nil {
-					fmt.Println(formatTerminalError(err, providerName, model))
+					fmt.Println(formatTerminalError(err))
 					continue
 				}
 				providerName = strings.TrimSpace(value)
@@ -67,21 +64,13 @@ func (a *App) TerminalChat(ctx context.Context, yes bool) error {
 			case "/clear":
 				fmt.Print("\x1b[2J\x1b[H")
 				printTerminalHeader(providerName, model, a.Store.Root)
-			case "/code":
-				if value == "" {
-					fmt.Println("\x1b[38;5;214mUsage:\x1b[0m /code <request>")
-					continue
-				}
-				if err := a.terminalCode(ctx, value, providerName, model, yes); err != nil {
-					fmt.Println(formatTerminalError(err, providerName, model))
-				}
 			default:
 				fmt.Printf("Unknown command %q. Type /help for commands.\n", command)
 			}
 			continue
 		}
 		if err := a.terminalStream(ctx, line, providerName, model); err != nil {
-			fmt.Println(formatTerminalError(err, providerName, model))
+			fmt.Println(formatTerminalError(err))
 		}
 	}
 	go a.RunProfileExtraction(context.Background())
@@ -93,11 +82,10 @@ func (a *App) terminalSessionPreflight(ctx context.Context, providerName, model 
 	fmt.Println("\x1b[38;5;244m────────────────────────────────────────────────────────────\x1b[0m")
 	fmt.Println("Choose how this session should handle conversation memory.")
 	fmt.Println()
-	fmt.Println("\n\x1b[1mMemory mode\x1b[0m")
+	fmt.Println("\x1b[1mMemory mode\x1b[0m")
 	fmt.Println("  [M] Continue with memory")
 	fmt.Println("  [F] Start fresh and clear memory")
 	fmt.Print("\n\x1b[38;5;111mChoice\x1b[0m: ")
-
 	for scanner.Scan() {
 		choice := strings.ToLower(strings.TrimSpace(scanner.Text()))
 		switch choice {
@@ -117,13 +105,11 @@ func (a *App) terminalSessionPreflight(ctx context.Context, providerName, model 
 	if err := scanner.Err(); err != nil {
 		return err
 	}
-
 	fmt.Println("\n\x1b[1mPreflight\x1b[0m")
-	fmt.Println("\x1b[38;5;244mYour request stays locked while FuzeCLI prepares the strict briefing and selected memory.\x1b[0m")
-
+	fmt.Println("\x1b[38;5;244mPreparing strict instructions, memory, and workspace access.\x1b[0m")
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
-	remaining := 60
+	remaining := 5
 	for remaining > 0 {
 		fmt.Printf("\r\x1b[K\x1b[38;5;111mSession prepares in %02d seconds\x1b[0m", remaining)
 		select {
@@ -135,14 +121,13 @@ func (a *App) terminalSessionPreflight(ctx context.Context, providerName, model 
 		}
 	}
 	fmt.Print("\r\x1b[K")
-
-	fmt.Println("\n\x1b[38;5;111mFuzeCLI\x1b[0m is sending the strict execution briefing with your selected memory…")
+	fmt.Println("\n\x1b[38;5;111mFuzeCLI\x1b[0m is ready for chat.")
 	welcome, err := a.SessionWelcome(ctx, providerName, model)
 	if err != nil {
 		return err
 	}
-	fmt.Printf("\n\x1b[38;5;111mFuzeCLI\x1b[0m\n%s\n", welcome)
-	fmt.Println("\n\x1b[38;5;244mSession ready. Your next input will be sent as your request.\x1b[0m")
+	fmt.Printf("\n%s\n", welcome)
+	fmt.Println("\n\x1b[38;5;244mSession ready. Use natural language for both conversation and project changes.\x1b[0m")
 	return nil
 }
 
@@ -160,17 +145,18 @@ func printTerminalHeader(providerName, model, root string) {
 	fmt.Println("\x1b[38;5;239m────────────────────────────────────────────────────────────\x1b[0m")
 	fmt.Printf("\x1b[38;5;111mProvider\x1b[0m  %s    \x1b[38;5;111mModel\x1b[0m  %s\n", providerName, model)
 	fmt.Printf("\x1b[38;5;244mWorkspace\x1b[0m %s\n", root)
-	fmt.Println("\x1b[38;5;244mType /help for commands · /code for project generation · /exit to leave\x1b[0m")
+	fmt.Println("\x1b[38;5;244mChat only · /provider · /model · /status · /clear · /help · /exit\x1b[0m")
 }
 
 func printTerminalHelp() {
-	fmt.Println("\n\x1b[1mCommands\x1b[0m")
-	fmt.Println("  /code <request>   Generate or resume files in the workspace")
+	fmt.Println("\n\x1b[1mChat Commands\x1b[0m")
 	fmt.Println("  /provider <name>  Change provider for this session")
 	fmt.Println("  /model <name>     Change model for this session")
 	fmt.Println("  /status           Show provider, model and workspace")
 	fmt.Println("  /clear            Clear the terminal view")
 	fmt.Println("  /exit             Close the session")
+	fmt.Println()
+	fmt.Println("Project changes are requested naturally in chat. When the model returns valid file JSON, FuzeCLI writes it automatically.")
 }
 
 func printTerminalStatus(providerName, model, root string) {
@@ -180,33 +166,19 @@ func printTerminalStatus(providerName, model, root string) {
 	fmt.Printf("  Workspace %s\n", root)
 }
 
+func formatTerminalError(err error) string {
+	if err == nil {
+		return ""
+	}
+	return fmt.Sprintf("\x1b[38;5;214mError:\x1b[0m %s", err.Error())
+}
+
 func (a *App) terminalStream(ctx context.Context, prompt, providerName, model string) error {
 	start := time.Now()
-	stop := make(chan struct{})
-	var once sync.Once
-	phase := "Preparing request"
-	go func() {
-		ticker := time.NewTicker(200 * time.Millisecond)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ticker.C:
-				fmt.Printf("\r\x1b[K\x1b[38;5;244m· %s · %s · %s\x1b[0m", phase, providerName, formatTerminalElapsed(time.Since(start)))
-			case <-stop:
-				return
-			}
-		}
-	}()
-	defer func() {
-		once.Do(func() { close(stop) })
-		fmt.Print("\r\x1b[K")
-	}()
-
 	history, err := a.Store.History(400)
 	if err != nil {
 		return err
 	}
-	phase = "Preparing conversation context"
 	name, mdl, err := a.ProviderAndModel(providerName, model)
 	if err != nil {
 		return err
@@ -219,52 +191,36 @@ func (a *App) terminalStream(ctx context.Context, prompt, providerName, model st
 	if err != nil {
 		return err
 	}
-	phase = "Assembling workspace context"
-	system := generation.StrictExecutionMode + "\n\nYou are FuzeCLI, a practical coding assistant. The workspace context below was read directly from the user's local workspace by FuzeCLI. You have access to those files through this supplied context and must use them when the request concerns the project. Do not ask the user to paste files that are present in the workspace. Do not claim you lack access to the local project when FuzeCLI has supplied the relevant file contents. For ordinary questions, answer naturally in plain text. When the user asks you to create, modify, or delete files and the response can be represented by the FuzeCLI generation schema, return ONLY that valid generation JSON so FuzeCLI can apply it safely. Never use markdown fences for generation JSON."
-	if a.Profile.Condensed() != "" {
-		system += "\nDeveloper profile:\n" + a.Profile.Condensed()
+	system := generation.StrictExecutionMode + "\n\nYou are FuzeCLI, a practical coding assistant. The workspace context was read directly from the user's local workspace. Never ask the user to paste a file that exists there. Use natural language for ordinary conversation. For any request that creates, modifies, or deletes project files, return ONLY one valid JSON object with this shape: {\"files\":[{\"path\":\"relative/path.ext\",\"line_start\":1,\"line_end\":1000,\"content\":\"full file content\"}],\"explanation\":\"brief explanation\",\"commands\":[]}. The line_start and line_end fields are optional metadata. The action field is optional; when it is absent, FuzeCLI infers create or modify from the actual workspace. Never use markdown fences around generation JSON. Never return a request asking the user to provide source files that FuzeCLI already supplied."
+	if profileText := a.Profile.Condensed(); profileText != "" {
+		system += "\nDeveloper profile:\n" + profileText
 	}
 	if workspaceContext != "" {
 		system += "\nRelevant workspace files read from disk:\n" + workspaceContext
 	}
-	msgs := []provider.Message{
-		{Role: "system", Content: system},
-	}
-	msgs = append(msgs, history...)
-	msgs = append(msgs, provider.Message{Role: "user", Content: prompt})
-	msgs = generationTrim(msgs, 120000)
+	engine := generation.Engine{Registry: a.Registry, Profile: &a.Profile, MaxContextChars: 120000}
+	msgs := engine.Messages(a.Profile.Condensed(), workspaceContext, history, prompt)
+	msgs[0].Content = system
 	if err := a.Store.AddMessage(provider.Message{Role: "user", Content: prompt}); err != nil {
 		return err
 	}
-	phase = "Waiting for provider"
 	stream, err := a.Registry.Stream(ctx, name, msgs, provider.RequestOptions{Model: mdl, Temperature: 0.3, MaxTokens: 16000})
 	if err != nil {
 		return err
 	}
-	phase = "Receiving response"
 	var response strings.Builder
-	chunks := 0
 	for chunk := range stream {
 		if chunk.Error != nil {
 			return chunk.Error
 		}
-		if chunk.Delta != "" {
-			response.WriteString(chunk.Delta)
-			chunks++
-			if chunks%40 == 0 {
-				phase = fmt.Sprintf("Receiving response · %d chunks", chunks)
-			}
-		}
+		response.WriteString(chunk.Delta)
 	}
-	phase = "Finalizing response"
 	text := strings.TrimSpace(response.String())
 	if text == "" {
-		return context.Canceled
+		return fmt.Errorf("provider returned an empty response")
 	}
-
-	if plan, parseErr := generation.ParsePlan(response.String()); parseErr == nil {
-		phase = "Applying generated files"
-		written, applyErr := generation.Apply(a.Store.Root, plan)
+	if plan, parseErr := generation.ParseChatPlan(text); parseErr == nil {
+		written, applyErr := generation.ApplyChatPlan(a.Store.Root, plan)
 		if applyErr != nil {
 			return applyErr
 		}
@@ -276,11 +232,10 @@ func (a *App) terminalStream(ctx context.Context, prompt, providerName, model st
 		st.ActiveModel = mdl
 		_ = a.Store.SaveState(st)
 		_ = a.Store.RefreshHashes(written)
-		fmt.Println("\n\x1b[38;5;111mFuzeCLI\x1b[0m")
 		if len(written) == 1 {
-			fmt.Printf("Generated 1 file: %s\n", written[0])
+			fmt.Printf("\n\x1b[38;5;111mFuzeCLI\x1b[0m\nWritten 1 file: %s\n", written[0])
 		} else {
-			fmt.Printf("Generated %d files:\n", len(written))
+			fmt.Printf("\n\x1b[38;5;111mFuzeCLI\x1b[0m\nWritten %d files:\n", len(written))
 			for _, path := range written {
 				fmt.Printf("  ✓ %s\n", path)
 			}
@@ -289,78 +244,8 @@ func (a *App) terminalStream(ctx context.Context, prompt, providerName, model st
 			fmt.Printf("\n%s\n", plan.Explanation)
 		}
 	} else {
-		fmt.Println("\n\x1b[38;5;111mFuzeCLI\x1b[0m")
-		fmt.Println(response.String())
+		fmt.Printf("\n\x1b[38;5;111mFuzeCLI\x1b[0m\n%s\n", response.String())
 	}
+	_ = start
 	return a.Store.AddMessage(provider.Message{Role: "assistant", Content: response.String()})
-}
-
-func formatTerminalElapsed(d time.Duration) string {
-	total := int(d.Round(time.Second) / time.Second)
-	return fmt.Sprintf("%dm%02ds", total/60, total%60)
-}
-
-func (a *App) terminalCode(ctx context.Context, prompt, providerName, model string, yes bool) error {
-	start := time.Now()
-	done := make(chan error, 1)
-	go func() {
-		_, err := a.Ask(ctx, prompt, providerName, model, yes)
-		done <- err
-	}()
-	stop := make(chan struct{})
-	var once sync.Once
-	go func() {
-		ticker := time.NewTicker(250 * time.Millisecond)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ticker.C:
-				elapsed := time.Since(start).Round(time.Second)
-				completed, total, current := terminalPlanProgress(a.Store.Root)
-				if total > 0 {
-					pct := completed * 100 / total
-					fmt.Printf("\r\x1b[K\x1b[38;5;111m%s\x1b[0m %d%% · %d/%d · %s · %s", terminalSpinnerFrame(), pct, completed, total, current, elapsed)
-				} else {
-					fmt.Printf("\r\x1b[K\x1b[38;5;111m%s\x1b[0m Working · %s", terminalSpinnerFrame(), elapsed)
-				}
-			case <-stop:
-				return
-			}
-		}
-	}()
-	err := <-done
-	once.Do(func() { close(stop) })
-	fmt.Print("\r\x1b[K")
-	return err
-}
-
-func terminalPlanProgress(root string) (int, int, string) {
-	data, err := os.ReadFile(generation.ProjectPlanPath(root))
-	if err != nil {
-		return 0, 0, "planning"
-	}
-	var plan generation.ProjectPlan
-	if err := json.Unmarshal(data, &plan); err != nil {
-		return 0, 0, "planning"
-	}
-	total := len(plan.Files)
-	completed := total - len(generation.PendingFiles(plan))
-	current := "verifying"
-	pending := generation.PendingFiles(plan)
-	if len(pending) > 0 {
-		current = pending[0].Path
-	}
-	return completed, total, current
-}
-
-var terminalFrame uint64
-
-func terminalSpinnerFrame() string {
-	terminalFrame++
-	frames := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
-	return frames[int(terminalFrame)%len(frames)]
-}
-
-func formatTerminalError(err error, providerName, model string) string {
-	return "\n\x1b[1;38;5;203m✕ " + diagnostics.FormatTerminal(err, providerName, model) + "\x1b[0m"
 }
