@@ -19,6 +19,14 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.27.x'
+      - name: Tidy modules
+        shell: pwsh
+        run: |
+          go mod tidy
+          Write-Host '--- go.mod ---'
+          Get-Content go.mod
+          Write-Host '--- go.sum ---'
+          Get-Content go.sum
       - name: Test
         run: go test ./...
       - name: Build
