@@ -34,7 +34,7 @@ func LooksLikeChatPlanPrefix(raw string) bool {
 		if len(prefix) > 4096 {
 			prefix = prefix[:4096]
 		}
-		return strings.Contains(prefix, `"files"`) || strings.Contains(prefix, `"explanation"`) || strings.HasPrefix(prefix, `{"files")
+		return strings.Contains(prefix, "\"files\"") || strings.Contains(prefix, "\"explanation\"") || strings.HasPrefix(prefix, "{\"files\"")
 	}
 	lower := strings.ToLower(text)
 	return strings.HasPrefix(lower, "```json") || strings.HasPrefix(lower, "```\n{")
