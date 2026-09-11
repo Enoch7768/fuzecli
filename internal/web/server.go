@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -27,18 +28,22 @@ type Server struct {
 	App      *app.App
 	Progress *progress.Hub
 	Addr     string
+	assetDir string
 	mu       sync.Mutex
 	busy     bool
 }
 
 func New(a *app.App, hub *progress.Hub) *Server {
-	return &Server{App: a, Progress: hub, Addr: "127.0.0.1:8787"}
+	assetDir, _ := os.Getwd()
+	return &Server{App: a, Progress: hub, Addr: "127.0.0.1:8787", assetDir: assetDir}
 }
 
 func (s *Server) ListenAndServe(ctx context.Context) error {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", s.index)
 	mux.Handle("/static/", http.FileServer(http.FS(assets)))
+	mux.HandleFunc("/icon.png", s.logo)
+	mux.HandleFunc("/icon-mark.png", s.logo)
 	mux.HandleFunc("/api/state", s.state)
 	mux.HandleFunc("/api/events", s.events)
 	mux.HandleFunc("/api/chat", s.chat)
@@ -50,7 +55,11 @@ func (s *Server) ListenAndServe(ctx context.Context) error {
 	mux.HandleFunc("/api/plan", s.plan)
 	mux.HandleFunc("/api/download", s.download)
 
-	server := &http.Server{Addr: s.Addr, Handler: mux, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 30 * time.Second, WriteTimeout: 0, IdleTimeout: 60 * time.Second}
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		secureHeaders(w)
+		mux.ServeHTTP(w, r)
+	})
+	server := &http.Server{Addr: s.Addr, Handler: handler, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 30 * time.Second, WriteTimeout: 0, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16 << 10}
 	done := make(chan error, 1)
 	go func() { done <- server.ListenAndServe() }()
 
@@ -81,6 +90,29 @@ func (s *Server) index(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(data)
 }
 
+func (s *Server) logo(w http.ResponseWriter, r *http.Request) {
+	name := filepath.Base(r.URL.Path)
+	if name != "icon.png" && name != "icon-mark.png" {
+		http.NotFound(w, r)
+		return
+	}
+	path := filepath.Join(s.assetDir, name)
+	if s.App.Store != nil {
+		workspacePath := filepath.Join(s.App.Store.Root, name)
+		if info, err := os.Stat(workspacePath); err == nil && !info.IsDir() && info.Size() <= 2<<20 {
+			path = workspacePath
+		}
+	}
+	data, err := os.ReadFile(path)
+	if err != nil || len(data) == 0 || len(data) > 2<<20 {
+		http.NotFound(w, r)
+		return
+	}
+	w.Header().Set("Content-Type", "image/png")
+	w.Header().Set("Cache-Control", "public, max-age=3600, immutable")
+	_, _ = w.Write(data)
+}
+
 func (s *Server) state(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, s.Progress.Last())
 }
@@ -91,7 +123,7 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "live updates are not supported by this connection"})
 		return
 	}
-	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-cache, no-transform")
 	w.Header().Set("Connection", "keep-alive")
 	w.Header().Set("X-Accel-Buffering", "no")
@@ -117,12 +149,15 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) chat(w http.ResponseWriter, r *http.Request) {
+	if !allowLocalOrigin(w, r) {
+		return
+	}
 	if r.Method != http.MethodPost {
 		w.Header().Set("Allow", http.MethodPost)
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "POST is required for chat requests"})
 		return
 	}
-
+	limitBody(w, r, 768<<10)
 	var request struct {
 		Prompt   string `json:"prompt"`
 		Provider string `json:"provider"`
@@ -135,16 +170,15 @@ func (s *Server) chat(w http.ResponseWriter, r *http.Request) {
 		writeUserError(w, http.StatusBadRequest, diagnostics.Interpret(fmt.Errorf("invalid chat request: %w", err), request.Provider, request.Model))
 		return
 	}
-
 	request.Prompt = strings.TrimSpace(request.Prompt)
 	request.Provider = strings.TrimSpace(request.Provider)
 	request.Model = strings.TrimSpace(request.Model)
-	if request.Prompt == "/code" || strings.HasPrefix(request.Prompt, "/code ") {
-		request.Code = true
-		request.Prompt = strings.TrimSpace(strings.TrimPrefix(request.Prompt, "/code"))
-	}
 	if request.Prompt == "" {
-		writeUserError(w, http.StatusBadRequest, diagnostics.Interpret(fmt.Errorf("prompt is required; for code generation use /code followed by what you want to build"), request.Provider, request.Model))
+		writeUserError(w, http.StatusBadRequest, diagnostics.Interpret(fmt.Errorf("prompt is required"), request.Provider, request.Model))
+		return
+	}
+	if len(request.Prompt) > 700<<10 {
+		writeUserError(w, http.StatusRequestEntityTooLarge, diagnostics.Interpret(fmt.Errorf("prompt is too large"), request.Provider, request.Model))
 		return
 	}
 
@@ -159,11 +193,13 @@ func (s *Server) chat(w http.ResponseWriter, r *http.Request) {
 
 	job := fmt.Sprintf("job-%d", time.Now().UnixNano())
 	go s.runChatJob(job, request.Prompt, request.Provider, request.Model, request.Code, request.Yes)
-
 	writeJSON(w, http.StatusAccepted, map[string]any{"accepted": true, "job_id": job})
 }
 
 func (s *Server) session(w http.ResponseWriter, r *http.Request) {
+	if !allowLocalOrigin(w, r) {
+		return
+	}
 	if r.Method != http.MethodPost {
 		w.Header().Set("Allow", http.MethodPost)
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "POST is required for session setup"})
@@ -173,7 +209,7 @@ func (s *Server) session(w http.ResponseWriter, r *http.Request) {
 		writeUserError(w, http.StatusInternalServerError, diagnostics.Interpret(fmt.Errorf("workspace not initialized; run aicli init"), "", ""))
 		return
 	}
-
+	limitBody(w, r, 32<<10)
 	var request struct {
 		Memory   string `json:"memory"`
 		Provider string `json:"provider"`
@@ -190,7 +226,6 @@ func (s *Server) session(w http.ResponseWriter, r *http.Request) {
 		writeUserError(w, http.StatusBadRequest, diagnostics.Interpret(fmt.Errorf("memory must be either continue or clear"), request.Provider, request.Model))
 		return
 	}
-
 	s.mu.Lock()
 	if s.busy {
 		s.mu.Unlock()
@@ -204,16 +239,14 @@ func (s *Server) session(w http.ResponseWriter, r *http.Request) {
 		s.busy = false
 		s.mu.Unlock()
 	}()
-
 	if request.Memory == "clear" {
 		if err := s.App.Store.ClearMemory(); err != nil {
 			writeUserError(w, http.StatusInternalServerError, diagnostics.Interpret(err, request.Provider, request.Model))
 			return
 		}
 	}
-
 	start := time.Now()
-	s.Progress.Publish(progress.Event{Type: "progress", Status: "planning", Message: "Prebriefing FuzeCLI and preparing your session", Provider: request.Provider, Model: request.Model, ElapsedMillis: 0})
+	s.Progress.Publish(progress.Event{Type: "progress", Status: "planning", Message: "Preparing your session", Provider: request.Provider, Model: request.Model, ElapsedMillis: 0})
 	welcome, err := s.App.SessionWelcome(r.Context(), request.Provider, request.Model)
 	if err != nil {
 		u := diagnostics.Interpret(err, request.Provider, request.Model)
@@ -221,8 +254,12 @@ func (s *Server) session(w http.ResponseWriter, r *http.Request) {
 		writeUserError(w, http.StatusBadGateway, u)
 		return
 	}
-	s.Progress.Publish(progress.Event{Type: "progress", Status: "completed", Message: "Session ready. Your request can now be sent.", Provider: request.Provider, Model: request.Model, ElapsedMillis: time.Since(start).Milliseconds()})
-	writeJSON(w, http.StatusOK, map[string]any{"ready": true, "memory": request.Memory, "welcome": welcome, "provider": request.Provider, "model": request.Model})
+	s.Progress.Publish(progress.Event{Type: "progress", Status: "completed", Message: "Session ready.", Provider: request.Provider, Model: request.Model, ElapsedMillis: time.Since(start).Milliseconds()})
+	writeJSON(w, http.StatusOK, map[string]any{"ready": true, "memory": request.Memory, "welcome": welcome, "provider": request.Provider, "model": modelOrDefault(request.Model, welcome)})
+}
+
+func modelOrDefault(requested, _ string) string {
+	return strings.TrimSpace(requested)
 }
 
 func (s *Server) history(w http.ResponseWriter, r *http.Request) {
@@ -249,7 +286,6 @@ func (s *Server) runChatJob(job, prompt, providerName, model string, code, yes b
 		s.busy = false
 		s.mu.Unlock()
 	}()
-
 	start := time.Now()
 	if code {
 		s.Progress.Publish(progress.Event{Type: "progress", Status: "planning", Message: "Understanding your request and identifying the work", Provider: providerName, Model: model, ElapsedMillis: 0})
@@ -264,7 +300,6 @@ func (s *Server) runChatJob(job, prompt, providerName, model string, code, yes b
 		s.monitorProjectPlan(start, providerName, model, result, tickerStop)
 		return
 	}
-
 	before := map[string]struct{}{}
 	if s.App.Store != nil {
 		if paths, err := s.App.Store.Touched(); err == nil {
@@ -273,7 +308,6 @@ func (s *Server) runChatJob(job, prompt, providerName, model string, code, yes b
 			}
 		}
 	}
-
 	s.Progress.Publish(progress.Event{Type: "progress", Status: "planning", Message: "Analyzing the request and preparing context", Provider: providerName, Model: model, ElapsedMillis: 0})
 	s.Progress.Publish(progress.Event{Type: "chat_token", Status: "planning", Message: "Analyzing the request…\n", Provider: providerName, Model: model, ElapsedMillis: 0})
 	time.Sleep(120 * time.Millisecond)
@@ -287,7 +321,6 @@ func (s *Server) runChatJob(job, prompt, providerName, model string, code, yes b
 		s.publishError(start, u)
 		return
 	}
-
 	generated := []string{}
 	if s.App.Store != nil {
 		if paths, readErr := s.App.Store.Touched(); readErr == nil {
@@ -298,14 +331,13 @@ func (s *Server) runChatJob(job, prompt, providerName, model string, code, yes b
 			}
 		}
 	}
-
-	s.Progress.Publish(progress.Event{Type: "progress", Status: "verifying", Message: "Checking the completed response and workspace state", Provider: providerName, Model: model, ElapsedMillis: time.Since(start).Milliseconds()})
 	message := "Response complete"
 	if len(generated) > 0 {
 		message = fmt.Sprintf("Generated %d file%s and saved the code to your workspace.", len(generated), pluralSuffix(len(generated)))
 		s.Progress.Publish(progress.Event{Type: "generated", Status: "completed", Message: message, GeneratedFiles: generated, Provider: providerName, Model: model, ElapsedMillis: time.Since(start).Milliseconds()})
 	}
-	s.Progress.Publish(progress.Event{Type: "completed", Status: "completed", Message: message, GeneratedFiles: generated, Provider: providerName, Model: model, ElapsedMillis: time.Since(start).Milliseconds()})
+	s.Progress.Publish(progress.Event{Type: "chat_end", Status: "completed", Message: message, GeneratedFiles: generated, Provider: providerName, Model: model, ElapsedMillis: time.Since(start).Milliseconds()})
+	s.Progress.Publish(progress.Event{Type: "progress", Status: "completed", Message: message, GeneratedFiles: generated, Provider: providerName, Model: model, ElapsedMillis: time.Since(start).Milliseconds()})
 }
 
 func (s *Server) publishPlanningHeartbeat(stop <-chan struct{}, start time.Time, providerName, model string) {
@@ -418,9 +450,13 @@ func (s *Server) config(w http.ResponseWriter, r *http.Request) {
 		c := s.App.Config
 		providers := make(map[string]any, len(c.Providers))
 		for name, p := range c.Providers {
-			providers[name] = map[string]any{"default_model": p.DefaultModel, "base_url": p.BaseURL, "configured": p.APIKey != "" || name == "llamacpp"}
+			providers[name] = map[string]any{"default_model": p.DefaultModel, "base_url": p.BaseURL, "configured": p.APIKey != "" || name == "llamacpp", "api_key_configured": p.APIKey != ""}
 		}
+		w.Header().Set("Cache-Control", "no-store")
 		writeJSON(w, http.StatusOK, map[string]any{"default_provider": c.DefaultProvider, "providers": providers, "fallback_order": c.FallbackOrder, "verification": c.Verification})
+		return
+	}
+	if !allowLocalOrigin(w, r) {
 		return
 	}
 	if r.Method != http.MethodPost {
@@ -428,10 +464,13 @@ func (s *Server) config(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "GET or POST is required for settings"})
 		return
 	}
-
+	limitBody(w, r, 32<<10)
 	var request struct {
-		Provider string `json:"provider"`
-		Model    string `json:"model"`
+		Provider    string  `json:"provider"`
+		Model       string  `json:"model"`
+		APIKey      *string `json:"api_key"`
+		ClearAPIKey bool    `json:"clear_api_key"`
+		BaseURL     string  `json:"base_url"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 		writeUserError(w, http.StatusBadRequest, diagnostics.Interpret(fmt.Errorf("invalid settings request: %w", err), "", ""))
@@ -439,6 +478,7 @@ func (s *Server) config(w http.ResponseWriter, r *http.Request) {
 	}
 	request.Provider = strings.TrimSpace(request.Provider)
 	request.Model = strings.TrimSpace(request.Model)
+	request.BaseURL = strings.TrimSpace(request.BaseURL)
 	if request.Provider == "" {
 		writeUserError(w, http.StatusBadRequest, diagnostics.Interpret(fmt.Errorf("provider is required"), "", request.Model))
 		return
@@ -448,21 +488,52 @@ func (s *Server) config(w http.ResponseWriter, r *http.Request) {
 		writeUserError(w, http.StatusBadRequest, diagnostics.Interpret(fmt.Errorf("unknown provider %q", request.Provider), request.Provider, request.Model))
 		return
 	}
-	if request.Model == "" {
-		request.Model = pc.DefaultModel
+	if request.APIKey != nil {
+		key := strings.TrimSpace(*request.APIKey)
+		if err := validateSecret(key); err != nil {
+			writeUserError(w, http.StatusBadRequest, diagnostics.Interpret(err, request.Provider, request.Model))
+			return
+		}
+		pc.APIKey = key
 	}
-	if request.Model == "" {
-		writeUserError(w, http.StatusBadRequest, diagnostics.Interpret(fmt.Errorf("no model configured for %s", request.Provider), request.Provider, request.Model))
+	if request.ClearAPIKey {
+		pc.APIKey = ""
+	}
+	if request.Model != "" {
+		pc.DefaultModel = request.Model
+	}
+	if request.BaseURL != "" {
+		if err := validateBaseURL(request.BaseURL); err != nil {
+			writeUserError(w, http.StatusBadRequest, diagnostics.Interpret(err, request.Provider, request.Model))
+			return
+		}
+		pc.BaseURL = request.BaseURL
+	}
+	if pc.DefaultModel == "" && request.Provider != "llamacpp" {
+		writeUserError(w, http.StatusBadRequest, diagnostics.Interpret(fmt.Errorf("no model configured for %s"), request.Provider, request.Model))
 		return
 	}
-	pc.DefaultModel = request.Model
+	s.mu.Lock()
+	if s.busy {
+		s.mu.Unlock()
+		writeUserError(w, http.StatusConflict, diagnostics.Interpret(fmt.Errorf("settings cannot change while FuzeCLI is working"), request.Provider, request.Model))
+		return
+	}
+	s.busy = true
+	s.mu.Unlock()
+	defer func() {
+		s.mu.Lock()
+		s.busy = false
+		s.mu.Unlock()
+	}()
 	s.App.Config.Providers[request.Provider] = pc
 	s.App.Config.DefaultProvider = request.Provider
 	if err := config.Save(s.App.Config); err != nil {
 		writeUserError(w, http.StatusInternalServerError, diagnostics.Interpret(err, request.Provider, request.Model))
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"saved": true, "provider": request.Provider, "model": request.Model})
+	s.App.ReloadProviders()
+	writeJSON(w, http.StatusOK, map[string]any{"saved": true, "provider": request.Provider, "model": pc.DefaultModel, "api_key_configured": pc.APIKey != "", "base_url": pc.BaseURL})
 }
 
 func (s *Server) models(w http.ResponseWriter, r *http.Request) {
@@ -573,6 +644,62 @@ func (s *Server) download(w http.ResponseWriter, r *http.Request) {
 	_ = archive.Close()
 }
 
+func validateSecret(value string) error {
+	if len(value) > 4096 {
+		return fmt.Errorf("API key is too long")
+	}
+	if strings.ContainsAny(value, "\r\n\x00") {
+		return fmt.Errorf("API key contains invalid control characters")
+	}
+	return nil
+}
+
+func validateBaseURL(value string) error {
+	parsed, err := url.Parse(value)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		return fmt.Errorf("base URL must be an absolute HTTP or HTTPS URL")
+	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return fmt.Errorf("base URL must use HTTP or HTTPS")
+	}
+	return nil
+}
+
+func allowLocalOrigin(w http.ResponseWriter, r *http.Request) bool {
+	origin := strings.TrimSpace(r.Header.Get("Origin"))
+	if origin == "" {
+		return true
+	}
+	parsed, err := url.Parse(origin)
+	if err != nil || parsed.Scheme != "http" || parsed.Host == "" {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "request origin rejected"})
+		return false
+	}
+	host := strings.ToLower(parsed.Hostname())
+	if host != "localhost" && host != "127.0.0.1" && host != "::1" {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "request origin rejected"})
+		return false
+	}
+	if parsed.Host != r.Host {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "request origin rejected"})
+		return false
+	}
+	w.Header().Set("Vary", "Origin")
+	return true
+}
+
+func limitBody(w http.ResponseWriter, r *http.Request, max int64) {
+	r.Body = http.MaxBytesReader(w, r.Body, max)
+}
+
+func secureHeaders(w http.ResponseWriter) {
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("X-Frame-Options", "DENY")
+	w.Header().Set("Referrer-Policy", "no-referrer")
+	w.Header().Set("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=(), usb=()")
+	w.Header().Set("Content-Security-Policy", "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'")
+}
+
 func writeSSE(w http.ResponseWriter, eventType string, event progress.Event) {
 	data, _ := json.Marshal(event)
 	fmt.Fprintf(w, "event: %s\ndata: %s\n\n", eventType, data)
@@ -584,6 +711,7 @@ func writeUserError(w http.ResponseWriter, status int, err diagnostics.UserError
 
 func writeJSON(w http.ResponseWriter, status int, value any) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(value)
 }
