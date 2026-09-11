@@ -61,10 +61,6 @@ func (s *Service) Chat(ctx context.Context, req ChatRequest) (ChatResponse, erro
 	if err != nil {
 		return ChatResponse{}, err
 	}
-	history, err = s.App.CompactHistoryForAPI(ctx, name, model, history)
-	if err != nil {
-		return ChatResponse{}, err
-	}
 	workspaceContext, err := s.App.Store.WorkspaceContext()
 	if err != nil {
 		return ChatResponse{}, err
