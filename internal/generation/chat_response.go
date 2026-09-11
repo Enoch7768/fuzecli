@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 )
 
 type chatFileChange struct {
@@ -21,6 +23,18 @@ type chatPlan struct {
 	Commands    []string         `json:"commands"`
 }
 
+func LooksLikeChatPlanPrefix(raw string) bool {
+	text := strings.TrimSpace(strings.TrimPrefix(raw, "\ufeff"))
+	if text == "" || text[0] != '{' {
+		return false
+	}
+	prefix := text
+	if len(prefix) > 4096 {
+		prefix = prefix[:4096]
+	}
+	return strings.Contains(prefix, `"files"`) || strings.Contains(prefix, `"explanation"`)
+}
+
 func ParseChatPlan(raw string) (Plan, error) {
 	clean, err := normalizeJSONDocument(raw)
 	if err != nil {
@@ -28,12 +42,15 @@ func ParseChatPlan(raw string) (Plan, error) {
 	}
 	var input chatPlan
 	dec := json.NewDecoder(bytes.NewReader(clean))
+	dec.DisallowUnknownFields()
 	if err := dec.Decode(&input); err != nil {
 		return Plan{}, fmt.Errorf("invalid chat JSON: %w", err)
 	}
 	var trailing any
 	if err := dec.Decode(&trailing); err == nil {
 		return Plan{}, fmt.Errorf("invalid chat JSON: trailing data")
+	} else if err.Error() != "EOF" {
+		return Plan{}, fmt.Errorf("invalid chat JSON: trailing data: %w", err)
 	}
 	if len(input.Files) == 0 {
 		return Plan{}, fmt.Errorf("chat JSON contains no files")
@@ -48,6 +65,14 @@ func ParseChatPlan(raw string) (Plan, error) {
 		}
 		if file.Action != "" && file.Action != "create" && file.Action != "modify" && file.Action != "delete" {
 			return Plan{}, fmt.Errorf("file %d has invalid action %q", i, file.Action)
+		}
+		if file.Action == "delete" && file.Content != "" {
+			return Plan{}, fmt.Errorf("file %d delete action must have empty content", i)
+		}
+		if normalized, normalizeErr := filepath.Abs(filepath.Clean(file.Path)); normalizeErr != nil || filepath.IsAbs(file.Path) || strings.HasPrefix(filepath.ToSlash(file.Path), "../") || strings.Contains(filepath.ToSlash(file.Path), "/../") || filepath.VolumeName(file.Path) != "" || normalized == filepath.Clean(file.Path) {
+			if filepath.IsAbs(file.Path) || strings.HasPrefix(filepath.ToSlash(file.Path), "../") || strings.Contains(filepath.ToSlash(file.Path), "/../") || filepath.VolumeName(file.Path) != "" {
+				return Plan{}, fmt.Errorf("path traversal rejected for %q", file.Path)
+			}
 		}
 		plan.Files = append(plan.Files, FileChange{Path: file.Path, Content: file.Content, Action: file.Action})
 	}
@@ -72,6 +97,9 @@ func ApplyChatPlan(root string, plan Plan) ([]string, error) {
 			default:
 				return nil, fmt.Errorf("inspect %s: %w", file.Path, err)
 			}
+		}
+		if action == "delete" && file.Content != "" {
+			return nil, fmt.Errorf("delete %s must not include content", file.Path)
 		}
 		resolved.Files = append(resolved.Files, FileChange{Path: file.Path, Content: file.Content, Action: action})
 	}
