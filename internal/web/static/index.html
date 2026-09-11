@@ -8,13 +8,7 @@
 <title>FuzeCLI</title>
 <link rel="icon" href="/icon-mark.png">
 <link rel="stylesheet" href="/static/app.css">
-<style>
-.brand-mark{overflow:hidden}
-.brand-mark img,.welcome-mark img{display:block;object-fit:contain;object-position:center;flex:none}
-.brand-mark img{width:24px;height:24px}
-.welcome-mark{overflow:hidden}
-.welcome-mark img{width:36px;height:36px;filter:drop-shadow(0 0 18px rgba(169,196,255,.2))}
-</style>
+<link rel="stylesheet" href="/static/logo.css">
 </head>
 <body>
 <div class="app">
@@ -63,7 +57,7 @@
           <div class="composer-main">
             <button class="attach-button" id="attachButton" type="button" aria-label="Upload files" title="Upload files"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12.7 5.2 6.8 11.1a4.15 4.15 0 0 0 5.9 5.9l6-6a2.55 2.55 0 0 0-3.6-3.6l-6 6a.95.95 0 0 0 1.35 1.35l5.2-5.2" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
             <textarea id="prompt" rows="1" placeholder="Message FuzeCLI…" aria-label="Message FuzeCLI" spellcheck="true"></textarea>
-            <button class="send-button" id="send" type="button" aria-label="Send"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6.5 4.8 11.7 6.3a1 1 0 0 1 0 1.8L6.5 19.2a1 1 0 0 1-1.4-1.1l1.7-5.5a.8.8 0 0 0 0-.5L5.1 5.9a1 1 0 0 1 1.4-1.1Z" fill="currentColor"/><path d="M7.1 12h9.1" fill="none" stroke="rgba(11,13,16,.65)" stroke-width="1.4" stroke-linecap="round"/></svg></button>
+            <button class="send-button" id="send" type="button" aria-label="Send"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6.5 4.8 11.7 6.3a1 1 0 0 1 0 1.8L6.5 19.2a.8.8 0 0 1-1.4-1.1l1.7-5.5a.8.8 0 0 0 0-.5L5.1 5.9a1 1 0 0 1 1.4-1.1Z" fill="currentColor"/><path d="M7.1 12h9.1" fill="none" stroke="rgba(11,13,16,.65)" stroke-width="1.4" stroke-linecap="round"/></svg></button>
           </div>
           <div class="composer-foot"><span>Enter <b>↵</b> to send · <b>Shift+Enter</b> for newline</span><span id="composerStatus">Ready</span></div>
           <input id="fileInput" type="file" multiple hidden>
