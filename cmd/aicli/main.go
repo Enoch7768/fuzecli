@@ -109,7 +109,8 @@ func setupCommand() error {
 
 	fmt.Println("\n\x1b[1;38;5;117mFuzeCLI SETUP\x1b[0m")
 	fmt.Println("\x1b[38;5;244mConfigure the provider FuzeCLI should use by default.\x1b[0m")
-	fmt.Println("\x1b[38;5;244mYour API key is stored locally in the FuzeCLI config directory.\x1b[0m\n")
+	fmt.Println("\x1b[38;5;244mYour API key is stored locally in the FuzeCLI config directory.\x1b[0m")
+	fmt.Println()
 
 	fmt.Printf("Provider [%s] (gemini/openai/groq/anthropic/llamacpp): ", current.DefaultProvider)
 	providerName, err := readSetupLine(reader)
@@ -456,24 +457,17 @@ func configCommand(args []string) error {
 		if err != nil {
 			return err
 		}
-		names := []string{"openai", "gemini", "gemini-normalizer", "groq", "anthropic", "llamacpp"}
+		names := []string{"openai", "gemini", "groq", "anthropic", "llamacpp"}
+		fmt.Println("Default provider:", c.DefaultProvider)
 		for _, name := range names {
-			p, ok := c.Providers[name]
-			if !ok {
-				continue
-			}
-			fmt.Printf("providers.%s.api_key: %s\n", name, config.MaskSecret(p.APIKey))
-			fmt.Printf("providers.%s.default_model: %s\n", name, p.DefaultModel)
-			if p.BaseURL != "" {
-				fmt.Printf("providers.%s.base_url: %s\n", name, p.BaseURL)
+			if p, ok := c.Providers[name]; ok {
+				key := "<not set>"
+				if p.APIKey != "" {
+					key = "<configured>"
+				}
+				fmt.Printf("%s: model=%s api_key=%s\n", name, p.DefaultModel, key)
 			}
 		}
-		fmt.Println("default_provider:", c.DefaultProvider)
-		fmt.Println("fallback_order:", strings.Join(c.FallbackOrder, ", "))
-		fmt.Println("verification.self_correction_attempts:", c.Verification.SelfCorrectionAttempts)
-		return nil
-	case "--help", "-h":
-		fmt.Println("Usage: aicli config set <key> <value>\naicli config show")
 		return nil
 	default:
 		return fmt.Errorf("unknown config command %q", args[0])
@@ -482,11 +476,11 @@ func configCommand(args []string) error {
 
 func profileCommand(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("profile requires show or reset")
+		return fmt.Errorf("profile requires show or extract")
 	}
 	switch args[0] {
 	case "show":
-		p, err := profile.Load()
+		p, err := profile.Load(".")
 		if err != nil {
 			return err
 		}
@@ -496,59 +490,19 @@ func profileCommand(args []string) error {
 		}
 		fmt.Println(string(data))
 		return nil
-	case "reset":
-		return profile.Save(profile.Default())
-	case "--help", "-h":
-		fmt.Println("Usage: aicli profile show\naicli profile reset")
-		return nil
+	case "extract":
+		a, err := app.Load()
+		if err != nil {
+			return err
+		}
+		defer a.Close()
+		if err := a.AttachWorkspace("."); err != nil {
+			return err
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		return a.RunProfileExtraction(ctx)
 	default:
 		return fmt.Errorf("unknown profile command %q", args[0])
 	}
 }
-
-func usage() error { fmt.Println(usageText); return nil }
-
-const usageText = `FuzeCLI - unified AI coding workspace
-
-Commands:
-  aicli setup
-  aicli init
-  aicli config set <key> <value>
-  aicli config show
-  aicli models [--provider name]
-  aicli chat [--yes]
-  aicli ask "prompt" [--provider name|auto] [--model name] [--yes]
-  aicli api [--addr 127.0.0.1:8787]
-  aicli mcp
-  aicli doctor
-  aicli snapshot
-  aicli restore [snapshot.zip]
-  aicli status
-  aicli diff
-  aicli profile show
-  aicli profile reset
-  aicli history
-  aicli version
-
-Safety:
-  .aicliignore adds project-specific exclusions.
-  Known secret-bearing files are always excluded from AI workspace context.
-  snapshot/restore provides explicit local recovery points.
-  status/diff inspect Git state without modifying the repository.
-  Model-provided shell commands are informational only and are never executed automatically.
-
-Chat commands:
-  /file
-  /file <relative-path>
-  /file list
-  /file clear
-  /provider <name>
-  /model <name>
-  /status
-  /clear
-  /help
-  /exit
-
-Options:
-  --help
-  --version`
