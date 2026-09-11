@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - public-release-hardening
   pull_request:
     branches:
       - main
@@ -13,24 +14,39 @@ permissions:
 
 jobs:
   test:
+    strategy:
+      fail-fast: false
+      matrix:
+        go-version: ['1.23.x', '1.27.x']
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.27.x'
-      - name: Tidy modules
+          go-version: ${{ matrix.go-version }}
+      - name: Verify modules
         shell: pwsh
         run: |
           go mod tidy
-          Write-Host '--- go.mod ---'
-          Get-Content go.mod
-          Write-Host '--- go.sum ---'
-          Get-Content go.sum
+          git diff --exit-code -- go.mod go.sum
       - name: Test
         run: go test ./...
+      - name: Vet
+        run: go vet ./...
       - name: Build
         shell: pwsh
         run: |
           $env:CGO_ENABLED = '0'
           go build -trimpath -ldflags "-s -w" -o dist/aicli.exe ./cmd/aicli
+
+  vulnerability-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.27.x'
+      - name: Install govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@latest
+      - name: Scan dependencies and code
+        run: govulncheck ./...
