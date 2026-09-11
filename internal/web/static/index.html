@@ -40,7 +40,7 @@
       <div class="messages" id="conversation">
         <div class="welcome" id="welcome">
           <div class="welcome-orbit"><span></span><span></span></div>
-          <div class="welcome-mark"><svg viewBox="0 0 48 48"><path d="M13 8h24v7H21v6h13v7H21v12h-8V8Z"/><path d="m29 31 7-7 5 5-7 7-5-5Z"/></svg></div>
+          <div class="welcome-mark"><svg viewBox="0 0 48 48"><path d="M13 8h24v7H21v6h13v7H21v12h-8V8Z"/><path d="m29 31 7-7 5 5-7-7Z"/></svg></div>
           <div class="eyebrow">PRIVATE · LOCAL · FOCUSED</div>
           <h1>Build something <span>brilliant.</span></h1>
           <p>Talk to your workspace-aware AI. Inspect code, upload context, solve problems, or describe exactly what you want built.</p>
@@ -90,19 +90,38 @@
   const closeSettings = document.getElementById('closeSettings')
   const status = document.getElementById('composerStatus')
   const input = document.getElementById('prompt')
+  const messages = document.getElementById('conversation')
+  const composerWrap = document.getElementById('composerWrap')
+
+  const syncMessageViewport = () => {
+    if (!messages || !composerWrap) return
+    messages.style.paddingBottom = `${composerWrap.getBoundingClientRect().height + 34}px`
+    messages.querySelectorAll('.message-row, .message-bubble, .message-content').forEach(node => {
+      node.style.minWidth = '0'
+    })
+  }
+
   const closePanel = () => {
     settingsView.classList.add('hidden')
     workspaceView.classList.add('hidden')
     chatView.classList.remove('hidden')
+    syncMessageViewport()
     input.focus()
   }
+
   closeSettings.addEventListener('click', closePanel)
+  window.addEventListener('resize', syncMessageViewport)
+  new ResizeObserver(syncMessageViewport).observe(composerWrap)
+  new MutationObserver(syncMessageViewport).observe(messages, {childList:true,subtree:true})
+  syncMessageViewport()
+
   document.addEventListener('keydown', event => {
     if (event.key === 'Escape' && !settingsView.classList.contains('hidden')) {
       event.preventDefault()
       closePanel()
     }
   })
+
   new MutationObserver(() => {
     if (status.textContent.trim() !== 'Working…' && typeof busy !== 'undefined' && busy) {
       busy = false
