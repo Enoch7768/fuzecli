@@ -20,7 +20,7 @@ Custom address:
 aicli api --addr 127.0.0.1:9000
 ```
 
-For a non-local deployment, set `FUZECLI_API_TOKEN` and send it as a bearer token.
+For deployments that intentionally expose the application API beyond loopback, use `FUZECLI_API_TOKEN` and send it as a bearer token. Keep the service on loopback unless remote access is deliberately configured and protected.
 
 ## Health
 
@@ -55,17 +55,13 @@ Request:
 
 `files` contains workspace-relative text paths. Files are validated as workspace-bound UTF-8 text and limited to 64 KiB each. When the model returns valid FuzeCLI file JSON and `apply` is true, the changes are applied automatically.
 
-Response:
+Generated command metadata is not executed automatically.
 
-```json
-{
-  "content": "{\"files\":[...]} ",
-  "provider": "gemini",
-  "model": "gemini-2.5-flash",
-  "written_files": ["app.js"],
-  "applied": true
-}
-```
+## Web event lifecycle
+
+The local web application consumes `/api/events` as server-sent events. A normal request emits planning/generating events, streamed `chat_token` events, and one terminal `chat_end` event. A generated-file event may precede `chat_end`.
+
+The client must treat `chat_end` as the authoritative response-completion signal and must make the next request available immediately after receiving it.
 
 ## Read a file
 
@@ -92,4 +88,10 @@ By default the API binds to loopback and does not need a token. Set `FUZECLI_API
 Authorization: Bearer YOUR_TOKEN
 ```
 
-Keep the service on loopback unless remote access is intentionally configured and protected.
+## Provider keys
+
+Provider API keys are configured locally through FuzeCLI configuration. The web application's `/api/config` endpoint accepts a key for the selected provider, but its GET response exposes only `api_key_configured: true|false`; the stored key value is never returned to the browser.
+
+Changing a key is a state-changing request and is limited to the local browser origin. Keys are stored in the local FuzeCLI configuration, not in the workspace database or browser history.
+
+See [SECURITY.md](SECURITY.md) for the complete security model.
