@@ -1,39 +1,12 @@
 package generation
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
 )
-
-type chatFileChange struct {
-	Path      string `json:"path"`
-	Content   string `json:"content"`
-	Action    string `json:"action"`
-	LineStart int    `json:"line_start"`
-	LineEnd   int    `json:"line_end"`
-}
-
-type chatPlan struct {
-	Type        string           `json:"type"`
-	Response    string           `json:"response"`
-	Files       []chatFileChange `json:"files"`
-	Explanation string           `json:"explanation"`
-	Commands    []string         `json:"commands"`
-}
-
-type ChatResponse struct {
-	Type        string
-	Response    string
-	Plan        *Plan
-	Explanation string
-	Commands    []string
-}
 
 func LooksLikeChatPlanPrefix(raw string) bool {
 	text := strings.TrimSpace(strings.TrimPrefix(raw, "\ufeff"))
@@ -45,93 +18,23 @@ func LooksLikeChatPlanPrefix(raw string) bool {
 		if len(prefix) > 4096 {
 			prefix = prefix[:4096]
 		}
-		return strings.Contains(prefix, "\"files\"") || strings.Contains(prefix, "\"response\"") || strings.Contains(prefix, "\"explanation\"") || strings.HasPrefix(prefix, "{\"files\"")
+		return strings.Contains(prefix, "\"files\"") || strings.Contains(prefix, "\"response\"") || strings.Contains(prefix, "\"message\"") || strings.Contains(prefix, "\"explanation\"")
 	}
 	lower := strings.ToLower(text)
 	return strings.HasPrefix(lower, "```json") || strings.HasPrefix(lower, "```\n{")
 }
 
-func ParseChatResponse(raw string) (ChatResponse, error) {
-	clean, err := normalizeJSONDocument(raw)
-	if err != nil {
-		return ChatResponse{}, fmt.Errorf("invalid chat JSON: %w", err)
-	}
-	var input chatPlan
-	dec := json.NewDecoder(bytes.NewReader(clean))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(&input); err != nil {
-		return ChatResponse{}, fmt.Errorf("invalid chat JSON: %w", err)
-	}
-	var trailing any
-	if err := dec.Decode(&trailing); err != io.EOF {
-		if err == nil {
-			return ChatResponse{}, fmt.Errorf("invalid chat JSON: trailing data")
-		}
-		return ChatResponse{}, fmt.Errorf("invalid chat JSON: trailing data: %w", err)
-	}
-	if input.Type == "" {
-		if len(input.Files) > 0 {
-			input.Type = "edit"
-		} else {
-			input.Type = "chat"
-		}
-	}
-	if input.Type != "chat" && input.Type != "edit" {
-		return ChatResponse{}, fmt.Errorf("invalid chat JSON type %q; expected chat or edit", input.Type)
-	}
-	if input.Type == "chat" {
-		if strings.TrimSpace(input.Response) == "" {
-			return ChatResponse{}, fmt.Errorf("chat JSON response is empty")
-		}
-		return ChatResponse{Type: "chat", Response: input.Response, Explanation: input.Explanation, Commands: input.Commands}, nil
-	}
-	if len(input.Files) == 0 {
-		return ChatResponse{}, fmt.Errorf("edit JSON contains no files")
-	}
-	plan := Plan{Explanation: input.Explanation, Commands: input.Commands, Files: make([]FileChange, 0, len(input.Files))}
-	for i, file := range input.Files {
-		if file.Path == "" {
-			return ChatResponse{}, fmt.Errorf("file %d has empty path", i)
-		}
-		if file.LineStart < 0 || file.LineEnd < 0 || (file.LineStart > 0 && file.LineEnd > 0 && file.LineEnd < file.LineStart) {
-			return ChatResponse{}, fmt.Errorf("file %d has invalid line range", i)
-		}
-		if file.Action != "" && file.Action != "create" && file.Action != "modify" && file.Action != "delete" {
-			return ChatResponse{}, fmt.Errorf("file %d has invalid action %q", i, file.Action)
-		}
-		if file.Action == "delete" && file.Content != "" {
-			return ChatResponse{}, fmt.Errorf("file %d delete action must have empty content", i)
-		}
-		rel := filepath.ToSlash(file.Path)
-		if filepath.IsAbs(file.Path) || filepath.VolumeName(file.Path) != "" || rel == "." || rel == ".." || strings.HasPrefix(rel, "/") || strings.HasPrefix(rel, "../") || strings.Contains(rel, "/../") {
-			return ChatResponse{}, fmt.Errorf("path traversal rejected for %q", file.Path)
-		}
-		plan.Files = append(plan.Files, FileChange{Path: file.Path, Content: file.Content, Action: file.Action})
-	}
-	return ChatResponse{Type: "edit", Plan: &plan, Explanation: input.Explanation, Commands: input.Commands}, nil
-}
-
+// ParseChatPlan is the compatibility helper used by callers that specifically
+// need a file-change plan. Normal conversational JSON is rejected as a plan.
 func ParseChatPlan(raw string) (Plan, error) {
 	response, err := ParseChatResponse(raw)
-	if err == nil && response.Plan != nil {
-		return *response.Plan, nil
+	if err != nil {
+		return Plan{}, err
 	}
-	if err == nil {
+	if response.Plan == nil {
 		return Plan{}, fmt.Errorf("chat response is conversational JSON, not a file-change plan")
 	}
-	text := strings.TrimSpace(strings.TrimPrefix(raw, "\ufeff"))
-	start := strings.IndexAny(text, "{[")
-	if start < 0 {
-		return Plan{}, err
-	}
-	if _, ok := balancedJSONEnd(text, start); !ok {
-		return Plan{}, err
-	}
-	normalized, normalizeErr := normalizeWithConfiguredProvider(context.Background(), raw, err)
-	if normalizeErr != nil {
-		return Plan{}, err
-	}
-	return normalized.Plan()
+	return *response.Plan, nil
 }
 
 func parseChatPlanStrict(raw string) (Plan, error) {
@@ -171,3 +74,12 @@ func ApplyChatPlan(root string, plan Plan) ([]string, error) {
 	}
 	return Apply(root, resolved)
 }
+
+// Keep this helper available for legacy normalization callers that need a
+// provider-backed recovery after the local parser rejects a response.
+func normalizeWithConfiguredProvider(ctx context.Context, raw string, parseErr error) (Plan, error) {
+	return Plan{}, fmt.Errorf("provider-backed chat normalization is available through Engine.ParseChatPlan: %w", parseErr)
+}
+
+var _ = context.Background
+var _ = filepath.Separator
