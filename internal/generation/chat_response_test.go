@@ -6,6 +6,45 @@ import (
 	"testing"
 )
 
+func TestParseChatResponseNormalChat(t *testing.T) {
+	got, err := ParseChatResponse(`{"type":"chat","response":"Hello developer.","files":[],"explanation":"","commands":[]}`)
+	if err != nil {
+		t.Fatalf("ParseChatResponse returned error: %v", err)
+	}
+	if got.Type != "chat" || got.Response != "Hello developer." || got.Plan != nil {
+		t.Fatalf("unexpected normal chat response: %#v", got)
+	}
+}
+
+func TestParseChatResponseEdit(t *testing.T) {
+	got, err := ParseChatResponse(`{"type":"edit","response":"","files":[{"path":"main.go","content":"package main\n","action":"modify"}],"explanation":"Updated main.","commands":[]}`)
+	if err != nil {
+		t.Fatalf("ParseChatResponse returned error: %v", err)
+	}
+	if got.Type != "edit" || got.Plan == nil || len(got.Plan.Files) != 1 {
+		t.Fatalf("unexpected edit response: %#v", got)
+	}
+	if got.Plan.Files[0].Path != "main.go" {
+		t.Fatalf("unexpected file path: %q", got.Plan.Files[0].Path)
+	}
+}
+
+func TestParseChatResponseFencedJSON(t *testing.T) {
+	got, err := ParseChatResponse("```json\n{\"type\":\"chat\",\"response\":\"Ready.\"}\n```")
+	if err != nil {
+		t.Fatalf("ParseChatResponse returned error: %v", err)
+	}
+	if got.Type != "chat" || got.Response != "Ready." {
+		t.Fatalf("unexpected response: %#v", got)
+	}
+}
+
+func TestParseChatResponseRejectsUnknownFields(t *testing.T) {
+	if _, err := ParseChatResponse(`{"type":"chat","response":"Hello","unexpected":true}`); err == nil {
+		t.Fatal("expected unknown field rejection")
+	}
+}
+
 func TestParseChatPlanAcceptsLineRangesWithoutAction(t *testing.T) {
 	raw := `{"files":[{"path":"script.js","line_start":1,"line_end":1000,"content":"const cart = [];"}],"explanation":"updated cart logic","commands":[]}`
 	plan, err := ParseChatPlan(raw)
@@ -34,6 +73,7 @@ func TestParseChatPlanAcceptsFencedJSON(t *testing.T) {
 func TestLooksLikeChatPlanPrefix(t *testing.T) {
 	cases := []string{
 		`{"files":[`,
+		`{"response":"`,
 		"```json\n{",
 	}
 	for _, value := range cases {
