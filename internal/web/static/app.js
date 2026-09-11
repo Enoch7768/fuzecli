@@ -12,6 +12,10 @@ const modelOptions = $('modelOptions')
 const providerSettings = $('providerSettings')
 const modelSettings = $('modelSettings')
 const modelSettingsOptions = $('modelSettingsOptions')
+const apiKeySettings = $('apiKeySettings')
+const showApiKey = $('showApiKey')
+const clearApiKey = $('clearApiKey')
+const apiKeyStatus = $('apiKeyStatus')
 const sidebar = $('sidebar')
 const historyList = $('historyList')
 const toast = $('toast')
@@ -34,6 +38,8 @@ let currentChat = null
 let externalContext = false
 let source = null
 let toastTimer = null
+let responseFinished = false
+let pendingGenerated = []
 
 function escapeHTML(value) {
   return String(value ?? '').replace(/[&<>\"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[c]))
@@ -250,15 +256,17 @@ function finishAssistant() {
 }
 
 function addGenerationMessage(files, message) {
+  const list = Array.isArray(files) ? files.filter(Boolean) : []
+  const summary = message || `Updated ${list.length} file${list.length === 1 ? '' : 's'}.`
   finishAssistant()
-  const content = addMessage('assistant', message || 'Your workspace was updated.')
+  const content = addMessage('assistant', summary)
   const card = document.createElement('div')
   card.className = 'generation-card'
-  card.innerHTML = `<strong>Workspace updated</strong><p>${escapeHTML(message || `Updated ${files.length} file${files.length === 1 ? '' : 's'}.`)}</p><div class="generation-files">${files.slice(0, 24).map(path => `<div class="generation-file">${escapeHTML(path)}</div>`).join('')}</div><a class="generation-download" href="/api/download">Download workspace</a>`
+  card.innerHTML = `<strong>Workspace updated</strong><p>${escapeHTML(summary)}</p><div class="generation-files">${list.slice(0, 24).map(path => `<div class="generation-file">${escapeHTML(path)}</div>`).join('')}</div><a class="generation-download" href="/api/download">Download workspace</a>`
   content.innerHTML = ''
   content.appendChild(card)
   if (currentChat) {
-    currentChat.messages.push({ role: 'assistant', content: message || `Updated ${files.length} file${files.length === 1 ? '' : 's'}.` })
+    currentChat.messages.push({ role: 'assistant', content: summary })
     persistCurrentChat()
   }
 }
@@ -328,6 +336,16 @@ async function queueUploads(files) {
   syncComposerState()
 }
 
+function syncApiKeyState() {
+  const provider = providerSettings.value
+  const configured = Boolean(settings?.providers?.[provider]?.api_key_configured)
+  if (apiKeySettings) {
+    apiKeySettings.value = ''
+    apiKeySettings.placeholder = configured ? 'Key already stored · enter a new key to replace it' : 'Enter provider API key'
+  }
+  if (apiKeyStatus) apiKeyStatus.textContent = configured ? 'A key is stored locally for this provider.' : 'No key is stored for this provider.'
+}
+
 async function loadSettings() {
   try {
     settings = await fetchJSON('/api/config')
@@ -345,6 +363,7 @@ async function loadSettings() {
     selectedProvider = settings.default_provider || providerSelect.value || ''
     providerSelect.value = selectedProvider
     providerSettings.value = selectedProvider
+    syncApiKeyState()
     await loadModels(selectedProvider)
   } catch (error) {
     showToast(error.message)
@@ -373,6 +392,7 @@ async function loadModels(provider) {
     modelInput.value = selectedModel
     modelSettings.value = selectedModel
   }
+  syncApiKeyState()
   syncRuntimeLabels()
 }
 
@@ -404,25 +424,64 @@ modelSettings.addEventListener('input', () => {
   syncRuntimeLabels()
 })
 
+if (showApiKey) {
+  showApiKey.addEventListener('change', () => {
+    apiKeySettings.type = showApiKey.checked ? 'text' : 'password'
+  })
+}
+
 $('saveSettings').addEventListener('click', async () => {
   const provider = providerSettings.value
   const model = modelSettings.value.trim()
+  const key = apiKeySettings?.value.trim() || ''
   if (!provider || !model) return showToast('Provider and model are required')
   $('settingsStatus').textContent = 'Saving…'
   try {
-    const data = await fetchJSON('/api/config', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ provider, model }) })
+    const body = { provider, model }
+    if (key) body.api_key = key
+    const data = await fetchJSON('/api/config', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) })
+    settings.providers[provider].api_key_configured = Boolean(data.api_key_configured)
+    settings.providers[provider].base_url = data.base_url || settings.providers[provider].base_url || ''
     selectedProvider = data.provider
     selectedModel = data.model
     providerSelect.value = selectedProvider
+    providerSettings.value = selectedProvider
     modelInput.value = selectedModel
-    $('settingsStatus').textContent = 'Saved'
+    modelSettings.value = selectedModel
+    if (apiKeySettings) apiKeySettings.value = ''
+    if (showApiKey) showApiKey.checked = false
+    if (apiKeySettings) apiKeySettings.type = 'password'
+    syncApiKeyState()
+    $('settingsStatus').textContent = key ? 'Provider, model and key saved' : 'Provider and model saved'
     syncRuntimeLabels()
-    setTimeout(() => $('settingsStatus').textContent = '', 1500)
+    setTimeout(() => $('settingsStatus').textContent = '', 1800)
   } catch (error) {
     $('settingsStatus').textContent = 'Could not save'
     showToast(error.message)
   }
 })
+
+if (clearApiKey) {
+  clearApiKey.addEventListener('click', async () => {
+    const provider = providerSettings.value
+    const model = modelSettings.value.trim()
+    if (!provider) return
+    clearApiKey.disabled = true
+    try {
+      const data = await fetchJSON('/api/config', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ provider, model, clear_api_key: true }) })
+      settings.providers[provider].api_key_configured = Boolean(data.api_key_configured)
+      if (apiKeySettings) apiKeySettings.value = ''
+      syncApiKeyState()
+      $('settingsStatus').textContent = 'API key cleared'
+      showToast('API key cleared from local configuration')
+      setTimeout(() => $('settingsStatus').textContent = '', 1800)
+    } catch (error) {
+      showToast(error.message)
+    } finally {
+      clearApiKey.disabled = false
+    }
+  })
+}
 
 async function loadHistoryFromServer() {
   const data = await fetchJSON('/api/history')
@@ -446,7 +505,7 @@ function showWelcome() {
   const welcome = document.createElement('div')
   welcome.className = 'welcome'
   welcome.id = 'welcome'
-  welcome.innerHTML = `<div class="welcome-mark"><svg viewBox="0 0 48 48"><path d="M13 8h24v7H21v6h13v7H21v12h-8V8Z"/><path d="m29 31 7-7 5 5-7 7-5-5Z"/></svg></div><div class="eyebrow">PRIVATE · LOCAL · FOCUSED</div><h1>What are we <span>building today?</span></h1><p>Chat with your workspace-aware coding assistant. Ask questions, inspect files, upload context, or describe the implementation you want.</p><div class="suggestions"><button data-prompt="Explain this project">Explain this project</button><button data-prompt="Review my workspace for problems">Review my workspace</button><button data-prompt="Create a clean landing page">Build a landing page</button></div>`
+  welcome.innerHTML = `<div class="welcome-mark"><img src="/icon-mark.png" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='block'"><svg viewBox="0 0 48 48" style="display:none"><path d="M13 8h24v7H21v6h13v7H21v12h-8V8Z"/><path d="m29 31 7-7 5 5-7 7-5-5Z"/></svg></div><div class="eyebrow">PRIVATE · LOCAL · FOCUSED</div><h1>What are we <span>building today?</span></h1><p>Chat with your workspace-aware coding assistant. Ask questions, inspect files, upload context, or describe the implementation you want.</p><div class="suggestions"><button data-prompt="Explain this project">Explain this project</button><button data-prompt="Review my workspace for problems">Review my workspace</button><button data-prompt="Create a clean landing page">Build a landing page</button></div>`
   conversation.appendChild(welcome)
   bindSuggestions()
 }
@@ -510,23 +569,31 @@ function buildPromptWithFiles(text) {
   return chunks.join('\n\n')
 }
 
+function finalizeResponse(data = {}) {
+  if (responseFinished) return
+  responseFinished = true
+  busy = false
+  finishAssistant()
+  const files = Array.isArray(data.generated_files) && data.generated_files.length ? data.generated_files : pendingGenerated
+  if (files.length) addGenerationMessage(files, data.message || '')
+  pendingGenerated = []
+  $('connectionText').textContent = 'Connected'
+  $('connectionDot').classList.remove('warn')
+  loadWorkspace()
+  syncComposerState()
+  requestAnimationFrame(() => prompt.focus())
+}
+
 function handleProgressData(data) {
   if (data.provider) selectedProvider = data.provider
   if (data.model) selectedModel = data.model
   if (data.status === 'planning' || data.status === 'generating' || data.status === 'verifying') ensureThinking(data.message || 'Thinking…')
-  if (data.status === 'completed') {
-    busy = false
-    finishAssistant()
-    if (data.generated_files?.length) addGenerationMessage(data.generated_files, data.message)
-    $('connectionText').textContent = 'Connected'
-    $('connectionDot').classList.remove('warn')
-    loadWorkspace()
-    syncComposerState()
-  }
+  if (data.status === 'completed') finalizeResponse(data)
   if (data.status === 'failed') {
     busy = false
     finishAssistant()
     syncComposerState()
+    prompt.focus()
   }
 }
 
@@ -538,14 +605,21 @@ function handleChatTokenData(data) {
 }
 
 function handleGeneratedData(data) {
-  if (data.generated_files?.length) addGenerationMessage(data.generated_files, data.message)
+  pendingGenerated = Array.isArray(data.generated_files) ? data.generated_files.slice(0, 24) : []
+}
+
+function handleChatEndData(data) {
+  finalizeResponse(data)
 }
 
 function handleErrorData(data) {
   busy = false
+  pendingGenerated = []
+  responseFinished = true
   addErrorMessage(data)
   showToast(data.error_message || data.message || 'Request failed')
   syncComposerState()
+  requestAnimationFrame(() => prompt.focus())
 }
 
 function connectEvents() {
@@ -554,6 +628,7 @@ function connectEvents() {
   source.addEventListener('progress', event => { try { handleProgressData(JSON.parse(event.data)) } catch {} })
   source.addEventListener('chat_token', event => { try { handleChatTokenData(JSON.parse(event.data)) } catch {} })
   source.addEventListener('generated', event => { try { handleGeneratedData(JSON.parse(event.data)) } catch {} })
+  source.addEventListener('chat_end', event => { try { handleChatEndData(JSON.parse(event.data)) } catch {} })
   source.addEventListener('job_error', event => { try { handleErrorData(JSON.parse(event.data)) } catch {} })
   source.onopen = () => {
     $('connectionText').textContent = 'Connected'
@@ -580,6 +655,8 @@ async function submit() {
   prompt.value = ''
   queuedFiles = []
   renderAttachments()
+  pendingGenerated = []
+  responseFinished = false
   busy = true
   ensureThinking('Thinking…')
   syncComposerState()
@@ -587,8 +664,10 @@ async function submit() {
     await fetchJSON('/api/chat', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ prompt: outgoing, provider: selectedProvider, model: selectedModel, code: false, yes: true }) })
   } catch (error) {
     busy = false
+    responseFinished = true
     addErrorMessage(error.payload || { title: 'Could not send message', error: error.message })
     syncComposerState()
+    prompt.focus()
   }
 }
 
@@ -609,6 +688,12 @@ async function loadWorkspace() {
   } catch {}
 }
 
+function syncMessageViewport() {
+  if (!conversation || !composerWrap) return
+  conversation.style.paddingBottom = `${composerWrap.getBoundingClientRect().height + 34}px`
+  conversation.querySelectorAll('.message-row, .message-bubble, .message-content').forEach(node => { node.style.minWidth = '0' })
+}
+
 function openPanel(name) {
   $('chatView').classList.toggle('hidden', name !== 'chat')
   $('workspaceView').classList.toggle('hidden', name !== 'workspace')
@@ -617,14 +702,22 @@ function openPanel(name) {
   if (name === 'settings') {
     providerSettings.value = selectedProvider
     modelSettings.value = selectedModel
+    syncApiKeyState()
   }
   closeSidebarMobile()
+  syncMessageViewport()
+}
+
+function closeSettingsPanel() {
+  openPanel('chat')
+  prompt.focus()
 }
 
 function closeSidebarMobile() { sidebar.classList.remove('open') }
 
 $('openSettings').addEventListener('click', () => openPanel('settings'))
 $('openSettingsTop').addEventListener('click', () => openPanel('settings'))
+$('closeSettings').addEventListener('click', closeSettingsPanel)
 $('workspaceButton').addEventListener('click', () => openPanel('workspace'))
 $('menuButton').addEventListener('click', () => sidebar.classList.toggle('open'))
 $('newChat').addEventListener('click', newChat)
@@ -655,6 +748,7 @@ prompt.addEventListener('input', () => {
   prompt.style.height = 'auto'
   prompt.style.height = `${Math.min(prompt.scrollHeight, 220)}px`
   syncComposerState()
+  syncMessageViewport()
 })
 prompt.addEventListener('keydown', event => {
   if (event.key === 'Enter' && !event.shiftKey) {
@@ -667,8 +761,14 @@ document.addEventListener('keydown', event => {
     event.preventDefault()
     if (!busy) prompt.focus()
   }
-  if (event.key === 'Escape') closeSidebarMobile()
+  if (event.key === 'Escape') {
+    closeSidebarMobile()
+    if (!$('settingsView').classList.contains('hidden')) closeSettingsPanel()
+  }
 })
+window.addEventListener('resize', syncMessageViewport)
+if (typeof ResizeObserver !== 'undefined') new ResizeObserver(syncMessageViewport).observe(composerWrap)
+if (typeof MutationObserver !== 'undefined') new MutationObserver(syncMessageViewport).observe(conversation, { childList: true, subtree: true })
 
 async function boot() {
   bindSuggestions()
@@ -683,6 +783,7 @@ async function boot() {
   renderHistory()
   loadWorkspace()
   syncComposerState()
+  syncMessageViewport()
 }
 
 boot()
