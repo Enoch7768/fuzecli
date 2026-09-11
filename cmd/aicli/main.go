@@ -122,7 +122,6 @@ func chatCommand(args []string) error {
   aicli chat [--yes]
 
 Commands inside chat:
-  /code <request>
   /provider <name>
   /model <name>
   /status
@@ -289,7 +288,6 @@ Commands:
   aicli version
 
 Chat commands:
-  /code <request>   Generate or resume a project
   /provider <name>  Change provider
   /model <name>     Change model
   /status           Show runtime state
