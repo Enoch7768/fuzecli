@@ -143,7 +143,10 @@ func (s *Store) LoadState() (State, error) {
 
 func (s *Store) SaveState(st State) error {
 	p := filepath.Join(s.Root, ".aicli", "state.json")
-	b, _ := json.MarshalIndent(st, "", "  ")
+	b, err := json.MarshalIndent(st, "", "  ")
+	if err != nil {
+		return err
+	}
 	tmp := p + ".tmp"
 	if err := os.WriteFile(tmp, b, 0600); err != nil {
 		return err
@@ -157,18 +160,27 @@ func (s *Store) RefreshHashes(paths []string) error {
 		return err
 	}
 	for _, rel := range paths {
-		path := filepath.Join(s.Root, filepath.FromSlash(rel))
+		path, resolveErr := filepath.Abs(filepath.Join(s.Root, filepath.FromSlash(rel)))
+		if resolveErr != nil {
+			continue
+		}
 		b, err := os.ReadFile(path)
 		if err != nil {
+			delete(st.FileHashes, filepath.ToSlash(rel))
 			continue
 		}
 		h := sha256.Sum256(b)
-		st.FileHashes[rel] = hex.EncodeToString(h[:])
+		st.FileHashes[filepath.ToSlash(rel)] = hex.EncodeToString(h[:])
 	}
 	return s.SaveState(st)
 }
 
 func (s *Store) WorkspaceContext() (string, error) {
+	policy, err := LoadIgnorePolicy(s.Root)
+	if err != nil {
+		return "", fmt.Errorf("load .aicliignore: %w", err)
+	}
+
 	touched, err := s.Touched()
 	if err != nil {
 		return "", err
@@ -178,6 +190,9 @@ func (s *Store) WorkspaceContext() (string, error) {
 	paths := make([]string, 0, len(touched))
 	for _, rel := range touched {
 		rel = filepath.ToSlash(rel)
+		if policy.Ignored(rel) {
+			continue
+		}
 		if _, ok := seen[rel]; ok {
 			continue
 		}
@@ -193,17 +208,23 @@ func (s *Store) WorkspaceContext() (string, error) {
 		if path == s.Root {
 			return nil
 		}
+		rel, err := filepath.Rel(s.Root, path)
+		if err != nil {
+			return nil
+		}
+		rel = filepath.ToSlash(rel)
+		if policy.Ignored(rel) {
+			if entry.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
 		if entry.IsDir() {
 			if workspaceContextSkipDir(entry.Name()) {
 				return filepath.SkipDir
 			}
 			return nil
 		}
-		rel, err := filepath.Rel(s.Root, path)
-		if err != nil {
-			return nil
-		}
-		rel = filepath.ToSlash(rel)
 		if _, ok := seen[rel]; ok || !workspaceContextTextPath(rel) {
 			return nil
 		}
@@ -218,9 +239,12 @@ func (s *Store) WorkspaceContext() (string, error) {
 	paths = append(paths, discovered...)
 
 	var b strings.Builder
-	b.WriteString("Workspace access is available to FuzeCLI through this local context. Every discovered text source file is represented below in full through source chunks. The complete repository remains on disk and must be used as the authoritative source. Never ask the user to paste a file that exists in the workspace. Binary files and generated/dependency directories are intentionally excluded.\n")
+	b.WriteString("Workspace context is filtered by FuzeCLI security policy and .aicliignore. Secret-bearing paths are never included. The complete repository remains on disk and is authoritative. Binary files and generated/dependency directories are excluded.\n")
 
 	for _, rel := range paths {
+		if policy.Ignored(rel) {
+			continue
+		}
 		path, err := filepath.Abs(filepath.Join(s.Root, filepath.FromSlash(rel)))
 		if err != nil {
 			continue
