@@ -20,6 +20,44 @@ func TestParseChatPlanAcceptsLineRangesWithoutAction(t *testing.T) {
 	}
 }
 
+func TestParseChatPlanAcceptsFencedJSON(t *testing.T) {
+	raw := "```json\n{\"files\":[{\"path\":\"index.html\",\"content\":\"<!doctype html>\"}],\"explanation\":\"created page\",\"commands\":[]}\n```"
+	plan, err := ParseChatPlan(raw)
+	if err != nil {
+		t.Fatalf("fenced JSON rejected: %v", err)
+	}
+	if len(plan.Files) != 1 || plan.Files[0].Path != "index.html" {
+		t.Fatalf("unexpected plan: %#v", plan)
+	}
+}
+
+func TestLooksLikeChatPlanPrefix(t *testing.T) {
+	cases := []string{
+		`{"files":[`,
+		"```json\n{",
+	}
+	for _, value := range cases {
+		if !LooksLikeChatPlanPrefix(value) {
+			t.Fatalf("expected generation prefix: %q", value)
+		}
+	}
+	if LooksLikeChatPlanPrefix("This is ordinary text") {
+		t.Fatal("ordinary text classified as generation JSON")
+	}
+}
+
+func TestParseChatPlanRejectsUnsafePaths(t *testing.T) {
+	for _, raw := range []string{
+		`{"files":[{"path":"../outside.txt","content":"x"}],"explanation":"x"}`,
+		`{"files":[{"path":"C:\\outside.txt","content":"x"}],"explanation":"x"}`,
+		`{"files":[{"path":"/outside.txt","content":"x"}],"explanation":"x"}`,
+	} {
+		if _, err := ParseChatPlan(raw); err == nil {
+			t.Fatalf("unsafe path accepted: %s", raw)
+		}
+	}
+}
+
 func TestApplyChatPlanInfersCreateAndModify(t *testing.T) {
 	root := t.TempDir()
 	createPlan := Plan{Files: []FileChange{{Path: "script.js", Content: "const cart = [];"}}}
@@ -36,7 +74,7 @@ func TestApplyChatPlanInfersCreateAndModify(t *testing.T) {
 		t.Fatalf("read created file: %v", err)
 	}
 	if string(b) != "const cart = [];" {
-		t.Fatalf("created content = %q", string(b))
+		t.Fatalf("created content = %q", b)
 	}
 	modifyPlan := Plan{Files: []FileChange{{Path: "script.js", Content: "const cart = [1, 2];"}}}
 	if _, err := ApplyChatPlan(root, modifyPlan); err != nil {
@@ -47,6 +85,6 @@ func TestApplyChatPlanInfersCreateAndModify(t *testing.T) {
 		t.Fatalf("read modified file: %v", err)
 	}
 	if string(b) != "const cart = [1, 2];" {
-		t.Fatalf("modified content = %q", string(b))
+		t.Fatalf("modified content = %q", b)
 	}
 }
