@@ -3,188 +3,74 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="theme-color" content="#0b0d10">
+<meta name="theme-color" content="#0d0f13">
 <meta name="description" content="FuzeCLI local AI coding workspace">
 <title>FuzeCLI</title>
 <link rel="stylesheet" href="/static/app.css">
-<style>
-.message-group{max-width:860px;margin:0 auto 30px;display:grid;grid-template-columns:30px minmax(0,1fr);gap:12px;animation:messageIn .22s ease-out}.message-avatar{width:30px;height:30px;display:grid;place-items:center;border-radius:9px;border:1px solid var(--line);background:rgba(255,255,255,.03);color:#cdd9ec;font-size:10px;font-weight:750;margin-top:2px}.message-group.user{grid-template-columns:minmax(0,1fr) 30px}.message-group.user .message-avatar{grid-column:2;background:rgba(157,189,255,.11);border-color:rgba(157,189,255,.18);color:#e2ecff}.message-group.user .message-body{grid-column:1;grid-row:1;justify-self:end;max-width:min(78%,720px);padding:12px 15px;border:1px solid var(--line);border-radius:17px;background:linear-gradient(180deg,rgba(255,255,255,.055),rgba(255,255,255,.025));box-shadow:0 12px 34px rgba(0,0,0,.12)}.message-head{display:flex;align-items:center;gap:8px;min-height:18px;margin-bottom:6px}.message-head span{font-size:10px;font-weight:650;color:#e2e7ed}.message-head small{color:var(--muted2);font-size:8px}.message-content{font-size:13px;line-height:1.78;color:#dce2e9;overflow-wrap:anywhere}.message-group.user .message-content{color:#f1f4f8}.message-content pre,.inline-error pre{margin:12px 0 2px;padding:13px 14px;border:1px solid var(--line);border-radius:11px;background:#0a0d12;overflow:auto;box-shadow:inset 0 1px rgba(255,255,255,.025)}.message-content pre code{padding:0;background:transparent;color:#ced6e2;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:11px;line-height:1.6}.message-content code{padding:2px 5px;border-radius:5px;background:rgba(255,255,255,.07);font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:.9em}.message-actions{display:flex;gap:4px;margin-top:7px;opacity:.45;transition:.18s}.message-group:hover .message-actions{opacity:1}.message-actions button{padding:4px 7px;border:1px solid transparent;border-radius:7px;background:transparent;color:#7d8795;font-size:8px}.message-actions button:hover{border-color:var(--line);background:rgba(255,255,255,.035);color:#c2cad5}.streaming-content:after{content:"";display:inline-block;width:6px;height:15px;margin-left:4px;border-radius:2px;background:var(--accent);vertical-align:-2px;animation:blink 1s infinite}.error-content{min-width:0;flex:1}.error-head{display:flex;align-items:center;justify-content:space-between;gap:8px}.error-meta{margin-top:7px;color:#b79b9b;font-size:8px;line-height:1.4}.error-retry{padding:5px 8px;border:1px solid rgba(238,146,146,.2);border-radius:8px;background:rgba(238,146,146,.07);color:#f0c8c8;font-size:8px}.error-retry:hover{background:rgba(238,146,146,.12)}.error-box details{margin-top:9px}.error-box summary{cursor:pointer;color:#a98d8d;font-size:8px}.inline-error{padding:13px 14px;border:1px solid rgba(238,146,146,.18);border-radius:12px;background:rgba(238,146,146,.035)}.inline-error-top{display:flex;gap:10px}.inline-error-icon{display:grid;place-items:center;width:23px;height:23px;border-radius:8px;background:rgba(238,146,146,.12);color:var(--bad);font-size:10px;font-weight:800;flex:none}.inline-error strong{font-size:12px;color:#f0d2d2}.inline-error p{margin:4px 0 0;color:#cda7a7;font-size:11px;line-height:1.6}.inline-error-recovery{margin-top:11px;padding-top:10px;border-top:1px solid rgba(238,146,146,.12);color:#d9b7b7;font-size:10px;line-height:1.55}.inline-error-meta{margin-top:7px;color:#9f8686;font-size:9px}.inline-error details{margin-top:10px}.inline-error summary{cursor:pointer;color:#9e8888;font-size:9px}.inline-error pre{max-height:160px}.composer{padding:12px 30px 18px;background:linear-gradient(180deg,rgba(8,10,14,.48),rgba(8,10,14,.92));backdrop-filter:blur(20px)}.composer-box{max-width:960px;border-radius:18px;padding:7px;background:linear-gradient(180deg,#11161e,#0f141a)}.composer-tool{width:38px!important;background:transparent!important;color:#8793a3!important}.composer-tool:hover{background:rgba(255,255,255,.04)!important;color:#cad5e4!important}.composer-box button:last-child{width:38px;height:38px;border-radius:12px}.composer-box button:last-child:disabled{opacity:.42}.welcome h2{font-size:36px}.topbar{box-shadow:0 1px 0 rgba(255,255,255,.02)}.conversation{overflow-y:auto;overflow-x:hidden;min-height:0;overscroll-behavior:contain}.chat-scroll{position:absolute;right:28px;bottom:92px;width:34px;height:34px;border:1px solid var(--line2);border-radius:50%;background:rgba(16,20,27,.9);color:#c7d3e4;box-shadow:0 12px 32px rgba(0,0,0,.28);backdrop-filter:blur(14px);opacity:0;pointer-events:none;transform:translateY(5px);transition:.18s;z-index:3}.chat-scroll.visible{opacity:1;pointer-events:auto;transform:none}.chat-scroll:hover{background:#161d27}.download-code{width:100%;margin-top:20px;padding:11px 13px;border:1px solid rgba(157,189,255,.18);border-radius:11px;background:rgba(157,189,255,.055);color:#dce8fb;font-size:10px;font-weight:650;transition:.18s}.download-code:hover{background:rgba(157,189,255,.09);border-color:rgba(157,189,255,.3);transform:translateY(-1px)}.generation-card{padding:13px 14px;border:1px solid rgba(126,215,170,.16);border-radius:12px;background:rgba(126,215,170,.035)}.generation-card strong{display:block;font-size:12px;color:#d5f0df}.generation-card p{margin:5px 0 0;color:#a8c5b4;font-size:10px;line-height:1.55}.generation-files{margin-top:10px;display:grid;gap:5px}.generation-file{padding:6px 8px;border-radius:7px;background:rgba(255,255,255,.028);color:#9eaea3;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:9px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.generation-download{margin-top:10px;display:inline-flex;padding:6px 9px;border:1px solid rgba(126,215,170,.18);border-radius:8px;background:rgba(126,215,170,.055);color:#bfe4ce;font-size:9px}.generation-download:hover{background:rgba(126,215,170,.09)}
-.session-backdrop{position:fixed;inset:0;z-index:1000;display:grid;place-items:center;padding:24px;background:rgba(4,6,10,.7);backdrop-filter:blur(20px)}.session-modal{width:min(520px,100%);padding:28px;border:1px solid rgba(157,189,255,.15);border-radius:24px;background:linear-gradient(180deg,rgba(18,23,31,.97),rgba(11,15,21,.98));box-shadow:0 28px 100px rgba(0,0,0,.48)}.session-kicker{font-size:9px;font-weight:750;letter-spacing:.18em;color:#91b6ff}.session-modal h2{margin:8px 0 8px;font-size:26px;color:#eef3fa}.session-modal p{margin:0;color:#a6b1c0;font-size:12px;line-height:1.65}.session-timer{margin:24px 0 20px;padding:18px;border:1px solid rgba(255,255,255,.08);border-radius:18px;background:rgba(255,255,255,.025);text-align:center}.session-timer strong{display:block;font-size:42px;line-height:1;color:#eaf2ff;font-variant-numeric:tabular-nums}.session-timer span{display:block;margin-top:7px;color:#7e8b9c;font-size:9px;letter-spacing:.12em;text-transform:uppercase}.session-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px}.session-actions button{min-height:46px;border-radius:13px;border:1px solid rgba(255,255,255,.09);background:rgba(255,255,255,.035);color:#cbd6e5;font-size:10px;font-weight:700;cursor:pointer;transition:.18s}.session-actions button:hover:not(:disabled){transform:translateY(-1px);background:rgba(255,255,255,.06)}.session-actions button.primary{border-color:rgba(157,189,255,.24);background:rgba(157,189,255,.1);color:#e8f0ff}.session-actions button:disabled{opacity:.35;cursor:not-allowed}.session-status{margin-top:13px;min-height:18px;text-align:center;color:#8592a3;font-size:9px}.session-modal.busy .session-actions{opacity:.5;pointer-events:none}@media(max-width:820px){.message-group{grid-template-columns:24px minmax(0,1fr);gap:9px}.message-group.user{grid-template-columns:minmax(0,1fr) 24px}.message-avatar{width:24px;height:24px;border-radius:8px}.message-group.user .message-body{max-width:88%}.welcome h2{font-size:28px}.chat-scroll{right:16px;bottom:96px}.session-actions{grid-template-columns:1fr}.session-modal{padding:22px}}
-</style>
 </head>
 <body>
-<div class="app-shell">
-<aside class="sidebar">
-<div class="brand">
-<div class="logo-mark" aria-hidden="true"><svg viewBox="0 0 48 48"><path d="M13 8h24v7H21v6h13v7H21v12h-8V8Z"/><path d="m29 31 7-7 5 5-7 7-5-5Z"/></svg></div>
-<div class="brand-copy"><strong>FuzeCLI</strong><span>Private coding workspace</span></div>
+<div class="app">
+  <aside class="sidebar" id="sidebar">
+    <div class="brand-row">
+      <div class="brand-mark" aria-hidden="true"><svg viewBox="0 0 48 48"><path d="M13 8h24v7H21v6h13v7H21v12h-8V8Z"/><path d="m29 31 7-7 5 5-7 7-5-5Z"/></svg></div>
+      <div class="brand-name"><strong>FuzeCLI</strong><span>Local AI workspace</span></div>
+    </div>
+    <button class="new-chat" id="newChat"><span>+</span><strong>New chat</strong><kbd>Ctrl K</kbd></button>
+    <div class="history-head"><span>Chats</span><button id="clearHistory" title="Clear local chat history" aria-label="Clear local chat history">•••</button></div>
+    <div class="history-list" id="historyList"></div>
+    <div class="sidebar-bottom">
+      <div class="connection"><span class="dot" id="connectionDot"></span><div><strong id="connectionText">Connected</strong><small>localhost</small></div></div>
+      <button class="settings-mini" id="openSettings" aria-label="Open settings">⚙</button>
+    </div>
+  </aside>
+
+  <main class="main">
+    <header class="topbar">
+      <div class="mobile-brand"><button id="menuButton" aria-label="Open menu">☰</button><strong>FuzeCLI</strong></div>
+      <div class="runtime-selects">
+        <select id="providerSelect" aria-label="Provider"></select>
+        <span>·</span>
+        <input id="modelInput" list="modelOptions" aria-label="Model" autocomplete="off" spellcheck="false" placeholder="model">
+        <datalist id="modelOptions"></datalist>
+      </div>
+      <div class="top-actions"><button id="workspaceButton" class="top-action">Workspace</button><button id="openSettingsTop" class="icon-button" aria-label="Settings">⚙</button></div>
+    </header>
+
+    <section class="chat-view" id="chatView">
+      <div class="messages" id="conversation">
+        <div class="welcome" id="welcome">
+          <div class="welcome-mark"><svg viewBox="0 0 48 48"><path d="M13 8h24v7H21v6h13v7H21v12h-8V8Z"/><path d="m29 31 7-7 5 5-7 7-5-5Z"/></svg></div>
+          <div class="eyebrow">PRIVATE · LOCAL · FOCUSED</div>
+          <h1>What are we <span>building today?</span></h1>
+          <p>Chat with your workspace-aware coding assistant. Ask questions, inspect files, upload context, or describe the implementation you want.</p>
+          <div class="suggestions"><button data-prompt="Explain this project">Explain this project</button><button data-prompt="Review my workspace for problems">Review my workspace</button><button data-prompt="Create a clean landing page">Build a landing page</button></div>
+        </div>
+      </div>
+
+      <div class="composer-wrap" id="composerWrap">
+        <div class="drop-overlay" id="dropOverlay"><div><strong>Drop files here</strong><span>Text files up to 64 KiB each</span></div></div>
+        <div class="attachments" id="attachments"></div>
+        <div class="composer">
+          <button class="attach-button" id="attachButton" aria-label="Upload files" title="Upload files">+</button>
+          <textarea id="prompt" rows="1" placeholder="Message FuzeCLI…" aria-label="Message FuzeCLI"></textarea>
+          <button class="send-button" id="send" aria-label="Send">↑</button>
+          <input id="fileInput" type="file" multiple hidden>
+        </div>
+        <div class="composer-foot"><span>Enter to send · Shift+Enter for newline</span><span id="composerStatus">Ready</span></div>
+      </div>
+    </section>
+
+    <section class="panel-view hidden" id="workspaceView">
+      <div class="panel-content"><div class="panel-heading"><div><span class="eyebrow">WORKSPACE</span><h2>Generated files</h2><p>Files tracked by FuzeCLI in this workspace.</p></div><button class="secondary" id="refreshWorkspace">Refresh</button></div><div class="workspace-root" id="workspaceRoot">Loading…</div><div class="file-list" id="fileList"></div></div>
+    </section>
+
+    <section class="panel-view hidden" id="settingsView">
+      <div class="panel-content narrow"><div class="panel-heading"><div><span class="eyebrow">SETTINGS</span><h2>Runtime</h2><p>Choose the provider and model used by this local interface.</p></div></div><div class="settings-card"><label>Provider<select id="providerSettings"></select></label><label>Model<input id="modelSettings" list="modelSettingsOptions" autocomplete="off" spellcheck="false"><datalist id="modelSettingsOptions"></datalist></label><div class="settings-row"><button class="primary" id="saveSettings">Save changes</button><span id="settingsStatus"></span></div></div><div class="settings-card compact"><div><strong>API</strong><span>Local HTTP API</span></div><b>127.0.0.1:8787</b><div><strong>MCP</strong><span>stdio server available through the CLI</span></div><b>aicli mcp</b></div></div>
+    </section>
+  </main>
 </div>
-<button class="new-session" id="newChat"><span>＋</span><span>New chat</span><kbd>Ctrl K</kbd></button>
-<nav class="nav-list" aria-label="Workspace">
-<button class="nav active" data-tab="chat"><span>⌁</span><b>Chat</b></button>
-<button class="nav" data-tab="workspace"><span>□</span><b>Workspace</b></button>
-<button class="nav" data-tab="plan"><span>◇</span><b>Project plan</b></button>
-<button class="nav" data-tab="settings"><span>⚙</span><b>Settings</b></button>
-</nav>
-<div class="sidebar-card"><span class="eyebrow">RUNTIME</span><strong id="sideRuntime">Ready</strong><small>Local interface · localhost only</small></div>
-<div class="sidebar-foot"><span class="online" id="connectionDot"></span><div><strong id="connectionText">Connected</strong><small>127.0.0.1:8787</small></div></div>
-</aside>
-<main class="main">
-<header class="topbar">
-<div class="topbar-left"><span class="kicker">FUZECLI</span><h1 id="pageTitle">Chat</h1></div>
-<div class="runtime" id="runtime"><span class="online"></span><span id="providerLabel">Loading</span><span class="divider">·</span><span id="modelLabel">Loading</span></div>
-</header>
-<div class="views">
-<section class="view active" id="view-chat">
-<div class="chat-layout">
-<div class="chat-main" style="position:relative">
-<div class="conversation" id="conversation">
-<div class="welcome" id="welcome">
-<div class="welcome-logo"><svg viewBox="0 0 48 48"><path d="M13 8h24v7H21v6h13v7H21v12h-8V8Z"/><path d="m29 31 7-7 5 5-7 7-5-5Z"/></svg></div>
-<span class="kicker">PRIVATE · LOCAL · FOCUSED</span>
-<h2>What are we<br><em>building today?</em></h2>
-<p>Ask questions, write code, inspect your workspace, or run a long project through FuzeCLI's resumable planner.</p>
-<div class="suggestions">
-<button data-prompt="Explain this project">Explain this project</button>
-<button data-prompt="Review my workspace for problems">Review workspace</button>
-<button data-prompt="Create a small landing page" data-code="true">Create a landing page</button>
-</div>
-</div>
-</div>
-<button class="chat-scroll" id="scrollBottom" aria-label="Scroll to bottom">↓</button>
-<footer class="composer">
-<div class="composer-box">
-<button class="composer-tool" id="attachInfo" aria-label="Workspace context">⌁</button>
-<textarea id="prompt" rows="1" placeholder="Message FuzeCLI…" aria-label="Prompt"></textarea>
-<button id="send" aria-label="Send message">↑</button>
-</div>
-<div class="composer-meta"><span>Enter to send · Shift+Enter for newline</span><label><input type="checkbox" id="code"> Code generation</label></div>
-</footer>
-</div>
-<aside class="agent-panel">
-<div class="panel-title"><div><span class="kicker">LIVE AGENT</span><h2>Activity</h2></div><span class="status-pill" id="status">Idle</span></div>
-<div class="progress-ring" id="progressRing"><div><strong id="percent">0%</strong><span>complete</span></div></div>
-<div class="metrics"><div><strong id="completed">0</strong><span>completed</span></div><div><strong id="total">0</strong><span>planned</span></div></div>
-<div class="task"><span>CURRENT TASK</span><strong id="current">Waiting for a request</strong><small id="message">Ready</small></div>
-<div class="agent-meta"><span>Provider <b id="agentProvider">—</b></span><span>Model <b id="agentModel">—</b></span><span>Elapsed <b id="elapsed">0s</b></span></div>
-<div class="steps"><div class="step" data-step="planning"><i>1</i><span>Planning</span></div><div class="step" data-step="generating"><i>2</i><span>Generating</span></div><div class="step" data-step="verifying"><i>3</i><span>Verifying</span></div><div class="step" data-step="completed"><i>4</i><span>Finalizing</span></div></div>
-<button class="download-code" id="downloadCode">Download workspace code</button>
-<div class="error-box hidden" id="errorBox"><div class="error-icon">!</div><div class="error-content"><div class="error-head"><strong id="errorTitle">Something went wrong</strong><button id="retryError" class="error-retry hidden">Retry</button></div><p id="errorText"></p><div class="error-meta" id="errorMeta"></div><small id="errorRecovery"></small><details id="errorTechnicalWrap"><summary>Technical details</summary><pre id="errorTechnical"></pre></details></div></div>
-</aside>
-</div>
-</section>
-<section class="view" id="view-workspace"><div class="page-scroll"><div class="section-heading"><div><span class="kicker">WORKSPACE</span><h2>Files touched by FuzeCLI</h2><p>Generated and tracked files in this local workspace.</p></div><button class="ghost" id="refreshWorkspace">Refresh</button></div><div class="path-card" id="workspaceRoot">Loading workspace…</div><div class="file-list" id="fileList"></div></div></section>
-<section class="view" id="view-plan"><div class="page-scroll"><div class="section-heading"><div><span class="kicker">PROJECT PLAN</span><h2>Implementation map</h2><p>Large projects are split into resumable, dependency-aware batches.</p></div><button class="ghost" id="refreshPlan">Refresh</button></div><div id="planContent" class="plan-content"><div class="empty-state">No project plan is active.</div></div></div></section>
-<section class="view" id="view-settings"><div class="page-scroll settings-page"><div class="section-heading"><div><span class="kicker">SETTINGS</span><h2>Runtime preferences</h2><p>Choose a provider and edit the exact model identifier used by FuzeCLI.</p></div></div><div class="settings-card"><label>Provider<select id="providerSelect"></select></label><label>Model<input id="modelInput" list="modelOptions" autocomplete="off" spellcheck="false" placeholder="Enter a model name"><datalist id="modelOptions"></datalist><small>Choose a discovered model or enter a valid provider model identifier.</small></label><div class="settings-actions"><button class="primary" id="saveSettings">Save changes</button><span id="settingsState"></span></div></div><div class="settings-card info-card"><div class="setting-row"><div><strong>Web server</strong><span>Bound to localhost only</span></div><b>127.0.0.1:8787</b></div><div class="setting-row"><div><strong>Live streaming</strong><span>Token-by-token responses and job progress</span></div><b>Enabled</b></div><div class="setting-row"><div><strong>Long-project planner</strong><span>Dependency-aware resumable batches</span></div><b>Enabled</b></div><div class="setting-row"><div><strong>Error diagnostics</strong><span>Provider-aware rate-limit and overload messages</span></div><b>Enabled</b></div></div></div></section>
-</div>
-</main>
-</div>
-<div class="session-backdrop" id="sessionGate">
-<div class="session-modal" id="sessionModal" role="dialog" aria-modal="true" aria-labelledby="sessionTitle">
-<span class="session-kicker">SESSION PREFLIGHT</span>
-<h2 id="sessionTitle">Choose your memory mode</h2>
-<p>Decide whether FuzeCLI should continue the saved conversation memory or start with a clean conversation. The session stays locked until the one-minute preflight finishes.</p>
-<div class="session-timer"><strong id="sessionTimer">01:00</strong><span>Preflight unlock timer</span></div>
-<div class="session-actions"><button id="continueMemory" class="primary" disabled>Continue with memory</button><button id="clearMemory" disabled>Start fresh</button></div>
-<div class="session-status" id="sessionStatus">Session locked for 01:00</div>
-</div>
-</div>
+
+<div class="toast" id="toast"></div>
 <script src="/static/app.js"></script>
-<script>
-(()=>{
-  const gate=document.getElementById('sessionGate');
-  const modal=document.getElementById('sessionModal');
-  const timerNode=document.getElementById('sessionTimer');
-  const statusNode=document.getElementById('sessionStatus');
-  const continueButton=document.getElementById('continueMemory');
-  const clearButton=document.getElementById('clearMemory');
-  const composer=document.getElementById('prompt');
-  const sendButton=document.getElementById('send');
-  let remaining=60;
-  let ready=false;
-  let busy=false;
-  let interval=null;
-
-  const format=n=>`00:${String(n).padStart(2,'0')}`;
-  const setLocked=locked=>{continueButton.disabled=locked;clearButton.disabled=locked;composer.disabled=locked;sendButton.disabled=locked||sendButton.disabled;document.querySelectorAll('[data-prompt]').forEach(button=>button.disabled=locked);};
-  setLocked(true);
-  interval=setInterval(()=>{
-    remaining=Math.max(0,remaining-1);
-    timerNode.textContent=format(remaining);
-    statusNode.textContent=remaining>0?`Session locked for ${format(remaining)}`:'Preflight timer complete. Choose your memory mode.';
-    if(remaining===0){
-      clearInterval(interval);
-      continueButton.disabled=false;
-      clearButton.disabled=false;
-    }
-  },1000);
-
-  const blockWhileLocked=event=>{if(!ready){event.preventDefault();event.stopImmediatePropagation();}};
-  sendButton.addEventListener('click',blockWhileLocked,true);
-  composer.addEventListener('keydown',blockWhileLocked,true);
-
-  async function setup(memory){
-    if(remaining>0||busy)return;
-    busy=true;
-    modal.classList.add('busy');
-    continueButton.disabled=true;
-    clearButton.disabled=true;
-    composer.disabled=true;
-    sendButton.disabled=true;
-    statusNode.textContent=memory==='continue'?'Restoring conversation memory…':'Clearing conversation memory…';
-    if(memory==='clear'){
-      try{resetConversationVisual();}catch{}
-    }
-    try{
-      const response=await fetch('/api/session',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({memory,provider:window.selectedProvider||'',model:window.selectedModel||''})});
-      const data=await response.json();
-      if(!response.ok)throw new Error(data.error||data.message||'Session setup failed');
-      if(memory==='clear'){
-        try{resetConversationVisual();}catch{}
-      }else{
-        try{resetConversationVisual();await loadHistory();}catch{}
-      }
-      if(data.welcome)addMessage('assistant',data.welcome,{meta:`${data.model||'model'} · ready`});
-      ready=true;
-      gate.style.display='none';
-      composer.disabled=false;
-      sendButton.disabled=false;
-      document.querySelectorAll('[data-prompt]').forEach(button=>button.disabled=false);
-      composer.focus();
-    }catch(error){
-      busy=false;
-      modal.classList.remove('busy');
-      continueButton.disabled=false;
-      clearButton.disabled=false;
-      statusNode.textContent=error.message||'Session setup failed. Try again.';
-    }
-  }
-
-  continueButton.addEventListener('click',()=>setup('continue'));
-  clearButton.addEventListener('click',()=>setup('clear'));
-  document.getElementById('newChat').addEventListener('click',event=>{
-    if(!ready||busy)return;
-    event.stopImmediatePropagation();
-    resetConversationVisual();
-    prompt.value='';
-    gate.style.display='grid';
-    remaining=60;
-    timerNode.textContent='01:00';
-    statusNode.textContent='Session locked for 01:00';
-    continueButton.disabled=true;
-    clearButton.disabled=true;
-    ready=false;
-    composer.disabled=true;
-    sendButton.disabled=true;
-    document.querySelectorAll('[data-prompt]').forEach(button=>button.disabled=true);
-    interval=setInterval(()=>{
-      remaining=Math.max(0,remaining-1);
-      timerNode.textContent=format(remaining);
-      statusNode.textContent=remaining>0?`Session locked for ${format(remaining)}`:'Preflight timer complete. Choose your memory mode.';
-      if(remaining===0){clearInterval(interval);continueButton.disabled=false;clearButton.disabled=false;}
-    },1000);
-  },true);
-})();
-</script>
 </body>
 </html>
