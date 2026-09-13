@@ -46,7 +46,40 @@ type response struct {
 	} `json:"usage"`
 }
 
+// effectiveOptions protects providers with request/token-per-minute budgets from
+// asking for more tokens than the remaining request budget allows. The caller can
+// provide RequestTokenLimit for providers whose limit is known (for example Groq).
+func effectiveOptions(messages []provider.Message, opts provider.RequestOptions) provider.RequestOptions {
+	if opts.RequestTokenLimit <= 0 || opts.MaxTokens <= 0 {
+		return opts
+	}
+	inputTokens := estimateTokens(messages)
+	const safetyTokens = 256
+	available := opts.RequestTokenLimit - inputTokens - safetyTokens
+	if available < 1 {
+		available = 1
+	}
+	if opts.MaxTokens > available {
+		opts.MaxTokens = available
+	}
+	return opts
+}
+
+// estimateTokens is deliberately conservative. Provider tokenizers differ, so
+// this is a preflight guard rather than a billing/usage calculation.
+func estimateTokens(messages []provider.Message) int {
+	chars := 0
+	for _, m := range messages {
+		chars += len(m.Role) + len(m.Content) + 16
+	}
+	if chars == 0 {
+		return 1
+	}
+	return (chars + 2) / 3
+}
+
 func (p *Provider) Send(ctx context.Context, messages []provider.Message, opts provider.RequestOptions) (*provider.Response, error) {
+	opts = effectiveOptions(messages, opts)
 	var out response
 	err := provider.DoJSON(ctx, p.HTTPClient, http.MethodPost, p.BaseURL+"/chat/completions", map[string]string{"Authorization": "Bearer " + p.APIKey}, request{Model: opts.Model, Messages: messages, Temperature: opts.Temperature, MaxTokens: opts.MaxTokens}, &out, p.Name())
 	if err != nil {
@@ -59,6 +92,7 @@ func (p *Provider) Send(ctx context.Context, messages []provider.Message, opts p
 }
 
 func (p *Provider) Stream(ctx context.Context, messages []provider.Message, opts provider.RequestOptions) (<-chan provider.StreamChunk, error) {
+	opts = effectiveOptions(messages, opts)
 	reqBody, err := json.Marshal(request{Model: opts.Model, Messages: messages, Temperature: opts.Temperature, MaxTokens: opts.MaxTokens, Stream: true})
 	if err != nil {
 		return nil, fmt.Errorf("openai: encode stream request: %w", err)
