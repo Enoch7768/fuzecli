@@ -33,8 +33,8 @@ type VerificationConfig struct {
 func Default() Config {
 	providers := map[string]ProviderConfig{
 		"openai":            {DefaultModel: "gpt-4o"},
-		"gemini":            {DefaultModel: "gemini-2.5-flash"},
-		"gemini-normalizer": {DefaultModel: "gemini-2.5-flash"},
+		"gemini":            {DefaultModel: "gemini-3.6-flash"},
+		"gemini-normalizer": {DefaultModel: "gemini-3.6-flash"},
 		"groq":              {DefaultModel: "openai/gpt-oss-20b"},
 		"anthropic":         {DefaultModel: "claude-sonnet-4-6"},
 		"llamacpp":          {BaseURL: "http://localhost:8080", DefaultModel: "local"},
