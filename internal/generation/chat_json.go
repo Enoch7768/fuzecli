@@ -46,15 +46,20 @@ func ChatResponseSchema() map[string]any {
 	}
 }
 
-// ParseChatResponse performs a strict local parse. It intentionally does not
-// contact a provider because this function is also called repeatedly while a
-// streamed response is being assembled.
+// ParseChatResponse is the public parser used by the streaming terminal. It
+// stays local for incomplete streamed JSON, but can invoke the dedicated
+// Gemini normalizer once a complete JSON candidate is present and malformed.
+// This lets the existing streaming path benefit from the fixer without making
+// a network request for every partial chunk.
 func ParseChatResponse(raw string) (ChatResponse, error) {
 	clean, err := normalizeJSONDocument(raw)
-	if err != nil {
+	if err == nil {
+		return parseChatResponseDocument(clean)
+	}
+	if !completeJSONCandidate(raw) {
 		return ChatResponse{}, fmt.Errorf("invalid chat JSON: %w", err)
 	}
-	return parseChatResponseDocument(clean)
+	return normalizeWithConfiguredProvider(context.Background(), raw, fmt.Errorf("invalid chat JSON: %w", err))
 }
 
 func parseChatResponseDocument(clean []byte) (ChatResponse, error) {
@@ -110,6 +115,19 @@ func parseChatResponseDocument(clean []byte) (ChatResponse, error) {
 	}
 	response.Plan = &plan
 	return response, nil
+}
+
+func completeJSONCandidate(raw string) bool {
+	s := strings.TrimSpace(strings.TrimPrefix(raw, "\ufeff"))
+	if s == "" {
+		return false
+	}
+	start := strings.IndexAny(s, "{[")
+	if start < 0 {
+		return false
+	}
+	end, ok := balancedJSONEnd(s, start)
+	return ok && strings.TrimSpace(s[end:]) == ""
 }
 
 func validateChatFile(i int, file chatFileChange) error {
@@ -201,26 +219,22 @@ func (e *Engine) normalizeChatResponse(ctx context.Context, raw string, parseErr
 				errs = append(errs, fmt.Errorf("%s normalization attempt %d: %w", candidate, attempt+1, err))
 				break
 			}
-			normalized, parseNormalizedErr := parseChatResponseDocument(normalizeJSONDocumentForNormalizer(resp.Content))
+			clean, cleanErr := normalizeJSONDocument(resp.Content)
+			if cleanErr != nil {
+				errs = append(errs, fmt.Errorf("%s normalization attempt %d returned invalid JSON: %w", candidate, attempt+1, cleanErr))
+				messages = append(messages, provider.Message{Role: "user", Content: "Your previous normalization was invalid. Return ONLY one complete JSON object matching the schema. Do not truncate, fence, explain, or add extra keys. Parser error: " + cleanErr.Error()})
+				continue
+			}
+			normalized, parseNormalizedErr := parseChatResponseDocument(clean)
 			if parseNormalizedErr == nil {
 				return normalized, nil
 			}
-			errs = append(errs, fmt.Errorf("%s normalization attempt %d returned invalid JSON: %w", candidate, attempt+1, parseNormalizedErr))
-			messages = append(messages, provider.Message{Role: "user", Content: "Your previous normalization was invalid. Return ONLY one complete JSON object matching the schema. Do not truncate, fence, explain, or add extra keys. Parser error: " + parseNormalizedErr.Error()})
+			errs = append(errs, fmt.Errorf("%s normalization attempt %d returned invalid JSON schema: %w", candidate, attempt+1, parseNormalizedErr))
+			messages = append(messages, provider.Message{Role: "user", Content: "Your previous normalization was structurally invalid. Return ONLY one complete JSON object matching the schema. Fix this parser error: " + parseNormalizedErr.Error()})
 		}
 	}
 
 	return ChatResponse{}, fmt.Errorf("provider returned incomplete or invalid structured JSON; the response was not applied. Raw response length: %d bytes. JSON normalizer failures: %s", len(raw), normalizeFailureSummary(errs))
-}
-
-// normalizeJSONDocumentForNormalizer is deliberately non-recursive: a failed
-// normalizer response must never invoke the network normalizer again.
-func normalizeJSONDocumentForNormalizer(raw string) []byte {
-	clean, err := normalizeJSONDocument(raw)
-	if err == nil {
-		return clean
-	}
-	return []byte(strings.TrimSpace(strings.TrimPrefix(raw, "\ufeff")))
 }
 
 func normalizerModel(providerName string) string {
