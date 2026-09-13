@@ -178,23 +178,34 @@ func debugWorkspaceRoot(a *App) string {
 	return root
 }
 
+// workspaceInitialized reports whether the current directory has been initialized
+// by FuzeCLI. Init creates .aicli/session.db, while state.json is created later,
+// so the database is the authoritative marker and state.json is accepted too.
+func workspaceInitialized(root string) bool {
+	if strings.TrimSpace(root) == "" {
+		return false
+	}
+	dir := filepath.Join(root, ".aicli")
+	for _, name := range []string{"session.db", "state.json"} {
+		if info, err := os.Stat(filepath.Join(dir, name)); err == nil && !info.IsDir() {
+			return true
+		}
+	}
+	return false
+}
+
 func debugDatabase(db *sql.DB) error {
 	if db == nil {
 		return errors.New("database handle is nil")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	var one int
-	if err := db.QueryRowContext(ctx, "PRAGMA integrity_check").Scan(&one); err != nil {
-		// SQLite returns a string for integrity_check; retry with the correct type.
-		var result string
-		if retryErr := db.QueryRowContext(ctx, "PRAGMA integrity_check").Scan(&result); retryErr != nil {
-			return retryErr
-		}
-		if result != "ok" {
-			return fmt.Errorf("integrity check: %s", result)
-		}
-		return nil
+	var result string
+	if err := db.QueryRowContext(ctx, "PRAGMA integrity_check").Scan(&result); err != nil {
+		return err
+	}
+	if result != "ok" {
+		return fmt.Errorf("integrity check: %s", result)
 	}
 	return nil
 }
