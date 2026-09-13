@@ -12,11 +12,12 @@ type Message struct {
 }
 
 type RequestOptions struct {
-	Model       string
-	Temperature float64
-	MaxTokens   int
-	JSONMode    bool
-	JSONSchema  map[string]any
+	Model             string
+	Temperature       float64
+	MaxTokens         int
+	JSONMode          bool
+	JSONSchema        map[string]any
+	RequestTokenLimit int
 }
 
 type Response struct {
