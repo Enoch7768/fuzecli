@@ -49,10 +49,6 @@ func ChatResponseSchema() map[string]any {
 func ParseChatResponse(raw string) (ChatResponse, error) {
 	clean, err := normalizeJSONDocument(raw)
 	if err != nil {
-		// Normal conversation is intentionally allowed to be plain text. The
-		// structured JSON path remains strict whenever the model actually emits
-		// a JSON object. This prevents harmless conversational replies from being
-		// reported as failed edits.
 		plain := strings.TrimSpace(strings.TrimPrefix(raw, "\ufeff"))
 		if plain != "" && !strings.Contains(plain, "{") && !strings.Contains(plain, "[") {
 			return ChatResponse{Type: "chat", Response: plain, Message: plain}, nil
@@ -211,8 +207,8 @@ func (e *Engine) normalizeChatResponse(ctx context.Context, raw string, parseErr
 }
 
 func normalizerModel(providerName string) string {
-	if providerName == "gemini" {
-		return "gemini-2.5-flash"
+	if providerName == JSONNormalizerProvider || providerName == "gemini" {
+		return "gemini-3.6-flash"
 	}
 	return ""
 }
