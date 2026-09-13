@@ -46,15 +46,18 @@ func ChatResponseSchema() map[string]any {
 	}
 }
 
+// ParseChatResponse performs a strict local parse. It intentionally does not
+// contact a provider because this function is also called repeatedly while a
+// streamed response is being assembled.
 func ParseChatResponse(raw string) (ChatResponse, error) {
 	clean, err := normalizeJSONDocument(raw)
 	if err != nil {
-		plain := strings.TrimSpace(strings.TrimPrefix(raw, "\ufeff"))
-		if plain != "" && !strings.Contains(plain, "{") && !strings.Contains(plain, "[") {
-			return ChatResponse{Type: "chat", Response: plain, Message: plain}, nil
-		}
 		return ChatResponse{}, fmt.Errorf("invalid chat JSON: %w", err)
 	}
+	return parseChatResponseDocument(clean)
+}
+
+func parseChatResponseDocument(clean []byte) (ChatResponse, error) {
 	var response ChatResponse
 	dec := json.NewDecoder(bytes.NewReader(clean))
 	dec.DisallowUnknownFields()
@@ -174,15 +177,19 @@ func (e *Engine) normalizeChatResponse(ctx context.Context, raw string, parseErr
 		raw = raw[:maxNormalizerInput]
 	}
 
-	system := `You are FuzeCLI's JSON normalization engine. Your output is consumed by a strict local parser. Convert the supplied model response into exactly one valid JSON object matching the supplied schema. Preserve the user's meaning and every requested file change. Never invent files, code, commands, paths, or requirements. For ordinary conversation, use type "chat" and put the answer in both "response" and "message". For file changes, use type "edit" and include every requested file with complete content and an explicit action. Never use markdown fences. Never output commentary outside JSON. Paths must be relative to the workspace and must never contain '..'. For delete actions, content must be empty.`
+	system := `You are FuzeCLI's JSON normalization engine. Your output is consumed by a strict local parser. Convert the supplied model response into exactly one valid JSON object matching the supplied schema. Preserve the user's meaning and every requested file change. Never invent files, code, commands, paths, or requirements. For ordinary conversation, use type "chat" and put the answer in both "response" and "message". For file changes, use type "edit" and include every requested file with complete content and an explicit action. Never use markdown fences. Never output commentary outside JSON. Paths must be relative to the workspace and must never contain '..'. For delete actions, content must be empty. If the source is truncated or malformed, reconstruct only what is recoverable from the supplied response; never fabricate missing source code. If the source contains a complete JSON object with syntax or schema mistakes, repair it faithfully.`
 	messages := []provider.Message{
 		{Role: "system", Content: system + "\n\nRequired JSON schema:\n" + schemaJSON()},
 		{Role: "user", Content: "Normalize this response. Preserve it faithfully.\n\nOriginal response:\n" + raw + "\n\nLocal parser error:\n" + parseErr.Error()},
 	}
 
 	var errs []error
-	for _, candidate := range normalizerCandidates(e.Registry) {
-		for attempt := 0; attempt < 2; attempt++ {
+	candidates := normalizerCandidates(e.Registry)
+	if len(candidates) == 0 {
+		return ChatResponse{}, fmt.Errorf("provider returned incomplete or invalid structured JSON; the response was not applied. Raw response length: %d bytes. JSON normalizer unavailable: no Gemini normalizer or Gemini provider is configured", len(raw))
+	}
+	for _, candidate := range candidates {
+		for attempt := 0; attempt < 3; attempt++ {
 			resp, err := e.Registry.Send(ctx, candidate, messages, provider.RequestOptions{
 				Model:       normalizerModel(candidate),
 				Temperature: 0,
@@ -194,7 +201,7 @@ func (e *Engine) normalizeChatResponse(ctx context.Context, raw string, parseErr
 				errs = append(errs, fmt.Errorf("%s normalization attempt %d: %w", candidate, attempt+1, err))
 				break
 			}
-			normalized, parseNormalizedErr := ParseChatResponse(resp.Content)
+			normalized, parseNormalizedErr := parseChatResponseDocument(normalizeJSONDocumentForNormalizer(resp.Content))
 			if parseNormalizedErr == nil {
 				return normalized, nil
 			}
@@ -204,6 +211,16 @@ func (e *Engine) normalizeChatResponse(ctx context.Context, raw string, parseErr
 	}
 
 	return ChatResponse{}, fmt.Errorf("provider returned incomplete or invalid structured JSON; the response was not applied. Raw response length: %d bytes. JSON normalizer failures: %s", len(raw), normalizeFailureSummary(errs))
+}
+
+// normalizeJSONDocumentForNormalizer is deliberately non-recursive: a failed
+// normalizer response must never invoke the network normalizer again.
+func normalizeJSONDocumentForNormalizer(raw string) []byte {
+	clean, err := normalizeJSONDocument(raw)
+	if err == nil {
+		return clean
+	}
+	return []byte(strings.TrimSpace(strings.TrimPrefix(raw, "\ufeff")))
 }
 
 func normalizerModel(providerName string) string {
