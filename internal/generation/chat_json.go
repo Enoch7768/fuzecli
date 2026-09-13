@@ -49,6 +49,14 @@ func ChatResponseSchema() map[string]any {
 func ParseChatResponse(raw string) (ChatResponse, error) {
 	clean, err := normalizeJSONDocument(raw)
 	if err != nil {
+		// Normal conversation is intentionally allowed to be plain text. The
+		// structured JSON path remains strict whenever the model actually emits
+		// a JSON object. This prevents harmless conversational replies from being
+		// reported as failed edits.
+		plain := strings.TrimSpace(strings.TrimPrefix(raw, "\ufeff"))
+		if plain != "" && !strings.Contains(plain, "{") && !strings.Contains(plain, "[") {
+			return ChatResponse{Type: "chat", Response: plain, Message: plain}, nil
+		}
 		return ChatResponse{}, fmt.Errorf("invalid chat JSON: %w", err)
 	}
 	var response ChatResponse
@@ -165,20 +173,51 @@ func (e *Engine) ParseChatPlan(ctx context.Context, raw string) (Plan, error) {
 }
 
 func (e *Engine) normalizeChatResponse(ctx context.Context, raw string, parseErr error) (ChatResponse, error) {
-	const maxNormalizerInput = 120000
+	const maxNormalizerInput = 160000
 	if len(raw) > maxNormalizerInput {
 		raw = raw[:maxNormalizerInput]
 	}
-	messages := []provider.Message{{Role: "system", Content: `You are FuzeCLI's JSON normalization engine. Convert the supplied model response into the exact FuzeCLI chat response schema. Preserve the user's requested intent and every file change exactly. Do not invent files or commands. If the source is ordinary text, put it in message. If it contains file changes under another JSON shape, map them into files. Paths must be relative to the workspace and must not escape it. Return ONLY valid JSON matching the required schema.`}, {Role: "user", Content: "Required schema:\n" + schemaJSON() + "\n\nOriginal response:\n" + raw + "\n\nLocal parser error:\n" + parseErr.Error()}}
-	resp, err := e.Registry.Send(ctx, JSONNormalizerProvider, messages, provider.RequestOptions{Temperature: 0, MaxTokens: 12000, JSONMode: true, JSONSchema: ChatResponseSchema()})
-	if err != nil {
-		return ChatResponse{}, fmt.Errorf("chat JSON normalization failed: %w; original parse error: %v", err, parseErr)
+
+	system := `You are FuzeCLI's JSON normalization engine. Your output is consumed by a strict local parser. Convert the supplied model response into exactly one valid JSON object matching the supplied schema. Preserve the user's meaning and every requested file change. Never invent files, code, commands, paths, or requirements. For ordinary conversation, use type "chat" and put the answer in both "response" and "message". For file changes, use type "edit" and include every requested file with complete content and an explicit action. Never use markdown fences. Never output commentary outside JSON. Paths must be relative to the workspace and must never contain '..'. For delete actions, content must be empty.`
+	messages := []provider.Message{
+		{Role: "system", Content: system + "\n\nRequired JSON schema:\n" + schemaJSON()},
+		{Role: "user", Content: "Normalize this response. Preserve it faithfully.\n\nOriginal response:\n" + raw + "\n\nLocal parser error:\n" + parseErr.Error()},
 	}
-	normalized, err := ParseChatResponse(resp.Content)
-	if err != nil {
-		return ChatResponse{}, fmt.Errorf("normalized chat JSON is invalid: %w", err)
+
+	var errs []error
+	for _, candidate := range normalizerCandidates(e.Registry) {
+		for attempt := 0; attempt < 2; attempt++ {
+			resp, err := e.Registry.Send(ctx, candidate, messages, provider.RequestOptions{
+				Model:       normalizerModel(candidate),
+				Temperature: 0,
+				MaxTokens:   12000,
+				JSONMode:    true,
+				JSONSchema:  ChatResponseSchema(),
+			})
+			if err != nil {
+				errs = append(errs, fmt.Errorf("%s normalization attempt %d: %w", candidate, attempt+1, err))
+				break
+			}
+			normalized, parseNormalizedErr := ParseChatResponse(resp.Content)
+			if parseNormalizedErr == nil {
+				return normalized, nil
+			}
+			errs = append(errs, fmt.Errorf("%s normalization attempt %d returned invalid JSON: %w", candidate, attempt+1, parseNormalizedErr))
+			messages = append(messages, provider.Message{Role: "user", Content: "Your previous normalization was invalid. Return ONLY one complete JSON object matching the schema. Do not truncate, fence, explain, or add extra keys. Parser error: " + parseNormalizedErr.Error()})
+		}
 	}
-	return normalized, nil
+
+	return ChatResponse{}, fmt.Errorf("provider returned incomplete or invalid structured JSON; the response was not applied. Raw response length: %d bytes. JSON normalizer failures: %s", len(raw), normalizeFailureSummary(errs))
 }
 
-func schemaJSON() string { data, _ := json.Marshal(ChatResponseSchema()); return string(data) }
+func normalizerModel(providerName string) string {
+	if providerName == "gemini" {
+		return "gemini-2.5-flash"
+	}
+	return ""
+}
+
+func schemaJSON() string {
+	data, _ := json.Marshal(ChatResponseSchema())
+	return string(data)
+}
