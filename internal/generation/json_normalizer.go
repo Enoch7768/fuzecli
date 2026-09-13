@@ -8,13 +8,13 @@ import (
 	"github.com/Enoch7768/fuzecli/internal/provider"
 )
 
-// JSONNormalizerProvider is kept as a stable identifier for diagnostics and
-// compatibility. Normalization itself uses the real configured Gemini provider
-// from the application registry rather than a synthetic provider name.
+// JSONNormalizerProvider is the dedicated Gemini-backed repair provider.
+// It is configured independently from the user's normal chat provider so a
+// malformed structured response can still be repaired reliably.
 const JSONNormalizerProvider = "gemini-normalizer"
 
 func normalizeWithConfiguredProvider(ctx context.Context, raw string, parseErr error) (ChatResponse, error) {
-	registry := provider.NewRegistry(nil, map[string]string{"gemini": "gemini-2.5-flash"})
+	registry := provider.NewRegistry(nil, map[string]string{JSONNormalizerProvider: "gemini-3.6-flash"})
 	return normalizeWithRegistry(ctx, raw, parseErr, registry)
 }
 
@@ -26,19 +26,18 @@ func normalizeWithRegistry(ctx context.Context, raw string, parseErr error, regi
 	return engine.normalizeChatResponse(ctx, raw, parseErr)
 }
 
-// normalizerCandidates deliberately prefers Gemini because it is FuzeCLI's
-// structured-JSON repair engine. Auto is a safe fallback when Gemini is not
-// configured or temporarily unavailable.
+// normalizerCandidates prefers the dedicated Gemini normalizer. The ordinary
+// Gemini provider is retained as a compatibility fallback, followed by auto
+// mode when the application has one configured.
 func normalizerCandidates(registry *provider.Registry) []string {
 	if registry == nil {
 		return nil
 	}
-	candidates := make([]string, 0, 2)
-	if _, err := registry.Get("gemini"); err == nil {
-		candidates = append(candidates, "gemini")
-	}
-	if _, err := registry.Get("auto"); err == nil {
-		candidates = append(candidates, "auto")
+	candidates := make([]string, 0, 3)
+	for _, name := range []string{JSONNormalizerProvider, "gemini", "auto"} {
+		if _, err := registry.Get(name); err == nil {
+			candidates = append(candidates, name)
+		}
 	}
 	return candidates
 }
