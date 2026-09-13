@@ -120,7 +120,27 @@ func NewAllCompatibleProviders(resolve func(string) (string, string)) []Provider
 	}
 	return providers
 }
+
 func ProviderPolicy(name string) compatibleSpec {
+	// These are native providers implemented in this repository rather than
+	// entries in compatibleCatalog. Their old fallback budget of 16k characters
+	// silently truncated large workspaces and made structured JSON responses hit
+	// the output ceiling too early. Gemini 2.5 Flash supports a 1M-token context
+	// window, so keep a large local budget and let the provider API enforce its
+	// real model limit. The character budget is deliberately below that token
+	// ceiling to leave room for system instructions and conversation history.
+	switch strings.ToLower(strings.TrimSpace(name)) {
+	case "gemini":
+		return compatibleSpec{Name: name, MinInterval: 2 * time.Second, MaxInputChars: 900000, MaxOutputTokens: 32768, JSONOutputTokens: 32768}
+	case "openai":
+		return compatibleSpec{Name: name, MinInterval: 2 * time.Second, MaxInputChars: 400000, MaxOutputTokens: 16000, JSONOutputTokens: 16000}
+	case "anthropic":
+		return compatibleSpec{Name: name, MinInterval: 2 * time.Second, MaxInputChars: 600000, MaxOutputTokens: 16000, JSONOutputTokens: 16000}
+	case "groq":
+		return compatibleSpec{Name: name, MinInterval: 2 * time.Second, MaxInputChars: 120000, MaxOutputTokens: 16000, JSONOutputTokens: 16000}
+	case "llamacpp":
+		return compatibleSpec{Name: name, MinInterval: 500 * time.Millisecond, MaxInputChars: 100000, MaxOutputTokens: 12000, JSONOutputTokens: 12000}
+	}
 	if spec, ok := compatibleSpecFor(name); ok {
 		return spec
 	}
