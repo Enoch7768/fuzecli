@@ -794,7 +794,7 @@ func (a *App) Chat(
 	}
 
 	fmt.Println(
-		"FuzeCLI chat. Type /exit to quit. Use /code <request> for structured file generation.",
+		"FuzeCLI chat. Type /exit or press Ctrl + C to quit. Use /code <request> for structured file generation.",
 	)
 
 	s := bufio.NewScanner(os.Stdin)

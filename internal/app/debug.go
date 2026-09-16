@@ -22,15 +22,10 @@ import (
 	"github.com/Enoch7768/fuzecli/internal/verify"
 )
 
-// Debug prints a read-only, developer-focused diagnostic report. It deliberately
-// avoids network requests so it is safe to run even when an AI provider is down.
 func (a *App) Debug() error {
 	return a.debug(context.Background(), false)
 }
 
-// DebugLive performs the local checks plus a bounded provider connectivity/model
-// check. It is intended for troubleshooting authentication, endpoint and model
-// availability problems.
 func (a *App) DebugLive(ctx context.Context) error {
 	return a.debug(ctx, true)
 }
@@ -178,9 +173,7 @@ func debugWorkspaceRoot(a *App) string {
 	return root
 }
 
-// workspaceInitialized reports whether the current directory has been initialized
-// by FuzeCLI. Init creates .aicli/session.db, while state.json is created later,
-// so the database is the authoritative marker and state.json is accepted too.
+
 func workspaceInitialized(root string) bool {
 	if strings.TrimSpace(root) == "" {
 		return false
@@ -345,7 +338,7 @@ func debugStatus(ok bool, yes, no string) string {
 	return no
 }
 
-// DebugConfigSummary exposes a redacted configuration summary for diagnostics.
+
 func DebugConfigSummary(c config.Config) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "provider=%s", c.DefaultProvider)

@@ -20,7 +20,7 @@ Custom address:
 aicli api --addr 127.0.0.1:9000
 ```
 
-For deployments that intentionally expose the application API beyond loopback, use `FUZECLI_API_TOKEN` and send it as a bearer token. Keep the service on loopback unless remote access is deliberately configured and protected.
+
 
 ## Health
 

@@ -8,8 +8,7 @@ import (
 	"github.com/Enoch7768/fuzecli/internal/workspace"
 )
 
-// Doctor performs local, non-network checks that are safe to run before using
-// FuzeCLI on a public or sensitive project.
+
 func (a *App) Doctor() error {
 	if a == nil {
 		return fmt.Errorf("application is not initialized")

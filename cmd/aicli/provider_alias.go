@@ -12,9 +12,6 @@ import (
 	"github.com/Enoch7768/fuzecli/internal/provider"
 )
 
-// init intercepts the public provider subcommands before the legacy command
-// dispatcher runs. This keeps provider setup in one small file while preserving
-// the existing CLI commands.
 func init() {
 	if len(os.Args) >= 3 && os.Args[1] == "provider" {
 		switch os.Args[2] {

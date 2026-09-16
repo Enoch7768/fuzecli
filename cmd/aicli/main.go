@@ -588,6 +588,7 @@ Integration:
 Configuration:
   aicli config show
   aicli config set <key> <value>
+  aicli provider setup
 
 Chat commands:
   /file, /file <path>, /file list, /file clear
@@ -604,6 +605,11 @@ First run recommendation:
 
 Already initialized?
   aicli init is safe and idempotent; it will not reset your project.
-  Use aicli setup when you want to change your AI configuration.`)
+  Use aicli setup when you want to change your AI configuration.
+  
+Caution
+  FuzeCLI(AiCli) is not responsible for any of the AI providers misebehaviours or errors. 
+  So for errors concerning AI, Please contact your AI provider. 
+  While this CLI can work on free commands for maximum perfomance, we recommend that you pay for the subscription to avoid errors concerning tokens, usage limits, tpm, and rate limits. `)
 	return nil
 }
