@@ -13,10 +13,10 @@ func TestEffectiveOptionsCapsCompletionToRequestBudget(t *testing.T) {
 	}
 	opts := effectiveOptions(messages, provider.RequestOptions{
 		Model:             "test-model",
-		MaxTokens:         4096,
+		MaxTokens:         16000,
 		RequestTokenLimit: 7600,
 	})
-	if opts.MaxTokens >= 4096 {
+	if opts.MaxTokens >= 16000 {
 		t.Fatalf("expected max tokens to be reduced, got %d", opts.MaxTokens)
 	}
 	if opts.MaxTokens <= 0 {

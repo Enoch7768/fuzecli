@@ -8,7 +8,6 @@ import (
 	"github.com/Enoch7768/fuzecli/internal/workspace"
 )
 
-
 func (a *App) Doctor() error {
 	if a == nil {
 		return fmt.Errorf("application is not initialized")

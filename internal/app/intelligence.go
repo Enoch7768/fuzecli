@@ -6,7 +6,6 @@ import (
 	"github.com/Enoch7768/fuzecli/internal/intelligence"
 )
 
-
 func (a *App) BuildCodeIndex() (*intelligence.Index, error) {
 	if a.Store == nil {
 		return nil, fmt.Errorf("workspace not initialized; run aicli init")

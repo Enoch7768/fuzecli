@@ -173,7 +173,6 @@ func debugWorkspaceRoot(a *App) string {
 	return root
 }
 
-
 func workspaceInitialized(root string) bool {
 	if strings.TrimSpace(root) == "" {
 		return false
@@ -337,7 +336,6 @@ func debugStatus(ok bool, yes, no string) string {
 	}
 	return no
 }
-
 
 func DebugConfigSummary(c config.Config) string {
 	var b strings.Builder
