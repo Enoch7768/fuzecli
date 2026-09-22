@@ -12,7 +12,7 @@ The web application sends a new key only when the user explicitly enters one. Cl
 
 The web application binds to `127.0.0.1:8787` by default. State-changing web endpoints reject foreign browser origins. Responses include restrictive security headers including a Content Security Policy, frame protection, MIME sniffing protection, and a no-referrer policy.
 
-The application API has a separate bearer-token option documented in `docs/API.md` for deployments that intentionally expose it beyond loopback.
+Intentional non-loopback API deployments require `Authorization: Bearer ...` using `FUZECLI_API_TOKEN`. The browser UI does not place that token in JavaScript.
 
 ## Workspace isolation
 
