@@ -127,6 +127,28 @@ func (s *Service) Chat(ctx context.Context, req ChatRequest) (ChatResponse, erro
 	return result, nil
 }
 
+func (s *Service) WriteFile(rel, content string) error {
+	if s == nil || s.App == nil || s.App.Store == nil {
+		return errors.New("workspace not initialized")
+	}
+	if len(content) > 2<<20 {
+		return errors.New("file is larger than 2 MiB")
+	}
+	path, err := generation.Resolve(s.App.Store.Root, rel)
+	if err != nil {
+		return err
+	}
+	plan := generation.Plan{Files: []generation.FileChange{{Path: rel, Content: content, Action: "modify"}}}
+	written, err := generation.Apply(s.App.Store.Root, plan)
+	if err != nil {
+		return err
+	}
+	if err := s.App.Store.MarkTouched(written); err != nil {
+		return err
+	}
+	return s.App.Store.RefreshHashes(written)
+}
+
 func (s *Service) ReadFile(rel string) (string, error) {
 	if s == nil || s.App == nil || s.App.Store == nil {
 		return "", errors.New("workspace not initialized")
