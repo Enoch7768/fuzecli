@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+
+	"github.com/Enoch7768/fuzecli/internal/generation"
 	"strings"
 	"time"
 )
