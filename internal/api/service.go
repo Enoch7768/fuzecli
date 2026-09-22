@@ -13,6 +13,7 @@ import (
 	"github.com/Enoch7768/fuzecli/internal/app"
 	"github.com/Enoch7768/fuzecli/internal/generation"
 	"github.com/Enoch7768/fuzecli/internal/provider"
+	"github.com/Enoch7768/fuzecli/internal/config"
 )
 
 const MaxAttachmentBytes = 65536
@@ -203,4 +204,65 @@ func (s *Service) Root() string {
 		return ""
 	}
 	return s.App.Store.Root
+}
+
+func (s *Service) History(limit int) ([]provider.Message, error) {
+	if s == nil || s.App == nil || s.App.Store == nil {
+		return nil, errors.New("workspace not initialized")
+	}
+	return s.App.Store.History(limit)
+}
+
+func (s *Service) Touched() ([]string, error) {
+	if s == nil || s.App == nil || s.App.Store == nil {
+		return nil, errors.New("workspace not initialized")
+	}
+	return s.App.Store.Touched()
+}
+
+func (s *Service) Config() (map[string]any, error) {
+	if s == nil || s.App == nil {
+		return nil, errors.New("application not initialized")
+	}
+	c, err := config.Load()
+	if err != nil {
+		return nil, err
+	}
+	names := make([]string, 0, len(c.Providers))
+	for name := range c.Providers {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	providers := make([]map[string]any, 0, len(names))
+	for _, name := range names {
+		p := c.Providers[name]
+		providers = append(providers, map[string]any{
+			"name": name,
+			"default_model": p.DefaultModel,
+			"configured": strings.TrimSpace(p.APIKey) != "" || name == "llamacpp",
+		})
+	}
+	return map[string]any{"default_provider": c.DefaultProvider, "providers": providers, "workspace": s.Root()}, nil
+}
+
+func (s *Service) SetProvider(name, model string) error {
+	name = strings.TrimSpace(name)
+	model = strings.TrimSpace(model)
+	if name == "" {
+		return errors.New("provider is required")
+	}
+	c, err := config.Load()
+	if err != nil {
+		return err
+	}
+	p, ok := c.Providers[name]
+	if !ok {
+		return fmt.Errorf("unknown provider %q", name)
+	}
+	if model != "" {
+		p.DefaultModel = model
+	}
+	c.Providers[name] = p
+	c.DefaultProvider = name
+	return config.Save(c)
 }
