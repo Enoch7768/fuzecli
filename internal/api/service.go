@@ -90,19 +90,21 @@ func (s *Service) Chat(ctx context.Context, req ChatRequest) (ChatResponse, erro
 	if err != nil {
 		return ChatResponse{}, err
 	}
-	if err := s.App.Store.AddMessage(provider.Message{Role: "assistant", Content: resp.Content}); err != nil {
-		return ChatResponse{}, err
-	}
 	parsed, parseErr := engine.ParseChatResponse(ctx, resp.Content)
+	if parseErr != nil {
+		return ChatResponse{}, fmt.Errorf("complete assistant response could not be validated: %w", parseErr)
+	}
 	content := resp.Content
-	if parseErr == nil {
-		if parsed.Response != "" {
+	if parsed.Response != "" {
 			content = parsed.Response
 		} else if parsed.Message != "" {
 			content = parsed.Message
 		} else if parsed.Explanation != "" {
 			content = parsed.Explanation
 		}
+	}
+	if err := s.App.Store.AddMessage(provider.Message{Role: "assistant", Content: content}); err != nil {
+		return ChatResponse{}, err
 	}
 	result := ChatResponse{Content: content, Provider: resp.ProviderName, Model: resp.Model}
 	if result.Provider == "" {
