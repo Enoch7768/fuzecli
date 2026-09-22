@@ -86,22 +86,34 @@ func (s *Service) Chat(ctx context.Context, req ChatRequest) (ChatResponse, erro
 	if err := s.App.Store.AddMessage(provider.Message{Role: "user", Content: req.Prompt}); err != nil {
 		return ChatResponse{}, err
 	}
-	resp, err := s.App.Registry.Send(ctx, name, msgs, provider.RequestOptions{Model: model, Temperature: 0.3, MaxTokens: 16000})
+	resp, err := s.App.Registry.Send(ctx, name, msgs, provider.RequestOptions{Model: model, Temperature: 0.3, MaxTokens: 32768, JSONMode: true, JSONSchema: generation.ChatResponseSchema()})
 	if err != nil {
 		return ChatResponse{}, err
 	}
 	if err := s.App.Store.AddMessage(provider.Message{Role: "assistant", Content: resp.Content}); err != nil {
 		return ChatResponse{}, err
 	}
-	result := ChatResponse{Content: resp.Content, Provider: resp.ProviderName, Model: resp.Model}
+	engine := generation.Engine{Registry: s.App.Registry, Profile: &s.App.Profile, MaxContextChars: 120000}
+	parsed, parseErr := engine.ParseChatResponse(ctx, resp.Content)
+	content := resp.Content
+	if parseErr == nil {
+		if parsed.Response != "" {
+			content = parsed.Response
+		} else if parsed.Message != "" {
+			content = parsed.Message
+		} else if parsed.Explanation != "" {
+			content = parsed.Explanation
+		}
+	}
+	result := ChatResponse{Content: content, Provider: resp.ProviderName, Model: resp.Model}
 	if result.Provider == "" {
 		result.Provider = name
 	}
 	if result.Model == "" {
 		result.Model = model
 	}
-	if plan, parseErr := generation.ParseChatPlan(resp.Content); parseErr == nil && req.Apply {
-		written, applyErr := generation.ApplyChatPlan(s.App.Store.Root, plan)
+	if parseErr == nil && parsed.Plan != nil && req.Apply {
+		written, applyErr := generation.ApplyChatPlan(s.App.Store.Root, *parsed.Plan)
 		if applyErr != nil {
 			return ChatResponse{}, applyErr
 		}
