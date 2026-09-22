@@ -96,12 +96,11 @@ func (s *Service) Chat(ctx context.Context, req ChatRequest) (ChatResponse, erro
 	}
 	content := resp.Content
 	if parsed.Response != "" {
-			content = parsed.Response
-		} else if parsed.Message != "" {
-			content = parsed.Message
-		} else if parsed.Explanation != "" {
-			content = parsed.Explanation
-		}
+		content = parsed.Response
+	} else if parsed.Message != "" {
+		content = parsed.Message
+	} else if parsed.Explanation != "" {
+		content = parsed.Explanation
 	}
 	if err := s.App.Store.AddMessage(provider.Message{Role: "assistant", Content: content}); err != nil {
 		return ChatResponse{}, err
@@ -113,7 +112,7 @@ func (s *Service) Chat(ctx context.Context, req ChatRequest) (ChatResponse, erro
 	if result.Model == "" {
 		result.Model = model
 	}
-	if parseErr == nil && parsed.Plan != nil && req.Apply {
+	if parsed.Plan != nil && req.Apply {
 		written, applyErr := generation.ApplyChatPlan(s.App.Store.Root, *parsed.Plan)
 		if applyErr != nil {
 			return ChatResponse{}, applyErr
