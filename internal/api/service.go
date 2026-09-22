@@ -134,8 +134,7 @@ func (s *Service) WriteFile(rel, content string) error {
 	if len(content) > 2<<20 {
 		return errors.New("file is larger than 2 MiB")
 	}
-	path, err := generation.Resolve(s.App.Store.Root, rel)
-	if err != nil {
+	if _, err := generation.Resolve(s.App.Store.Root, rel); err != nil {
 		return err
 	}
 	plan := generation.Plan{Files: []generation.FileChange{{Path: rel, Content: content, Action: "modify"}}}
