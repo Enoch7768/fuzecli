@@ -249,9 +249,9 @@ func (s *Service) Config() (map[string]any, error) {
 	for _, name := range names {
 		p := c.Providers[name]
 		providers = append(providers, map[string]any{
-			"name": name,
+			"name":          name,
 			"default_model": p.DefaultModel,
-			"configured": strings.TrimSpace(p.APIKey) != "" || name == "llamacpp",
+			"configured":    strings.TrimSpace(p.APIKey) != "" || name == "llamacpp",
 		})
 	}
 	return map[string]any{"default_provider": c.DefaultProvider, "providers": providers, "workspace": s.Root()}, nil

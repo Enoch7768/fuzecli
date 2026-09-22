@@ -32,7 +32,7 @@ type ChatResponse struct {
 
 func ChatResponseSchema() map[string]any {
 	return map[string]any{
-		"type":                 "object",
+		"type": "object",
 		"properties": map[string]any{
 			"type":        map[string]any{"type": "string", "enum": []string{"chat", "edit"}},
 			"response":    map[string]any{"type": "string", "description": "Natural-language response for compatibility with the FuzeCLI chat envelope."},
