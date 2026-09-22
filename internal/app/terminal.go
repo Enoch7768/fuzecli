@@ -349,7 +349,7 @@ func (a *App) terminalStream(ctx context.Context, prompt, providerName, model st
 	if err := a.Store.AddMessage(provider.Message{Role: "user", Content: prompt}); err != nil {
 		return fmt.Errorf("save user message: %w", err)
 	}
-	stream, err := a.Registry.Stream(ctx, name, msgs, provider.RequestOptions{Model: mdl, Temperature: 0.3, MaxTokens: 16000})
+	stream, err := a.Registry.Stream(ctx, name, msgs, provider.RequestOptions{Model: mdl, Temperature: 0.3, MaxTokens: 32768, JSONMode: true, JSONSchema: generation.ChatResponseSchema()})
 	if err != nil {
 		return fmt.Errorf("provider request failed: %w", err)
 	}
