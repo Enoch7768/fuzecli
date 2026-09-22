@@ -1,1 +1,73 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="dark"><title>FuzeCLI</title><link rel="stylesheet" href="/assets/styles.css"></head><body><div class="app-shell"><aside class="sidebar"><div class="brand"><div class="brand-mark">F</div><div><strong>FuzeCLI</strong><span>Local AI workspace</span></div></div><nav id="nav"><button class="nav-item active" data-view="chat"><span>⌁</span>Chat</button><button class="nav-item" data-view="workspace"><span>▦</span>Workspace</button><button class="nav-item" data-view="activity"><span>◷</span>Activity</button><button class="nav-item" data-view="settings"><span>⚙</span>Settings</button></nav><div class="side-bottom"><div class="status-pill"><i></i><span id="statusText">Connecting</span></div><div class="workspace-mini" id="workspacePath">Loading workspace…</div></div></aside><main class="main"><header class="topbar"><div><span class="eyebrow">FUZECLI / LOCAL</span><h1 id="pageTitle">Chat</h1></div><div class="top-actions"><select id="providerSelect"></select><select id="modelSelect"></select><button class="icon-btn" id="refreshBtn">↻</button></div></header><section class="view active" id="view-chat"><div class="chat-layout"><div class="conversation" id="messages"></div><div class="generation-progress" id="generationProgress" hidden><div class="progress-meta"><span id="progressLabel">Preparing</span><span id="progressPercent">0%</span></div><div class="progress-track"><div class="progress-fill" id="progressFill"></div></div></div><div class="composer-wrap"><div class="composer"><textarea id="prompt" rows="1" placeholder="Ask FuzeCLI to inspect, explain, build, fix, or refactor…"></textarea><div class="composer-bar"><div class="hint">Enter to send · Shift+Enter for a new line</div><button class="send" id="sendBtn">Send <span>↵</span></button></div></div></div></div></section><section class="view" id="view-workspace"><div class="section-head"><div><span class="eyebrow">PROJECT</span><h2>Workspace</h2></div><button class="ghost" id="workspaceRefresh">Refresh</button></div><div class="workspace-grid"><div class="panel file-panel"><div class="panel-title">Files <span id="fileCount"></span></div><div id="fileList" class="file-list"></div></div><div class="panel preview-panel"><div class="panel-title"><span id="fileName">Select a file</span></div><pre id="fileContent">Choose a file from the workspace.</pre></div></div></section><section class="view" id="view-activity"><div class="section-head"><div><span class="eyebrow">SESSION</span><h2>Activity</h2></div><button class="ghost" id="activityRefresh">Refresh</button></div><div class="panel activity-panel"><div id="activityList"></div></div></section><section class="view" id="view-settings"><div class="section-head"><div><span class="eyebrow">CONTROL</span><h2>Settings</h2></div></div><div class="settings-grid"><div class="panel"><div class="panel-title">Provider</div><label>Default provider<select id="settingsProvider"></select></label><label>Default model<input id="settingsModel" type="text"></label><button class="primary" id="saveProvider">Save provider</button></div><div class="panel"><div class="panel-title">API keys</div><p class="muted">Keys stay on this machine. The web interface never reads the stored key value.</p><div id="keyRows"></div></div></div></section></main></div><div id="toast" class="toast"></div><script src="/assets/app.js" defer></script></body></html>
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>FuzeCLI — Developer Studio</title>
+<link rel="stylesheet" href="/assets/styles.css">
+</head>
+<body>
+<div class="app-shell">
+<aside class="sidebar">
+  <div class="brand"><div class="brand-mark">F</div><div><strong>FuzeCLI</strong><span>Developer Studio</span></div></div>
+  <div class="workspace-badge"><span class="live-dot"></span><div><b>Local workspace</b><small id="workspacePath">Loading…</small></div></div>
+  <nav id="nav">
+    <button class="nav-item active" data-view="chat"><span>⌁</span><div><b>Command</b><small>AI coding session</small></div></button>
+    <button class="nav-item" data-view="builder"><span>◈</span><div><b>Builder</b><small>Live site studio</small></div></button>
+    <button class="nav-item" data-view="workspace"><span>▦</span><div><b>Files</b><small>Workspace explorer</small></div></button>
+    <button class="nav-item" data-view="activity"><span>◷</span><div><b>Activity</b><small>Session history</small></div></button>
+    <button class="nav-item" data-view="settings"><span>⚙</span><div><b>Settings</b><small>Runtime controls</small></div></button>
+  </nav>
+  <div class="side-bottom"><div class="status-pill"><i></i><span id="statusText">Connecting</span></div><div class="side-note">Built for people who ship.</div></div>
+</aside>
+<main class="main">
+<header class="topbar">
+  <div><span class="eyebrow">FUZECLI / LOCAL DEVELOPMENT</span><h1 id="pageTitle">Command</h1></div>
+  <div class="top-actions"><select id="providerSelect"></select><select id="modelSelect"></select><button class="icon-btn" id="refreshBtn" title="Refresh">↻</button></div>
+</header>
+
+<section class="view active" id="view-chat">
+  <div class="welcome">
+    <span class="eyebrow">WELCOME BACK</span>
+    <h2>Build something worth shipping.</h2>
+    <p>Describe the outcome. FuzeCLI inspects the workspace, proposes improvements when useful, generates complete code, validates structured output, and keeps your files under your control.</p>
+    <div class="quick-actions"><button data-prompt="Audit this project for security, correctness, maintainability, and UX issues. Suggest improvements first, then wait for my direction.">Audit project</button><button data-prompt="Analyze this project and tell me the three most valuable improvements you would suggest before changing anything.">Find improvements</button><button data-prompt="Inspect the current website and improve its visual quality without changing its core functionality.">Polish UI</button></div>
+  </div>
+  <div class="chat-layout"><div class="conversation" id="messages"></div>
+    <div class="generation-progress" id="generationProgress" hidden><div class="progress-meta"><span id="progressLabel">Preparing</span><span id="progressPercent">0%</span></div><div class="progress-track"><div class="progress-fill" id="progressFill"></div></div></div>
+    <div class="composer-wrap"><div class="composer"><textarea id="prompt" rows="1" placeholder="Tell FuzeCLI what you want to build, fix, inspect, or improve…"></textarea><div class="composer-bar"><div class="hint">Enter to send · Shift+Enter for a new line</div><button class="send" id="sendBtn">Run <span>↵</span></button></div></div></div>
+  </div>
+</section>
+
+<section class="view" id="view-builder">
+  <div class="builder-head"><div><span class="eyebrow">VISUAL DEVELOPMENT</span><h2>Live Builder</h2><p>Click an element in the preview, change it on the right, and save the real file.</p></div><div class="builder-actions"><select id="previewFile"></select><button class="ghost" id="deviceDesktop">Desktop</button><button class="ghost" id="deviceMobile">Mobile</button><button class="primary" id="openPreview">↗ Open</button><button class="primary" id="savePreview">Save changes</button></div></div>
+  <div class="builder-shell">
+    <aside class="builder-files panel"><div class="panel-title">Site files <span id="fileCount"></span></div><div id="builderFileList" class="file-list"></div></aside>
+    <div class="canvas"><div class="canvas-bar"><span id="previewStatus">Preview ready</span><span id="selectedPath">Nothing selected</span></div><div class="device desktop" id="deviceFrame"><iframe id="sitePreview" title="Live site preview" sandbox="allow-scripts allow-forms"></iframe></div></div>
+    <aside class="inspector panel"><div class="panel-title">Inspector</div><div id="inspectorEmpty" class="inspector-empty"><b>Select anything</b><span>Click an element in the live site to edit its text and visual properties.</span></div>
+      <div id="inspectorForm" hidden>
+        <div class="selected-chip" id="selectedTag">ELEMENT</div>
+        <label>Text<textarea id="editText" rows="4"></textarea></label>
+        <label>Text color<input id="editColor" type="text" placeholder="#ffffff"></label>
+        <label>Background<input id="editBackground" type="text" placeholder="#111827"></label>
+        <div class="two"><label>Font size<input id="editFontSize" type="text" placeholder="16px"></label><label>Radius<input id="editRadius" type="text" placeholder="12px"></label></div>
+        <label>Padding<input id="editPadding" type="text" placeholder="16px"></label>
+        <button class="primary wide" id="applyInspector">Apply live</button>
+        <button class="ghost wide" id="requestSavePreview">Save current preview</button>
+      </div>
+    </aside>
+  </div>
+</section>
+
+<section class="view" id="view-workspace"><div class="section-head"><div><span class="eyebrow">PROJECT</span><h2>Workspace</h2></div><button class="ghost" id="workspaceRefresh">Refresh</button></div><div class="workspace-grid"><div class="panel file-panel"><div class="panel-title">Files <span id="workspaceFileCount"></span></div><div id="fileList" class="file-list"></div></div><div class="panel preview-panel"><div class="panel-title"><span id="fileName">Select a file</span></div><pre id="fileContent">Choose a file from the workspace.</pre></div></div></section>
+
+<section class="view" id="view-activity"><div class="section-head"><div><span class="eyebrow">SESSION</span><h2>Activity</h2></div><button class="ghost" id="activityRefresh">Refresh</button></div><div class="panel activity-panel"><div id="activityList"></div></div></section>
+
+<section class="view" id="view-settings"><div class="section-head"><div><span class="eyebrow">CONTROL</span><h2>Settings</h2></div></div><div class="settings-grid"><div class="panel"><div class="panel-title">Runtime</div><label>Default provider<select id="settingsProvider"></select></label><label>Default model<input id="settingsModel" type="text"></label><button class="primary" id="saveProvider">Save provider</button></div><div class="panel"><div class="panel-title">Provider keys</div><p class="muted">Credentials stay on the machine. The UI only reports whether a provider is configured.</p><div id="keyRows"></div></div></div></section>
+</main>
+</div>
+<div id="toast" class="toast"></div>
+<script src="/assets/app.js" defer></script>
+</body>
+</html>
