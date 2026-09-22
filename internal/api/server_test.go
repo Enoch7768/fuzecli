@@ -20,21 +20,22 @@ func TestRequireExternalToken(t *testing.T) {
 
 func TestSecurityHeaders(t *testing.T) {
 	server := NewServer(nil, "")
-	handler := server.securityHeaders(httpHandlerFunc(func(w *httptest.ResponseRecorder, r *http.Request) {
-		w.WriteHeader(200)
+	handler := server.securityHeaders(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
 	}))
-	req := httptest.NewRequest("GET", "http://127.0.0.1/", nil)
+	req := httptest.NewRequest(http.MethodGet, "http://127.0.0.1/", nil)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
-	for _, name := range []string{"Content-Security-Policy", "X-Frame-Options", "X-Content-Type-Options", "Referrer-Policy", "Permissions-Policy"} {
+
+	for _, name := range []string{
+		"Content-Security-Policy",
+		"X-Frame-Options",
+		"X-Content-Type-Options",
+		"Referrer-Policy",
+		"Permissions-Policy",
+	} {
 		if rec.Header().Get(name) == "" {
 			t.Fatalf("missing security header %s", name)
 		}
 	}
-}
-
-type httpHandlerFunc func(*httptest.ResponseRecorder, *httptest.Request)
-
-func (f httpHandlerFunc) ServeHTTP(w http.ResponseWriter, r *httptest.Request) {
-	f(w.(*httptest.ResponseRecorder), r.(*httptest.Request))
 }
