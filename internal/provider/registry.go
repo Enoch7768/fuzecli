@@ -537,10 +537,6 @@ func (r *Registry) continueStream(ctx context.Context, name string, messages []M
 		current := initial
 		combined := strings.Builder{}
 		continuations := 0
-		threshold := int(float64(opts.MaxTokens) * 3.2)
-		if threshold < 1800 {
-			threshold = 1800
-		}
 		for {
 			finished := false
 			for chunk := range current {
@@ -557,7 +553,7 @@ func (r *Registry) continueStream(ctx context.Context, name string, messages []M
 				}
 			}
 			partial := strings.TrimSpace(combined.String())
-			if !finished || continuations >= 8 || (combined.Len() < threshold && !responseNeedsContinuation(partial)) || !responseNeedsContinuation(partial) {
+			if !finished || continuations >= 8 || !responseNeedsContinuation(partial) {
 				out <- StreamChunk{Done: true}
 				return
 			}
