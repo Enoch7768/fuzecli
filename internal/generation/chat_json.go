@@ -190,7 +190,7 @@ func (e *Engine) ParseChatPlan(ctx context.Context, raw string) (Plan, error) {
 }
 
 func (e *Engine) normalizeChatResponse(ctx context.Context, raw string, parseErr error) (ChatResponse, error) {
-	const maxNormalizerInput = 160000
+	const maxNormalizerInput = 900000
 	if len(raw) > maxNormalizerInput {
 		raw = raw[:maxNormalizerInput]
 	}
