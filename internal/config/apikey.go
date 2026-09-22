@@ -7,9 +7,9 @@ import (
 )
 
 var supportedAPIKeyProviders = map[string]bool{
-	"openai": true,
-	"gemini": true,
-	"groq": true,
+	"openai":    true,
+	"gemini":    true,
+	"groq":      true,
 	"anthropic": true,
 }
 
