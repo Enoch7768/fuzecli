@@ -3,7 +3,7 @@ package api
 import (
 	"crypto/rand"
 	"encoding/hex"
-	"errors"
+	"errors"\n\t"net"
 	"os"
 	"strings"
 )
@@ -28,10 +28,17 @@ func RequireExternalToken(addr, token string) error {
 }
 
 func isLoopbackAddress(addr string) bool {
-	host := strings.TrimSpace(addr)
-	if i := strings.LastIndex(host, ":"); i >= 0 {
-		host = strings.Trim(host[:i], "[]")
+	addr = strings.TrimSpace(addr)
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		host = strings.Trim(strings.TrimSpace(addr), "[]")
 	}
-	host = strings.ToLower(host)
-	return host == "127.0.0.1" || host == "::1" || host == "localhost"
+	if host == "" {
+		return false
+	}
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
