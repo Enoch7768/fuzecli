@@ -306,6 +306,33 @@ func printTerminalStatus(providerName, model, root string) {
 	fmt.Println("  Commands  never executed automatically")
 }
 
+type terminalProgress struct {
+	last int
+}
+
+func newTerminalProgress() *terminalProgress {
+	return &terminalProgress{}
+}
+
+func (p *terminalProgress) update(percent int, label string) {
+	if percent <= p.last {
+		return
+	}
+	if percent > 100 {
+		percent = 100
+	}
+	p.last = percent
+	width := 28
+	filled := percent * width / 100
+	bar := strings.Repeat("█", filled) + strings.Repeat("░", width-filled)
+	fmt.Printf("\r\x1b[K\x1b[38;5;111m[%s]\x1b[0m %3d%%  %s", bar, percent, label)
+}
+
+func (p *terminalProgress) finish() {
+	p.update(100, "Complete")
+	fmt.Print("\n")
+}
+
 func formatTerminalError(err error) string {
 	if err == nil {
 		return ""
@@ -359,12 +386,23 @@ func (a *App) terminalStream(ctx context.Context, prompt, providerName, model st
 	jsonPossible := false
 	var parsedJSON *generation.ChatResponse
 	fmt.Print("\n")
+	progress := newTerminalProgress()
+	progress.update(8, "Connecting")
+	defer progress.finish()
 	for chunk := range stream {
 		if chunk.Error != nil {
 			return fmt.Errorf("provider stream failed: %w", chunk.Error)
 		}
 		if chunk.Delta != "" {
 			response.WriteString(chunk.Delta)
+			percent := 18
+			if response.Len() > 8192 {
+				percent = 45
+			}
+			if response.Len() > 32768 {
+				percent = 68
+			}
+			progress.update(percent, "Generating response")
 			trimmed := strings.TrimSpace(response.String())
 			if !jsonPossible && generation.LooksLikeChatPlanPrefix(trimmed) {
 				jsonPossible = true
@@ -385,10 +423,12 @@ func (a *App) terminalStream(ctx context.Context, prompt, providerName, model st
 			}
 		}
 		if chunk.Done {
+			progress.update(82, "Validating response")
 			break
 		}
 	}
 
+	progress.update(90, "Finalizing response")
 	if parsedJSON != nil {
 		if parsedJSON.Type == "chat" {
 			fmt.Printf("\r\x1b[K%s\n", parsedJSON.Response)
