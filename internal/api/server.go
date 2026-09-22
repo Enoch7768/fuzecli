@@ -5,7 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"net/http"
+	"net"\n\t"net/http"
 	"strings"
 	"time"
 )
@@ -105,12 +105,12 @@ func (s *Server) securityHeaders(next http.Handler) http.Handler {
 }
 
 func isLoopbackRequest(r *http.Request) bool {
-	host := r.Host
-	if i := strings.LastIndex(host, ":"); i >= 0 {
-		host = strings.Trim(host[:i], "[]")
+	host, _, err := net.SplitHostPort(strings.TrimSpace(r.RemoteAddr))
+	if err != nil {
+		host = strings.Trim(strings.TrimSpace(r.RemoteAddr), "[]")
 	}
-	host = strings.ToLower(host)
-	return host == "127.0.0.1" || host == "localhost" || host == "::1"
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 func (s *Server) web(w http.ResponseWriter, r *http.Request) {
