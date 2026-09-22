@@ -64,7 +64,11 @@ func (r *Registry) Send(ctx context.Context, name string, messages []Message, op
 		if err := validateRequestBudget(name, requestMessages, request); err != nil {
 			return nil, err
 		}
-		return r.sendWithRetry(ctx, name, requestMessages, request)
+		response, err := r.sendWithRetry(ctx, name, requestMessages, request)
+		if err != nil {
+			return nil, err
+		}
+		return r.continueResponse(ctx, name, requestMessages, request, response)
 	}
 	var last error
 	for _, candidate := range r.fallback {
@@ -83,7 +87,7 @@ func (r *Registry) Send(ctx context.Context, name string, messages []Message, op
 		}
 		response, err := r.sendWithRetry(ctx, candidate, requestMessages, request)
 		if err == nil {
-			return response, nil
+			return r.continueResponse(ctx, candidate, requestMessages, request, response)
 		}
 		if errors.Is(err, ErrRateLimited) || errors.Is(err, ErrProviderUnavailable) || errors.Is(err, ErrRequestTooLarge) {
 			last = err
@@ -553,7 +557,7 @@ func (r *Registry) continueStream(ctx context.Context, name string, messages []M
 				}
 			}
 			partial := strings.TrimSpace(combined.String())
-			if !finished || opts.JSONMode || continuations >= 2 || combined.Len() < threshold || !needsContinuation(partial) {
+			if !finished || continuations >= 8 || (combined.Len() < threshold && !responseNeedsContinuation(partial)) || !responseNeedsContinuation(partial) {
 				out <- StreamChunk{Done: true}
 				return
 			}
@@ -576,6 +580,100 @@ func (r *Registry) continueStream(ctx context.Context, name string, messages []M
 		}
 	}()
 	return out
+}
+
+func (r *Registry) continueResponse(ctx context.Context, name string, messages []Message, opts RequestOptions, response *Response) (*Response, error) {
+	if response == nil || !responseNeedsContinuation(response.Content) {
+		return response, nil
+	}
+	combined := response.Content
+	for attempt := 0; attempt < 8; attempt++ {
+		continuationMessages := make([]Message, 0, len(messages)+2)
+		continuationMessages = append(continuationMessages, messages...)
+		continuationMessages = append(continuationMessages,
+			Message{Role: "assistant", Content: combined},
+			Message{Role: "user", Content: "Continue the previous response exactly where it stopped. Do not repeat any content already given. Return only the missing continuation and finish the response completely. If the response is structured JSON, continue until the JSON object is complete and valid."},
+		)
+		continuationMessages, continuationOptions := adaptRequest(name, continuationMessages, opts)
+		next, err := r.sendWithRetry(ctx, name, continuationMessages, continuationOptions)
+		if err != nil {
+			return nil, err
+		}
+		if next == nil || strings.TrimSpace(next.Content) == "" {
+			break
+		}
+		combined += next.Content
+		response.Content = combined
+		if next.Model != "" {
+			response.Model = next.Model
+		}
+		if next.ProviderName != "" {
+			response.ProviderName = next.ProviderName
+		}
+		response.Usage.PromptTokens += next.Usage.PromptTokens
+		response.Usage.CompletionTokens += next.Usage.CompletionTokens
+		response.Usage.TotalTokens += next.Usage.TotalTokens
+		if !responseNeedsContinuation(combined) {
+			return response, nil
+		}
+	}
+	return response, nil
+}
+
+func responseNeedsContinuation(text string) bool {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return false
+	}
+	if strings.HasPrefix(text, "{") || strings.HasPrefix(text, "[") {
+		return !jsonDocumentComplete(text)
+	}
+	return needsContinuation(text)
+}
+
+func jsonDocumentComplete(text string) bool {
+	start := strings.IndexAny(text, "{[")
+	if start < 0 {
+		return false
+	}
+	stack := make([]byte, 0, 16)
+	inString := false
+	escaped := false
+	for i := start; i < len(text); i++ {
+		c := text[i]
+		if inString {
+			if escaped {
+				escaped = false
+				continue
+			}
+			if c == '\\' {
+				escaped = true
+				continue
+			}
+			if c == '"' {
+				inString = false
+			}
+			continue
+		}
+		if c == '"' {
+			inString = true
+			continue
+		}
+		switch c {
+		case '{', '[':
+			stack = append(stack, c)
+		case '}', ']':
+			if len(stack) == 0 {
+				return false
+			}
+			open := stack[len(stack)-1]
+			if (open == '{' && c != '}') || (open == '[' && c != ']') {
+				return false
+			}
+			stack = stack[:len(stack)-1]
+		}
+	}
+	return !inString && len(stack) == 0
 }
 
 func needsContinuation(text string) bool {
