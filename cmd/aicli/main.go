@@ -58,6 +58,10 @@ func run(args []string) error {
 		return chatCommand(args[1:])
 	case "api":
 		return apiCommand(args[1:])
+	case "app":
+		return appCommand(args[1:])
+	case "apikey":
+		return apiKeyCommand(args[1:])
 	case "mcp":
 		return mcpCommand()
 	case "doctor":
@@ -337,6 +341,81 @@ func apiCommand(args []string) error {
 	return server.ListenAndServe(addr)
 }
 
+func appCommand(args []string) error {
+	addr := "127.0.0.1:8787"
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--addr":
+			if i+1 >= len(args) {
+				return fmt.Errorf("missing value for --addr")
+			}
+			addr = args[i+1]
+			i++
+		case "--help", "-h":
+			fmt.Println("Usage: aicli app [--addr 127.0.0.1:8787]")
+			return nil
+		default:
+			return fmt.Errorf("unknown app option %q", args[i])
+		}
+	}
+	a, err := app.Load()
+	if err != nil {
+		return err
+	}
+	defer a.Close()
+	if err := a.AttachWorkspace("."); err != nil {
+		return err
+	}
+	server := api.NewServer(api.NewService(a), api.TokenFromEnvironment())
+	fmt.Printf("FuzeCLI web app: http://%s
+", addr)
+	return server.ListenAndServe(addr)
+}
+
+func apiKeyCommand(args []string) error {
+	if len(args) == 0 {
+		fmt.Println("Usage: aicli apikey set <provider> <key>")
+		fmt.Println("       aicli apikey clear <provider>")
+		fmt.Println("       aicli apikey status")
+		return nil
+	}
+	switch args[0] {
+	case "set":
+		if len(args) != 3 {
+			return fmt.Errorf("usage: aicli apikey set <provider> <key>")
+		}
+		if err := config.SetAPIKey(args[1], args[2]); err != nil {
+			return err
+		}
+		fmt.Printf("API key saved for %s.\n", args[1])
+		return nil
+	case "clear":
+		if len(args) != 2 {
+			return fmt.Errorf("usage: aicli apikey clear <provider>")
+		}
+		if err := config.ClearAPIKey(args[1]); err != nil {
+			return err
+		}
+		fmt.Printf("API key cleared for %s.\n", args[1])
+		return nil
+	case "status":
+		status, err := config.APIKeyStatus()
+		if err != nil {
+			return err
+		}
+		for _, name := range []string{"gemini", "openai", "groq", "anthropic"} {
+			if status[name] {
+				fmt.Printf("%s: configured\n", name)
+			} else {
+				fmt.Printf("%s: not configured\n", name)
+			}
+		}
+		return nil
+	default:
+		return fmt.Errorf("unknown apikey command %q", args[0])
+	}
+}
+
 func mcpCommand() error {
 	a, err := app.Load()
 	if err != nil {
@@ -582,7 +661,11 @@ Developer tools:
   aicli profile show|extract         Inspect or refresh developer profile
 
 Integration:
+  aicli app [--addr host:port]       Start the polished local web app
   aicli api [--addr host:port]       Start the local API server
+  aicli apikey set <provider> <key>  Save a provider API key
+  aicli apikey status                Show provider key status
+  aicli apikey clear <provider>      Remove a provider API key
   aicli mcp                          Start the MCP server
 
 Configuration:
