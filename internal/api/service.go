@@ -11,9 +11,9 @@ import (
 	"unicode/utf8"
 
 	"github.com/Enoch7768/fuzecli/internal/app"
+	"github.com/Enoch7768/fuzecli/internal/config"
 	"github.com/Enoch7768/fuzecli/internal/generation"
 	"github.com/Enoch7768/fuzecli/internal/provider"
-	"github.com/Enoch7768/fuzecli/internal/config"
 )
 
 const MaxAttachmentBytes = 65536
