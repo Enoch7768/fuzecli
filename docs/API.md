@@ -1,47 +1,87 @@
 # FuzeCLI API
 
-FuzeCLI exposes a local HTTP API for applications that need access to the active workspace and FuzeCLI chat engine.
+FuzeCLI exposes a local HTTP API and an embedded web application.
 
-## Start
+## Web application
+
+Start the polished local interface with:
 
 ```powershell
-aicli api
+aicli app
 ```
 
-Default address:
+Open:
 
 ```text
 http://127.0.0.1:8787
 ```
 
-Custom address:
+The interface is embedded into the FuzeCLI executable. It does not require Node, npm, a separate frontend server, or an internet connection.
+
+The web app includes:
+
+- Chat with provider and model selection
+- Automatic generated-file application
+- Workspace file browser and text preview
+- Session activity/history
+- Provider/model settings
+- Provider-key configuration status without exposing key values
+- Responsive navigation for smaller screens
+
+## API
+
+Start the API with:
 
 ```powershell
-aicli api --addr 127.0.0.1:9000
+aicli api
 ```
 
+The default address is:
 
+```text
+http://127.0.0.1:8787
+```
 
-## Health
+A non-loopback address is refused unless `FUZECLI_API_TOKEN` is configured.
+
+Example:
+
+```powershell
+$env:FUZECLI_API_TOKEN="replace-with-a-long-random-token"
+aicli api --addr 0.0.0.0:8787
+```
+
+External API requests must send:
+
+```http
+Authorization: Bearer YOUR_TOKEN
+```
+
+The browser application uses a short-lived local HttpOnly session cookie and strict local-origin checks instead of placing the API token in browser JavaScript.
+
+## Endpoints
+
+### Health
 
 ```http
 GET /v1/health
 ```
 
-Response:
+### Configuration
 
-```json
-{"ok":true,"workspace":"C:/project"}
+```http
+GET /v1/config
+POST /v1/config
 ```
 
-## Chat
+The GET response contains provider names, default models, configuration status, and workspace path. It never contains provider API-key values.
+
+### Chat
 
 ```http
 POST /v1/chat
 Content-Type: application/json
 ```
-
-Request:
 
 ```json
 {
@@ -53,45 +93,56 @@ Request:
 }
 ```
 
-`files` contains workspace-relative text paths. Files are validated as workspace-bound UTF-8 text and limited to 64 KiB each. When the model returns valid FuzeCLI file JSON and `apply` is true, the changes are applied automatically.
+`files` contains workspace-relative UTF-8 text paths. Each attachment is limited to 64 KiB and the request body is capped.
 
-Generated command metadata is not executed automatically.
-
-## Web event lifecycle
-
-The local web application consumes `/api/events` as server-sent events. A normal request emits planning/generating events, streamed `chat_token` events, and one terminal `chat_end` event. A generated-file event may precede `chat_end`.
-
-The client must treat `chat_end` as the authoritative response-completion signal and must make the next request available immediately after receiving it.
-
-## Read a file
+### Read a file
 
 ```http
 GET /v1/file?path=src/app.js
 ```
 
-The endpoint returns the UTF-8 text of a workspace-relative file and rejects paths outside the workspace.
-
-## List files
+### List files
 
 ```http
 GET /v1/files
 GET /v1/files?prefix=src
 ```
 
-The listing excludes `.git` and `.aicli` and is capped at 1000 paths.
-
-## Authentication
-
-By default the API binds to loopback and does not need a token. Set `FUZECLI_API_TOKEN` to require:
+### History
 
 ```http
-Authorization: Bearer YOUR_TOKEN
+GET /v1/history
 ```
 
-## Provider keys
+### Touched files
 
-Provider API keys are configured locally through FuzeCLI configuration. The web application's `/api/config` endpoint accepts a key for the selected provider, but its GET response exposes only `api_key_configured: true|false`; the stored key value is never returned to the browser.
+```http
+GET /v1/touched
+```
 
-Changing a key is a state-changing request and is limited to the local browser origin. Keys are stored in the local FuzeCLI configuration, not in the workspace database or browser history.
+## API keys
 
-See [SECURITY.md](SECURITY.md) for the complete security model.
+Provider keys are stored locally by FuzeCLI. The simple CLI command is:
+
+```powershell
+aicli apikey set gemini YOUR_KEY
+aicli apikey set openai YOUR_KEY
+aicli apikey set groq YOUR_KEY
+aicli apikey set anthropic YOUR_KEY
+```
+
+Check status:
+
+```powershell
+aicli apikey status
+```
+
+Remove a key:
+
+```powershell
+aicli apikey clear gemini
+```
+
+Keys are never returned through the web configuration endpoint.
+
+See [SECURITY.md](SECURITY.md) for the security model.
