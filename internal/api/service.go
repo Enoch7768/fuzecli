@@ -93,7 +93,6 @@ func (s *Service) Chat(ctx context.Context, req ChatRequest) (ChatResponse, erro
 	if err := s.App.Store.AddMessage(provider.Message{Role: "assistant", Content: resp.Content}); err != nil {
 		return ChatResponse{}, err
 	}
-	engine := generation.Engine{Registry: s.App.Registry, Profile: &s.App.Profile, MaxContextChars: 120000}
 	parsed, parseErr := engine.ParseChatResponse(ctx, resp.Content)
 	content := resp.Content
 	if parseErr == nil {
