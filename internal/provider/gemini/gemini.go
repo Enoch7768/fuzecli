@@ -111,12 +111,41 @@ func buildGenerationConfig(opts provider.RequestOptions) map[string]any {
 	if opts.JSONMode {
 		config["responseMimeType"] = "application/json"
 		if opts.JSONSchema != nil {
-			config["responseSchema"] = opts.JSONSchema
+			config["responseSchema"] = sanitizeSchema(opts.JSONSchema)
 		} else {
 			config["responseSchema"] = generationJSONSchema()
 		}
 	}
 	return config
+}
+
+func sanitizeSchema(value any) any {
+	switch schema := value.(type) {
+	case map[string]any:
+		allowed := map[string]bool{
+			"type": true, "format": true, "title": true, "description": true,
+			"nullable": true, "enum": true, "properties": true, "required": true,
+			"items": true, "propertyOrdering": true, "minItems": true, "maxItems": true,
+			"minProperties": true, "maxProperties": true, "minimum": true, "maximum": true,
+			"pattern": true,
+		}
+		out := make(map[string]any, len(schema))
+		for key, item := range schema {
+			if !allowed[key] {
+				continue
+			}
+			out[key] = sanitizeSchema(item)
+		}
+		return out
+	case []any:
+		out := make([]any, len(schema))
+		for i, item := range schema {
+			out[i] = sanitizeSchema(item)
+		}
+		return out
+	default:
+		return value
+	}
 }
 
 func convert(messages []provider.Message) ([]content, *content) {
