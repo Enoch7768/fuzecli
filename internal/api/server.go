@@ -5,7 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"net"\n\t"net"\n\t"net/http"
+	"net"\n\t"net/http"
 	"strings"
 	"time"
 )
