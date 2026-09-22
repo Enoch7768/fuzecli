@@ -367,8 +367,7 @@ func appCommand(args []string) error {
 		return err
 	}
 	server := api.NewServer(api.NewService(a), api.TokenFromEnvironment())
-	fmt.Printf("FuzeCLI web app: http://%s
-", addr)
+	fmt.Printf("FuzeCLI web app: http://%s\n", addr)
 	return server.ListenAndServe(addr)
 }
 
