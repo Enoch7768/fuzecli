@@ -92,11 +92,11 @@ aicli doctor
 FuzeCLI stores provider configuration in `%APPDATA%\\aicli\\config.yaml`.
 
 ```powershell
-aicli config set openai.api_key sk-...
-aicli config set gemini.api_key YOUR_KEY
-aicli config set groq.api_key gsk-...
+aicli apikey set openai sk-...
+aicli apikey set gemini YOUR_KEY
+aicli apikey set groq gsk-...
+aicli apikey status
 aicli config set default_provider gemini
-aicli config show
 ```
 
 `config show` masks API keys. The web Settings screen can replace or clear a provider key without exposing the stored value back to the browser.
@@ -125,11 +125,11 @@ Start the polished local interface with:
 aicli app
 ```
 
-Open `http://127.0.0.1:8787`.
+Open `http://127.0.0.1:8787`. The web UI is embedded in the Go binary; no Node.js server is required.
 
 The web app provides provider/model selection, local provider-key management, saved chat history, file upload, workspace visibility, streaming responses, generated-file cards, and responsive mobile navigation. The interface uses the repository-root `icon.png` and `icon-mark.png` when those files are present.
 
-See [docs/WEB.md](docs/WEB.md) for the complete web workflow.
+See [docs/WEB.md](docs/WEB.md) for the complete web workflow and [docs/API.md](docs/API.md) for API authentication.
 
 ## Interactive terminal
 
