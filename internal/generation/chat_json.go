@@ -33,12 +33,11 @@ type ChatResponse struct {
 func ChatResponseSchema() map[string]any {
 	return map[string]any{
 		"type":                 "object",
-		"additionalProperties": false,
 		"properties": map[string]any{
 			"type":        map[string]any{"type": "string", "enum": []string{"chat", "edit"}},
 			"response":    map[string]any{"type": "string", "description": "Natural-language response for compatibility with the FuzeCLI chat envelope."},
 			"message":     map[string]any{"type": "string", "description": "Natural-language response when no file changes are required."},
-			"files":       map[string]any{"type": "array", "items": map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{"path": map[string]any{"type": "string"}, "content": map[string]any{"type": "string"}, "action": map[string]any{"type": "string", "enum": []string{"create", "modify", "delete"}}, "line_start": map[string]any{"type": "integer"}, "line_end": map[string]any{"type": "integer"}}, "required": []string{"path", "content"}}},
+			"files":       map[string]any{"type": "array", "items": map[string]any{"type": "object", "properties": map[string]any{"path": map[string]any{"type": "string"}, "content": map[string]any{"type": "string"}, "action": map[string]any{"type": "string", "enum": []string{"create", "modify", "delete"}}, "line_start": map[string]any{"type": "integer"}, "line_end": map[string]any{"type": "integer"}}, "required": []string{"path", "content"}}},
 			"explanation": map[string]any{"type": "string"},
 			"commands":    map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
 		},
