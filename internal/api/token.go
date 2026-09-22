@@ -3,7 +3,8 @@ package api
 import (
 	"crypto/rand"
 	"encoding/hex"
-	"errors"\n\t"net"
+	"errors"
+	"net"
 	"os"
 	"strings"
 )
