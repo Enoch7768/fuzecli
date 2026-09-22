@@ -59,7 +59,11 @@ func (s *Server) ListenAndServe(addr string) error {
 
 func (s *Server) auth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/" || strings.HasPrefix(r.URL.Path, "/assets/") || strings.HasPrefix(r.URL.Path, "/preview/") {
+		if r.URL.Path == "/" || strings.HasPrefix(r.URL.Path, "/assets/") {
+			next.ServeHTTP(w, r)
+			return
+		}
+		if strings.HasPrefix(r.URL.Path, "/preview/") && isLoopbackRequest(r) {
 			next.ServeHTTP(w, r)
 			return
 		}
