@@ -18,6 +18,7 @@ type RequestOptions struct {
 	JSONMode          bool
 	JSONSchema        map[string]any
 	RequestTokenLimit int
+	BillingMode       string
 }
 
 type Response struct {
