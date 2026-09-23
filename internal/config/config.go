@@ -34,7 +34,6 @@ func Default() Config {
 	providers := map[string]ProviderConfig{
 		"openai":            {DefaultModel: "gpt-4o"},
 		"gemini":            {DefaultModel: "gemini-3.6-flash"},
-		"gemini-normalizer": {DefaultModel: "gemini-3.6-flash"},
 		"groq":              {DefaultModel: "openai/gpt-oss-20b"},
 		"anthropic":         {DefaultModel: "claude-sonnet-4-6"},
 		"llamacpp":          {BaseURL: "http://localhost:8080", DefaultModel: "local"},
@@ -168,7 +167,7 @@ func renderYAML(c Config) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "default_provider: %s\n", yamlScalar(c.DefaultProvider))
 	b.WriteString("providers:\n")
-	names := []string{"openai", "gemini", "gemini-normalizer", "groq", "anthropic", "llamacpp"}
+	names := []string{"openai", "gemini", "groq", "anthropic", "llamacpp"}
 	seen := map[string]bool{}
 	for _, name := range names {
 		p, ok := c.Providers[name]
