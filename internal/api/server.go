@@ -16,15 +16,16 @@ import (
 )
 
 type Server struct {
-	service   *Service
-	token     string
-	uiSession string
+	service        *Service
+	token          string
+	uiSession      string
+	runtimePreview *runtimePreviewManager
 }
 
 func NewServer(service *Service, token string) *Server {
 	session := make([]byte, 24)
 	_, _ = rand.Read(session)
-	return &Server{service: service, token: strings.TrimSpace(token), uiSession: hex.EncodeToString(session)}
+	return &Server{service: service, token: strings.TrimSpace(token), uiSession: hex.EncodeToString(session), runtimePreview: &runtimePreviewManager{}}
 }
 
 func (s *Server) Handler() http.Handler {
@@ -37,6 +38,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/v1/chat", s.chat)
 	mux.HandleFunc("/v1/file", s.file)
 	mux.HandleFunc("/preview/", s.preview)
+	mux.HandleFunc("/v1/preview/runtime", s.runtimePreviewHandler)
 	mux.HandleFunc("/v1/files", s.files)
 	mux.HandleFunc("/v1/history", s.history)
 	mux.HandleFunc("/v1/touched", s.touched)
@@ -105,7 +107,7 @@ func (s *Server) origin(next http.Handler) http.Handler {
 
 func (s *Server) securityHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'")
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; frame-src 'self' http://127.0.0.1:* http://localhost:*; child-src 'self' http://127.0.0.1:* http://localhost:*; form-action 'self'")
 		w.Header().Set("X-Frame-Options", "DENY")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("Referrer-Policy", "no-referrer")
@@ -199,6 +201,33 @@ func (s *Server) file(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"path": path, "content": content})
+}
+
+func (s *Server) runtimePreviewHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodDelete {
+		if s.runtimePreview != nil {
+			s.runtimePreview.Stop()
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+		return
+	}
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	if !isLoopbackRequest(r) {
+		writeError(w, http.StatusForbidden, "runtime preview is local-only")
+		return
+	}
+	if s.runtimePreview == nil {
+		s.runtimePreview = &runtimePreviewManager{}
+	}
+	info, err := s.runtimePreview.Start(s.service.Root(), r.URL.Query().Get("runtime"))
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, info)
 }
 
 func (s *Server) preview(w http.ResponseWriter, r *http.Request) {
