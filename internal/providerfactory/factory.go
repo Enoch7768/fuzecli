@@ -22,7 +22,7 @@ import (
 	"github.com/Enoch7768/fuzecli/internal/provider/friendli"
 	"github.com/Enoch7768/fuzecli/internal/provider/githubmodels"
 	"github.com/Enoch7768/fuzecli/internal/provider/hyperbolic"
-	inferencenet inferencenet "github.com/Enoch7768/fuzecli/internal/provider/inferencenet"
+	"github.com/Enoch7768/fuzecli/internal/provider/inferencenet"
 	"github.com/Enoch7768/fuzecli/internal/provider/inworld"
 	"github.com/Enoch7768/fuzecli/internal/provider/jan"
 	"github.com/Enoch7768/fuzecli/internal/provider/lambda"
