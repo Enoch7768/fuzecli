@@ -8,13 +8,13 @@ import (
 	"github.com/Enoch7768/fuzecli/internal/provider"
 )
 
-// JSONNormalizerProvider is the dedicated Gemini-backed repair provider.
+// JSONNormalizerProvider is the dedicated Groq-backed repair provider.
 // It is configured independently from the user's normal chat provider so a
 // malformed structured response can still be repaired reliably.
-const JSONNormalizerProvider = "gemini-normalizer"
+const JSONNormalizerProvider = "groq"
 
 func normalizeWithConfiguredProvider(ctx context.Context, raw string, parseErr error) (ChatResponse, error) {
-	registry := provider.NewRegistry(nil, map[string]string{JSONNormalizerProvider: "gemini-3.6-flash"})
+	registry := provider.NewRegistry(nil, map[string]string{JSONNormalizerProvider: "openai/gpt-oss-20b"})
 	return normalizeWithRegistry(ctx, raw, parseErr, registry)
 }
 
@@ -26,20 +26,15 @@ func normalizeWithRegistry(ctx context.Context, raw string, parseErr error, regi
 	return engine.normalizeChatResponse(ctx, raw, parseErr)
 }
 
-// normalizerCandidates prefers the dedicated Gemini normalizer. The ordinary
-// Gemini provider is retained as a compatibility fallback, followed by auto
-// mode when the application has one configured.
+// normalizerCandidates uses Groq as the dedicated JSON repair provider.
 func normalizerCandidates(registry *provider.Registry) []string {
 	if registry == nil {
 		return nil
 	}
-	candidates := make([]string, 0, 3)
-	for _, name := range []string{"gemini", "auto"} {
-		if _, err := registry.Get(name); err == nil {
-			candidates = append(candidates, name)
-		}
+	if _, err := registry.Get("groq"); err != nil {
+		return nil
 	}
-	return candidates
+	return []string{"groq"}
 }
 
 func normalizeFailureSummary(errs []error) string {
