@@ -8,7 +8,7 @@ import (
 	"strings"
 	"sync"
 	"time"
-
+)
 
 type Registry struct {
 	providers  map[string]Provider
