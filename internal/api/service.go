@@ -241,6 +241,13 @@ func (s *Service) ListFiles(prefix string) ([]string, error) {
 	return files, nil
 }
 
+func (s *Service) Telemetry() (provider.TelemetrySnapshot, error) {
+	if s == nil || s.App == nil || s.App.Registry == nil {
+		return provider.TelemetrySnapshot{}, errors.New("application not initialized")
+	}
+	return s.App.Registry.Telemetry(), nil
+}
+
 func (s *Service) Root() string {
 	if s == nil || s.App == nil || s.App.Store == nil {
 		return ""
