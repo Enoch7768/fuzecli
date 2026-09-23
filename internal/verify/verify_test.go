@@ -11,6 +11,12 @@ func TestDetectGoProject(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module example.com/test\n\ngo 1.25\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.WriteFile(filepath.Join(root, "main.go"), []byte("package main\n\nfunc answer() int { return 42 }\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "main_test.go"), []byte("package main\n\nimport \"testing\"\n\nfunc TestFailure(t *testing.T) {\n\tt.Fatal(\"intentional verification failure\")\n}\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
 	result, err := Detect(root, nil)
 	if err != nil {
 		t.Fatal(err)
