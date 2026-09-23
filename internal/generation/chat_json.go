@@ -9,7 +9,6 @@ import (
 	"io"
 	"strings"
 
-	"github.com/Enoch7768/fuzecli/internal/provider"
 )
 
 type chatFileChange struct {
@@ -164,14 +163,7 @@ func (r ChatResponse) ToPlan() (Plan, error) {
 }
 
 func (e *Engine) ParseChatResponse(ctx context.Context, raw string) (ChatResponse, error) {
-	response, err := ParseChatResponse(raw)
-	if err == nil {
-		return response, nil
-	}
-	if e == nil || e.Registry == nil {
-		return ChatResponse{}, err
-	}
-	return e.normalizeChatResponse(ctx, raw, err)
+	return ParseChatResponse(raw)
 }
 
 func (e *Engine) ParseChatPlan(ctx context.Context, raw string) (Plan, error) {
