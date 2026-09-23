@@ -78,6 +78,16 @@ func Load() (Config, error) {
 	if err := parseYAML(string(b), &c); err != nil {
 		return Config{}, fmt.Errorf("parse config: %w", err)
 	}
+	if c.Providers["gemini"].DefaultModel == "gemini-2.5-flash" || c.Providers["gemini"].DefaultModel == "models/gemini-2.5-flash" {
+		c.Providers["gemini"] = ProviderConfig{
+			APIKey: c.Providers["gemini"].APIKey,
+			BaseURL: c.Providers["gemini"].BaseURL,
+			DefaultModel: "gemini-3.6-flash",
+		}
+		if err := Save(c); err != nil {
+			return Config{}, err
+		}
+	}
 	syncProviderConfiguration(c)
 	return c, nil
 }
