@@ -626,12 +626,6 @@ func truncateMessage(message Message, maxChars int) Message {
 	return message
 }
 
-func minInt(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
 
 func (r *Registry) continueStream(ctx context.Context, name string, messages []Message, opts RequestOptions, initial <-chan StreamChunk) <-chan StreamChunk {
 	out := make(chan StreamChunk)
