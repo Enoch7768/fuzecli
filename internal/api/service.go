@@ -70,7 +70,7 @@ func (s *Service) Chat(ctx context.Context, req ChatRequest) (ChatResponse, erro
 	if err != nil {
 		return ChatResponse{}, err
 	}
-	system := generation.StrictExecutionMode + "\n\nYou are FuzeCLI, a practical coding assistant. Use natural language for ordinary conversation. For requests that create, modify, or delete project files, return ONLY one valid JSON object with this shape: {\"files\":[{\"path\":\"relative/path.ext\",\"line_start\":1,\"line_end\":1000,\"content\":\"full file content\"}],\"explanation\":\"brief explanation\",\"commands\":[]}. The action field is optional; when absent, FuzeCLI infers create or modify from the workspace. Never use markdown fences around generation JSON."
+	system := generation.SessionSystemPrompt() + "\n\nYou are FuzeCLI, a practical coding assistant. Use the session response contract above for every response and never ask the user to provide source files that FuzeCLI already supplied."
 	if workspaceContext != "" {
 		system += "\nRelevant workspace files read from disk:\n" + workspaceContext
 	}
