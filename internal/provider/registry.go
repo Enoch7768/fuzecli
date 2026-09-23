@@ -8,6 +8,60 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	openrouter "github.com/Enoch7768/fuzecli/internal/provider/openrouter"
+	together "github.com/Enoch7768/fuzecli/internal/provider/together"
+	fireworks "github.com/Enoch7768/fuzecli/internal/provider/fireworks"
+	cerebras "github.com/Enoch7768/fuzecli/internal/provider/cerebras"
+	mistral "github.com/Enoch7768/fuzecli/internal/provider/mistral"
+	deepseek "github.com/Enoch7768/fuzecli/internal/provider/deepseek"
+	xai "github.com/Enoch7768/fuzecli/internal/provider/xai"
+	perplexity "github.com/Enoch7768/fuzecli/internal/provider/perplexity"
+	sambanova "github.com/Enoch7768/fuzecli/internal/provider/sambanova"
+	nvidia "github.com/Enoch7768/fuzecli/internal/provider/nvidia"
+	deepinfra "github.com/Enoch7768/fuzecli/internal/provider/deepinfra"
+	hyperbolic "github.com/Enoch7768/fuzecli/internal/provider/hyperbolic"
+	novita "github.com/Enoch7768/fuzecli/internal/provider/novita"
+	siliconflow "github.com/Enoch7768/fuzecli/internal/provider/siliconflow"
+	moonshot "github.com/Enoch7768/fuzecli/internal/provider/moonshot"
+	zhipu "github.com/Enoch7768/fuzecli/internal/provider/zhipu"
+	dashscope "github.com/Enoch7768/fuzecli/internal/provider/dashscope"
+	baichuan "github.com/Enoch7768/fuzecli/internal/provider/baichuan"
+	minimax "github.com/Enoch7768/fuzecli/internal/provider/minimax"
+	volcengine "github.com/Enoch7768/fuzecli/internal/provider/volcengine"
+	modelscope "github.com/Enoch7768/fuzecli/internal/provider/modelscope"
+	yi "github.com/Enoch7768/fuzecli/internal/provider/yi"
+	stepfun "github.com/Enoch7768/fuzecli/internal/provider/stepfun"
+	cohere "github.com/Enoch7768/fuzecli/internal/provider/cohere"
+	githubmodels "github.com/Enoch7768/fuzecli/internal/provider/githubmodels"
+	friendli "github.com/Enoch7768/fuzecli/internal/provider/friendli"
+	baseten "github.com/Enoch7768/fuzecli/internal/provider/baseten"
+	lambda "github.com/Enoch7768/fuzecli/internal/provider/lambda"
+	nebius "github.com/Enoch7768/fuzecli/internal/provider/nebius"
+	scaleway "github.com/Enoch7768/fuzecli/internal/provider/scaleway"
+	cloudflare "github.com/Enoch7768/fuzecli/internal/provider/cloudflare"
+	predibase "github.com/Enoch7768/fuzecli/internal/provider/predibase"
+	lepton "github.com/Enoch7768/fuzecli/internal/provider/lepton"
+	featherless "github.com/Enoch7768/fuzecli/internal/provider/featherless"
+	inferencenet "github.com/Enoch7768/fuzecli/internal/provider/inferencenet"
+	portkey "github.com/Enoch7768/fuzecli/internal/provider/portkey"
+	databricks "github.com/Enoch7768/fuzecli/internal/provider/databricks"
+	azureopenai "github.com/Enoch7768/fuzecli/internal/provider/azureopenai"
+	ollama "github.com/Enoch7768/fuzecli/internal/provider/ollama"
+	vllm "github.com/Enoch7768/fuzecli/internal/provider/vllm"
+	textgenerationinference "github.com/Enoch7768/fuzecli/internal/provider/textgenerationinference"
+	lmstudio "github.com/Enoch7768/fuzecli/internal/provider/lmstudio"
+	jan "github.com/Enoch7768/fuzecli/internal/provider/jan"
+	litellm "github.com/Enoch7768/fuzecli/internal/provider/litellm"
+	ai21 "github.com/Enoch7768/fuzecli/internal/provider/ai21"
+	alephalpha "github.com/Enoch7768/fuzecli/internal/provider/alephalpha"
+	inworld "github.com/Enoch7768/fuzecli/internal/provider/inworld"
+	novelai "github.com/Enoch7768/fuzecli/internal/provider/novelai"
+	togetherai "github.com/Enoch7768/fuzecli/internal/provider/togetherai"
+	openaicompatible "github.com/Enoch7768/fuzecli/internal/provider/openaicompatible"
+	custom1 "github.com/Enoch7768/fuzecli/internal/provider/custom1"
+	custom2 "github.com/Enoch7768/fuzecli/internal/provider/custom2"
+	custom3 "github.com/Enoch7768/fuzecli/internal/provider/custom3"
 )
 
 type Registry struct {
@@ -28,14 +82,76 @@ func NewRegistry(fallback []string, defaults map[string]string, providers ...Pro
 		registered[p.Name()] = p
 		requestMu[p.Name()] = &sync.Mutex{}
 	}
-	for _, spec := range compatibleCatalog {
-		if _, exists := registered[spec.Name]; exists {
+	for _, name := range CompatibleProviderNames() {
+		if _, exists := registered[name]; exists {
 			continue
 		}
-		registered[spec.Name] = newCompatibleProvider(spec, configuredFor(spec.Name))
-		requestMu[spec.Name] = &sync.Mutex{}
+		if p := newCatalogProvider(name); p != nil {
+			registered[name] = p
+			requestMu[name] = &sync.Mutex{}
+		}
 	}
 	return &Registry{providers: registered, fallback: append([]string(nil), fallback...), models: defaults, requestMu: requestMu, lastCall: map[string]time.Time{}, retryUntil: map[string]time.Time{}, attempts: map[string]int{}}
+}
+
+func newCatalogProvider(name string) Provider {
+	cfg := configuredFor(name)
+	switch name {
+	case "openrouter": return openrouter.New(cfg.APIKey, cfg.BaseURL)
+	case "together": return together.New(cfg.APIKey, cfg.BaseURL)
+	case "fireworks": return fireworks.New(cfg.APIKey, cfg.BaseURL)
+	case "cerebras": return cerebras.New(cfg.APIKey, cfg.BaseURL)
+	case "mistral": return mistral.New(cfg.APIKey, cfg.BaseURL)
+	case "deepseek": return deepseek.New(cfg.APIKey, cfg.BaseURL)
+	case "xai": return xai.New(cfg.APIKey, cfg.BaseURL)
+	case "perplexity": return perplexity.New(cfg.APIKey, cfg.BaseURL)
+	case "sambanova": return sambanova.New(cfg.APIKey, cfg.BaseURL)
+	case "nvidia": return nvidia.New(cfg.APIKey, cfg.BaseURL)
+	case "deepinfra": return deepinfra.New(cfg.APIKey, cfg.BaseURL)
+	case "hyperbolic": return hyperbolic.New(cfg.APIKey, cfg.BaseURL)
+	case "novita": return novita.New(cfg.APIKey, cfg.BaseURL)
+	case "siliconflow": return siliconflow.New(cfg.APIKey, cfg.BaseURL)
+	case "moonshot": return moonshot.New(cfg.APIKey, cfg.BaseURL)
+	case "zhipu": return zhipu.New(cfg.APIKey, cfg.BaseURL)
+	case "dashscope": return dashscope.New(cfg.APIKey, cfg.BaseURL)
+	case "baichuan": return baichuan.New(cfg.APIKey, cfg.BaseURL)
+	case "minimax": return minimax.New(cfg.APIKey, cfg.BaseURL)
+	case "volcengine": return volcengine.New(cfg.APIKey, cfg.BaseURL)
+	case "modelscope": return modelscope.New(cfg.APIKey, cfg.BaseURL)
+	case "yi": return yi.New(cfg.APIKey, cfg.BaseURL)
+	case "stepfun": return stepfun.New(cfg.APIKey, cfg.BaseURL)
+	case "cohere": return cohere.New(cfg.APIKey, cfg.BaseURL)
+	case "githubmodels": return githubmodels.New(cfg.APIKey, cfg.BaseURL)
+	case "friendli": return friendli.New(cfg.APIKey, cfg.BaseURL)
+	case "baseten": return baseten.New(cfg.APIKey, cfg.BaseURL)
+	case "lambda": return lambda.New(cfg.APIKey, cfg.BaseURL)
+	case "nebius": return nebius.New(cfg.APIKey, cfg.BaseURL)
+	case "scaleway": return scaleway.New(cfg.APIKey, cfg.BaseURL)
+	case "cloudflare": return cloudflare.New(cfg.APIKey, cfg.BaseURL)
+	case "predibase": return predibase.New(cfg.APIKey, cfg.BaseURL)
+	case "lepton": return lepton.New(cfg.APIKey, cfg.BaseURL)
+	case "featherless": return featherless.New(cfg.APIKey, cfg.BaseURL)
+	case "inferencenet": return inferencenet.New(cfg.APIKey, cfg.BaseURL)
+	case "portkey": return portkey.New(cfg.APIKey, cfg.BaseURL)
+	case "databricks": return databricks.New(cfg.APIKey, cfg.BaseURL)
+	case "azureopenai": return azureopenai.New(cfg.APIKey, cfg.BaseURL)
+	case "ollama": return ollama.New(cfg.APIKey, cfg.BaseURL)
+	case "vllm": return vllm.New(cfg.APIKey, cfg.BaseURL)
+	case "textgenerationinference": return textgenerationinference.New(cfg.APIKey, cfg.BaseURL)
+	case "lmstudio": return lmstudio.New(cfg.APIKey, cfg.BaseURL)
+	case "jan": return jan.New(cfg.APIKey, cfg.BaseURL)
+	case "litellm": return litellm.New(cfg.APIKey, cfg.BaseURL)
+	case "ai21": return ai21.New(cfg.APIKey, cfg.BaseURL)
+	case "alephalpha": return alephalpha.New(cfg.APIKey, cfg.BaseURL)
+	case "inworld": return inworld.New(cfg.APIKey, cfg.BaseURL)
+	case "novelai": return novelai.New(cfg.APIKey, cfg.BaseURL)
+	case "togetherai": return togetherai.New(cfg.APIKey, cfg.BaseURL)
+	case "openaicompatible": return openaicompatible.New(cfg.APIKey, cfg.BaseURL)
+	case "custom1": return custom1.New(cfg.APIKey, cfg.BaseURL)
+	case "custom2": return custom2.New(cfg.APIKey, cfg.BaseURL)
+	case "custom3": return custom3.New(cfg.APIKey, cfg.BaseURL)
+	default: return nil
+	}
 }
 
 func (r *Registry) Get(name string) (Provider, error) {
