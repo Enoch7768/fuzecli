@@ -220,7 +220,7 @@ func analyzeFile(path, language string) (int, []string, []string) {
 			imports := make([]string, 0, len(parsed.Imports))
 			for _, spec := range parsed.Imports {
 				if spec.Path != nil {
-					imports = append(imports, strings.Trim(spec.Path.Value, """))
+					imports = append(imports, strings.Trim(spec.Path.Value, "\""))
 				}
 			}
 			data, _ := os.ReadFile(path)
