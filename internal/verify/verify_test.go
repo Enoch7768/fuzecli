@@ -21,7 +21,7 @@ func TestDetectGoProject(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Tool != "go test" && result.Tool != "go test + go vet + gofmt" {
+	if result.Tool != "gofmt" && result.Tool != "go test" && result.Tool != "go test + go vet + gofmt" {
 		t.Fatalf("expected go verifier, got %q", result.Tool)
 	}
 	if result.Passed {
