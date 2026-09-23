@@ -140,41 +140,14 @@ func generationJSONSchema() map[string]any {
 func buildGenerationConfig(opts provider.RequestOptions) map[string]any {
 	config := map[string]any{"temperature": opts.Temperature, "maxOutputTokens": opts.MaxTokens}
 	if opts.JSONMode {
-		config["responseMimeType"] = "application/json"
-		if opts.JSONSchema != nil {
-			config["responseJsonSchema"] = sanitizeJSONSchemaForGemini(opts.JSONSchema)
-		} else {
-			config["responseJsonSchema"] = sanitizeJSONSchemaForGemini(generationJSONSchema())
-		}
+		schema := opts.JSONSchema
+		if schema == nil { schema = generationJSONSchema() }
+		config["responseFormat"] = map[string]any{"text": map[string]any{"mimeType": "application/json", "schema": sanitizeJSONSchemaForGemini(schema)}}
 	}
 	return config
 }
-
 func sanitizeJSONSchemaForGemini(value any) any {
-	schema := sanitizeJSONSchema(value)
-	return stripRequiredConstraints(schema)
-}
-
-func stripRequiredConstraints(value any) any {
-	switch schema := value.(type) {
-	case map[string]any:
-		out := make(map[string]any, len(schema))
-		for key, item := range schema {
-			if key == "required" {
-				continue
-			}
-			out[key] = stripRequiredConstraints(item)
-		}
-		return out
-	case []any:
-		out := make([]any, len(schema))
-		for i, item := range schema {
-			out[i] = stripRequiredConstraints(item)
-		}
-		return out
-	default:
-		return value
-	}
+	return sanitizeJSONSchema(value)
 }
 
 func sanitizeJSONSchema(value any) any {
