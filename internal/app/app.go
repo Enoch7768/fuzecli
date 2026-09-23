@@ -66,6 +66,8 @@ func Load() (*App, error) {
 		defaults[name] = cfg.DefaultModel
 	}
 
+	procs = append(procs, providerfactory.New(c)...)
+
 	r := provider.NewRegistry(
 		c.FallbackOrder,
 		defaults,
