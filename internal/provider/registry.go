@@ -359,10 +359,10 @@ func estimateMessageTokens(messages []Message) int {
 }
 
 func trimToRequestTokenBudget(messages []Message, limit, output int) []Message {
-	if limit <= 0 || estimateMessageTokens(messages)+output+256 <= limit {
+	if limit <= 0 || estimateMessageTokens(messages)+256 <= limit {
 		return messages
 	}
-	target := limit - output - 256
+	target := limit - 256
 	if target < 1000 {
 		target = 1000
 	}
