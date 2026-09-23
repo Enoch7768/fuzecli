@@ -53,7 +53,7 @@ import (
 	"github.com/Enoch7768/fuzecli/internal/provider/vllm"
 	"github.com/Enoch7768/fuzecli/internal/provider/volcengine"
 	"github.com/Enoch7768/fuzecli/internal/provider/xai"
-	azureopenai "github.com/Enoch7768/fuzecli/internal/provider/azureopenai"
+	"github.com/Enoch7768/fuzecli/internal/provider/azureopenai"
 	"github.com/Enoch7768/fuzecli/internal/provider/yi"
 	"github.com/Enoch7768/fuzecli/internal/provider/zhipu"
 )
