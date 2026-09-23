@@ -78,10 +78,27 @@ func estimateTokens(messages []provider.Message) int {
 	return (chars + 2) / 3
 }
 
+func openAIResponseFormat(opts provider.RequestOptions) any {
+	if !opts.JSONMode {
+		return nil
+	}
+	if opts.JSONSchema == nil {
+		return map[string]any{"type": "json_object"}
+	}
+	return map[string]any{
+		"type": "json_schema",
+		"json_schema": map[string]any{
+			"name": "fuzecli_response",
+			"strict": true,
+			"schema": opts.JSONSchema,
+		},
+	}
+}
+
 func (p *Provider) Send(ctx context.Context, messages []provider.Message, opts provider.RequestOptions) (*provider.Response, error) {
 	opts = effectiveOptions(messages, opts)
 	var out response
-	err := provider.DoJSON(ctx, p.HTTPClient, http.MethodPost, p.BaseURL+"/chat/completions", map[string]string{"Authorization": "Bearer " + p.APIKey}, request{Model: opts.Model, Messages: messages, Temperature: opts.Temperature, MaxTokens: opts.MaxTokens}, &out, p.Name())
+	err := provider.DoJSON(ctx, p.HTTPClient, http.MethodPost, p.BaseURL+"/chat/completions", map[string]string{"Authorization": "Bearer " + p.APIKey}, request{Model: opts.Model, Messages: messages, Temperature: opts.Temperature, MaxTokens: opts.MaxTokens, ResponseFormat: openAIResponseFormat(opts)}, &out, p.Name())
 	if err != nil {
 		return nil, err
 	}
@@ -93,7 +110,7 @@ func (p *Provider) Send(ctx context.Context, messages []provider.Message, opts p
 
 func (p *Provider) Stream(ctx context.Context, messages []provider.Message, opts provider.RequestOptions) (<-chan provider.StreamChunk, error) {
 	opts = effectiveOptions(messages, opts)
-	reqBody, err := json.Marshal(request{Model: opts.Model, Messages: messages, Temperature: opts.Temperature, MaxTokens: opts.MaxTokens, Stream: true})
+	reqBody, err := json.Marshal(request{Model: opts.Model, Messages: messages, Temperature: opts.Temperature, MaxTokens: opts.MaxTokens, ResponseFormat: openAIResponseFormat(opts), Stream: true})
 	if err != nil {
 		return nil, fmt.Errorf("openai: encode stream request: %w", err)
 	}
