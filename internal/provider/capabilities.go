@@ -21,6 +21,14 @@ func CapabilitiesOf(p Provider) Capabilities {
 	}
 	return Capabilities{
 		Streaming:      true,
+		StructuredJSON: true,
 		ListModels:     true,
 	}
+}
+
+func SupportsRequest(cap Capabilities, opts RequestOptions) bool {
+	if opts.JSONMode && !cap.StructuredJSON {
+		return false
+	}
+	return true
 }
