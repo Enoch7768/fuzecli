@@ -26,11 +26,12 @@ func New(apiKey, baseURL string) *Provider {
 func (p *Provider) Name() string { return "openai" }
 
 type request struct {
-	Model       string             `json:"model"`
-	Messages    []provider.Message `json:"messages"`
-	Temperature float64            `json:"temperature,omitempty"`
-	MaxTokens   int                `json:"max_tokens,omitempty"`
-	Stream      bool               `json:"stream,omitempty"`
+	Model          string             `json:"model"`
+	Messages       []provider.Message `json:"messages"`
+	Temperature    float64            `json:"temperature,omitempty"`
+	MaxTokens      int                `json:"max_tokens,omitempty"`
+	ResponseFormat any                `json:"response_format,omitempty"`
+	Stream         bool               `json:"stream,omitempty"`
 }
 type response struct {
 	Model   string `json:"model"`
@@ -46,9 +47,6 @@ type response struct {
 	} `json:"usage"`
 }
 
-// effectiveOptions protects providers with request/token-per-minute budgets from
-// asking for more tokens than the remaining request budget allows. The caller can
-// provide RequestTokenLimit for providers whose limit is known (for example Groq).
 func effectiveOptions(messages []provider.Message, opts provider.RequestOptions) provider.RequestOptions {
 	if opts.RequestTokenLimit <= 0 || opts.MaxTokens <= 0 {
 		return opts
@@ -65,8 +63,6 @@ func effectiveOptions(messages []provider.Message, opts provider.RequestOptions)
 	return opts
 }
 
-// estimateTokens is deliberately conservative. Provider tokenizers differ, so
-// this is a preflight guard rather than a billing/usage calculation.
 func estimateTokens(messages []provider.Message) int {
 	chars := 0
 	for _, m := range messages {
