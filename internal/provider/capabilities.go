@@ -1,13 +1,13 @@
 package provider
 
 type Capabilities struct {
-	Streaming       bool
-	StructuredJSON  bool
-	ListModels      bool
-	ToolCalling     bool
-	Vision          bool
-	MaxInputChars   int
-	MaxOutputTokens int
+	Streaming        bool
+	StructuredJSON   bool
+	ListModels       bool
+	ToolCalling      bool
+	Vision           bool
+	MaxInputChars    int
+	MaxOutputTokens  int
 	JSONOutputTokens int
 }
 
