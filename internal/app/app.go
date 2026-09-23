@@ -894,6 +894,11 @@ func (a *App) chatTurn(
 		system += "\nRelevant workspace files:\n" +
 			workspaceContext
 	}
+	if a.Repository != nil {
+		if intelligence := a.Repository.Context(prompt, 24); intelligence != "" {
+			system += "\n" + intelligence
+		}
+	}
 
 	msgs := []provider.Message{
 		{
