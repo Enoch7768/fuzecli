@@ -8,7 +8,7 @@ import (
 type Risk string
 
 const (
-	RiskLow Risk = "low"
+	RiskLow    Risk = "low"
 	RiskMedium Risk = "medium"
 )
 
@@ -19,8 +19,8 @@ type Command struct {
 
 type Decision struct {
 	Allowed bool
-	Risk Risk
-	Reason string
+	Risk    Risk
+	Reason  string
 }
 
 func Authorize(command Command) Decision {
@@ -38,7 +38,7 @@ func Authorize(command Command) Decision {
 		}
 	case "npx":
 		if exact(args, "--yes", "tsc", "--noEmit") {
-			return Decision{Allowed: true, RiskMedium, Reason: "TypeScript compilation is an allowlisted verification command; npx may resolve a package."}
+			return Decision{Allowed: true, Risk: RiskMedium, Reason: "TypeScript compilation is an allowlisted verification command; npx may resolve a package."}
 		}
 	case "php":
 		if len(args) == 2 && args[0] == "-l" && args[1] != "" && !containsShellMeta(args[1]) {
