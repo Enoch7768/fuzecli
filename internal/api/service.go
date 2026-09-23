@@ -29,6 +29,7 @@ type ChatRequest struct {
 	Model    string   `json:"model,omitempty"`
 	Files    []string `json:"files,omitempty"`
 	Apply    bool     `json:"apply,omitempty"`
+	BillingMode string `json:"billing_mode,omitempty"`
 }
 
 type ChatResponse struct {
@@ -86,7 +87,7 @@ func (s *Service) Chat(ctx context.Context, req ChatRequest) (ChatResponse, erro
 	if err := s.App.Store.AddMessage(provider.Message{Role: "user", Content: req.Prompt}); err != nil {
 		return ChatResponse{}, err
 	}
-	resp, err := s.App.Registry.Send(ctx, name, msgs, provider.RequestOptions{Model: model, Temperature: 0.3, MaxTokens: 32768, JSONMode: true, JSONSchema: generation.ChatResponseSchema()})
+	resp, err := s.App.Registry.Send(ctx, name, msgs, provider.RequestOptions{Model: model, Temperature: 0.3, MaxTokens: 32768, JSONMode: true, JSONSchema: generation.ChatResponseSchema(), BillingMode: req.BillingMode})
 	if err != nil {
 		return ChatResponse{}, err
 	}
