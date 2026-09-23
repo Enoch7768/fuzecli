@@ -70,6 +70,8 @@ func ParseHTTPResponseError(response *http.Response, providerName string) error 
 		kind = ErrorProviderUnavailable
 	case http.StatusBadRequest, http.StatusUnprocessableEntity:
 		kind = ErrorBadRequest
+	case http.StatusNotFound:
+		kind = ErrorModelNotFound
 	}
 
 	if strings.Contains(lower, "tokens per minute") || strings.Contains(lower, "tpm") || strings.Contains(lower, "rate limit") || strings.Contains(lower, "rate_limit") {
