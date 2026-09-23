@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"strings"
-
 )
 
 type chatFileChange struct {
@@ -32,11 +31,26 @@ type ChatResponse struct {
 func ChatResponseSchema() map[string]any {
 	return map[string]any{
 		"type": "object",
+		"additionalProperties": false,
 		"properties": map[string]any{
 			"type":        map[string]any{"type": "string", "enum": []string{"chat", "edit"}},
 			"response":    map[string]any{"type": "string", "description": "Natural-language response for compatibility with the FuzeCLI chat envelope."},
 			"message":     map[string]any{"type": "string", "description": "Natural-language response when no file changes are required."},
-			"files":       map[string]any{"type": "array", "items": map[string]any{"type": "object", "properties": map[string]any{"path": map[string]any{"type": "string"}, "content": map[string]any{"type": "string"}, "action": map[string]any{"type": "string", "enum": []string{"create", "modify", "delete"}}, "line_start": map[string]any{"type": "integer"}, "line_end": map[string]any{"type": "integer"}}, "required": []string{"path", "content"}}},
+			"files": map[string]any{
+				"type": "array",
+				"items": map[string]any{
+					"type": "object",
+					"additionalProperties": false,
+					"properties": map[string]any{
+						"path":       map[string]any{"type": "string"},
+						"content":    map[string]any{"type": "string"},
+						"action":     map[string]any{"type": "string", "enum": []string{"create", "modify", "delete"}},
+						"line_start": map[string]any{"type": "integer"},
+						"line_end":   map[string]any{"type": "integer"},
+					},
+					"required": []string{"path", "content", "action", "line_start", "line_end"},
+				},
+			},
 			"explanation": map[string]any{"type": "string"},
 			"commands":    map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
 		},
@@ -45,7 +59,6 @@ func ChatResponseSchema() map[string]any {
 	}
 }
 
-// ParseChatResponse validates the model response locally without any repair provider.
 func ParseChatResponse(raw string) (ChatResponse, error) {
 	clean, err := normalizeJSONDocument(raw)
 	if err != nil {
@@ -68,7 +81,6 @@ func parseChatResponseDocument(clean []byte) (ChatResponse, error) {
 		}
 		return ChatResponse{}, fmt.Errorf("invalid chat JSON: trailing data: %w", err)
 	}
-
 	message := strings.TrimSpace(response.Message)
 	if message == "" {
 		message = strings.TrimSpace(response.Response)
@@ -173,5 +185,3 @@ func (e *Engine) ParseChatPlan(ctx context.Context, raw string) (Plan, error) {
 	}
 	return response.ToPlan()
 }
-
-
