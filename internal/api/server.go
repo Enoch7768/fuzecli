@@ -248,7 +248,7 @@ func (s *Server) preview(w http.ResponseWriter, r *http.Request) {
 	if rel == "" { rel = "index.html" }
 	rel = filepath.ToSlash(strings.TrimPrefix(rel, "/"))
 	ext := strings.ToLower(filepath.Ext(rel))
-	allowed := map[string]string{".html":"text/html; charset=utf-8",".htm":"text/html; charset=utf-8",".css":"text/css; charset=utf-8",".js":"text/javascript; charset=utf-8",".mjs":"text/javascript; charset=utf-8",".json":"application/json; charset=utf-8",".svg":"image/svg+xml",".png":"image/png",".jpg":"image/jpeg",".jpeg":"image/jpeg",".webp":"image/webp",".gif":"image/gif",".ico":"image/x-icon",".woff":"font/woff",".woff2":"font/woff2",".ttf":"font/ttf",".otf":"font/otf"}
+	allowed := map[string]string{".html": "text/html; charset=utf-8", ".htm": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".mjs": "text/javascript; charset=utf-8", ".json": "application/json; charset=utf-8", ".svg": "image/svg+xml", ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp", ".gif": "image/gif", ".ico": "image/x-icon", ".woff": "font/woff", ".woff2": "font/woff2", ".ttf": "font/ttf", ".otf": "font/otf"}
 	contentType, ok := allowed[ext]
 	if !ok {
 		writeError(w, http.StatusForbidden, "file type is not available in preview")
@@ -295,6 +295,7 @@ func injectPreviewEditor(data []byte) []byte {
 	}
 	return append(data, []byte(editor)...)
 }
+
 func (s *Server) files(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
