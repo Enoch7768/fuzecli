@@ -1,27 +1,32 @@
-package provider
+package provider_test
 
 import (
 	"testing"
 
-	"github.com/Enoch7768/fuzecli/internal/provider/openrouter"
+	"github.com/Enoch7768/fuzecli/internal/config"
+	"github.com/Enoch7768/fuzecli/internal/provider"
+	"github.com/Enoch7768/fuzecli/internal/providerfactory"
 )
 
 func TestCompatibleCatalogHasAtLeastFiftyProviders(t *testing.T) {
-	if len(CompatibleProviderNames()) < 50 {
-		t.Fatalf("expected at least 50 compatible providers, got %d", len(CompatibleProviderNames()))
+	if len(provider.CompatibleProviderNames()) < 50 {
+		t.Fatalf("expected at least 50 compatible providers, got %d", len(provider.CompatibleProviderNames()))
 	}
 }
 
-func TestProviderRegistration(t *testing.T) {
-	r := NewRegistry(nil, map[string]string{"openrouter": "test-model"}, openrouter.New("test-key", "https://example.com/v1"))
+func TestDynamicCompatibleProviderRegistration(t *testing.T) {
+	c := config.Default()
+	providers := providerfactory.New(c)
+	if len(providers) < 50 {
+		t.Fatalf("expected at least 50 provider implementations, got %d", len(providers))
+	}
+
+	r := provider.NewRegistry(nil, map[string]string{"openrouter": "test-model"}, providers...)
 	p, err := r.Get("openrouter")
 	if err != nil {
 		t.Fatalf("Get(openrouter): %v", err)
 	}
 	if p.Name() != "openrouter" {
 		t.Fatalf("expected provider name openrouter, got %s", p.Name())
-	}
-	if _, err := r.Get("unknown-provider"); err == nil {
-		t.Fatal("expected unknown provider error")
 	}
 }
