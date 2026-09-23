@@ -117,7 +117,7 @@ func (a *App) TerminalChat(ctx context.Context, _ bool) error {
 			}
 			continue
 		}
-		if err := a.terminalStream(ctx, line, providerName, model, attachments); err != nil {
+		if err := a.terminalStream(ctx, line, providerName, model, billingMode, attachments); err != nil {
 			fmt.Println(formatTerminalError(err))
 		}
 	}
@@ -351,7 +351,7 @@ func formatTerminalError(err error) string {
 	return fmt.Sprintf("\x1b[38;5;214mError:\x1b[0m %s\n\x1b[38;5;244mDetails are intentionally shown so you can diagnose the problem. Use /status or /help for context.\x1b[0m", err.Error())
 }
 
-func (a *App) terminalStream(ctx context.Context, prompt, providerName, model string, attachments map[string]string) error {
+func (a *App) terminalStream(ctx context.Context, prompt, providerName, model, billingMode string, attachments map[string]string) error {
 	history, err := a.Store.History(400)
 	if err != nil {
 		return fmt.Errorf("load chat history: %w", err)
