@@ -300,30 +300,110 @@ func Resolve(root, rel string) (string, error) {
 }
 
 func Apply(root string, plan Plan) ([]string, error) {
-	written := []string{}
-	for _, f := range plan.Files {
+	type backup struct {
+		path    string
+		exists  bool
+		content []byte
+		mode    os.FileMode
+	}
+	type staged struct {
+		change FileChange
+		path   string
+		tmp    string
+	}
+
+	backups := make([]backup, 0, len(plan.Files))
+	stagedFiles := make([]staged, 0, len(plan.Files))
+	seen := make(map[string]struct{}, len(plan.Files))
+
+	for i, f := range plan.Files {
 		path, err := Resolve(root, f.Path)
 		if err != nil {
-			return written, err
+			return nil, err
 		}
-		switch f.Action {
-		case "delete":
-			if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
-				return written, fmt.Errorf("delete %s: %w", f.Path, err)
+		key := filepath.Clean(path)
+		if _, ok := seen[key]; ok {
+			return nil, fmt.Errorf("duplicate file change for %q", f.Path)
+		}
+		seen[key] = struct{}{}
+
+		info, err := os.Stat(path)
+		switch {
+		case err == nil:
+			if info.IsDir() {
+				return nil, fmt.Errorf("cannot modify directory %s", f.Path)
 			}
-		case "create", "modify":
+			data, readErr := os.ReadFile(path)
+			if readErr != nil {
+				return nil, fmt.Errorf("backup %s: %w", f.Path, readErr)
+			}
+			backups = append(backups, backup{path: path, exists: true, content: data, mode: info.Mode()})
+		case os.IsNotExist(err):
+			backups = append(backups, backup{path: path})
+		default:
+			return nil, fmt.Errorf("inspect %s: %w", f.Path, err)
+		}
+
+		if f.Action == "create" || f.Action == "modify" {
 			if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
-				return written, fmt.Errorf("create directory for %s: %w", f.Path, err)
+				return nil, fmt.Errorf("create directory for %s: %w", f.Path, err)
 			}
-			tmp := path + ".fuzetmp"
+			tmp := fmt.Sprintf("%s.fuzetmp-%d", path, i)
 			if err := os.WriteFile(tmp, []byte(f.Content), 0644); err != nil {
-				return written, fmt.Errorf("write %s: %w", f.Path, err)
+				for _, item := range stagedFiles {
+					_ = os.Remove(item.tmp)
+				}
+				return nil, fmt.Errorf("stage %s: %w", f.Path, err)
 			}
-			if err := os.Rename(tmp, path); err != nil {
-				_ = os.Remove(tmp)
-				return written, fmt.Errorf("replace %s: %w", f.Path, err)
+			stagedFiles = append(stagedFiles, staged{change: f, path: path, tmp: tmp})
+		} else if f.Action != "delete" {
+			return nil, fmt.Errorf("unsupported file action %q for %s", f.Action, f.Path)
+		}
+	}
+
+	rollback := func() {
+		for _, item := range stagedFiles {
+			_ = os.Remove(item.tmp)
+		}
+		for i := len(backups) - 1; i >= 0; i-- {
+			b := backups[i]
+			if b.exists {
+				_ = os.MkdirAll(filepath.Dir(b.path), 0755)
+				tmp := fmt.Sprintf("%s.fuzerollback", b.path)
+				if os.WriteFile(tmp, b.content, b.mode.Perm()); err := err; err == nil {
+					_ = os.Rename(tmp, b.path)
+				} else {
+					_ = os.Remove(tmp)
+				}
+			} else {
+				_ = os.Remove(b.path)
 			}
 		}
+	}
+
+	for _, item := range stagedFiles {
+		if err := os.Rename(item.tmp, item.path); err != nil {
+			rollback()
+			return nil, fmt.Errorf("commit %s: %w", item.change.Path, err)
+		}
+	}
+
+	for _, f := range plan.Files {
+		if f.Action == "delete" {
+			path, err := Resolve(root, f.Path)
+			if err != nil {
+				rollback()
+				return nil, err
+			}
+			if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+				rollback()
+				return nil, fmt.Errorf("delete %s: %w", f.Path, err)
+			}
+		}
+	}
+
+	written := make([]string, 0, len(plan.Files))
+	for _, f := range plan.Files {
 		written = append(written, f.Path)
 	}
 	return written, nil
