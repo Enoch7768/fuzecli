@@ -16,6 +16,7 @@ on:
       - phase9-true-streaming
       - phase10-provider-capabilities
       - phase11-intelligent-routing
+      - phase12-provider-telemetry
   pull_request:
     branches:
       - main
