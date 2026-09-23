@@ -8,7 +8,6 @@ import (
 
 func TestLoopCompletesWithoutRepair(t *testing.T) {
 	var phases []Phase
-	calls := 0
 
 	l := Loop{
 		MaxRepairAttempts: 2,
@@ -32,7 +31,6 @@ func TestLoopCompletesWithoutRepair(t *testing.T) {
 		t.Fatalf("unexpected phase count: got %d want %d", len(phases), len(expected)-1)
 	}
 
-	_ = calls
 }
 
 func TestLoopRepairsAndReverifies(t *testing.T) {
