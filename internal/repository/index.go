@@ -137,6 +137,26 @@ func (i *Index) Summary() string {
 	return b.String()
 }
 
+func (i *Index) Context(query string, limit int) string {
+	files := i.Relevant(query, limit)
+	if len(files) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("Repository intelligence matches:\n")
+	for _, file := range files {
+		b.WriteString("- " + file.Path + " [" + file.Language + ", " + fmt.Sprintf("%d", file.Lines) + " lines]")
+		if len(file.Symbols) > 0 {
+			b.WriteString(" symbols=" + strings.Join(limitStrings(file.Symbols, 16), ","))
+		}
+		if len(file.Imports) > 0 {
+			b.WriteString(" imports=" + strings.Join(limitStrings(file.Imports, 10), ","))
+		}
+		b.WriteByte('\n')
+	}
+	return b.String()
+}
+
 func (i *Index) Relevant(query string, limit int) []File {
 	if i == nil || limit <= 0 {
 		return nil
