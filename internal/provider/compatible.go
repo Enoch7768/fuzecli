@@ -90,6 +90,9 @@ func (p *compatibleProvider) Stream(ctx context.Context, messages []Message, opt
 	}
 
 	body := compatibleRequest{Model: model, Messages: messages, Temperature: opts.Temperature, MaxTokens: opts.MaxTokens, Stream: true}
+	if opts.JSONMode {
+		body.ResponseFormat = map[string]any{"type": "json_object"}
+	}
 	data, err := json.Marshal(body)
 	if err != nil {
 		return nil, err
