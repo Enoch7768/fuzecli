@@ -896,7 +896,7 @@ func (a *App) chatTurn(
 		return err
 	}
 
-	system := "You are FuzeCLI, a practical coding assistant. Answer clearly and concisely. Do not modify files in chat mode."
+	system := generation.SessionSystemPrompt() + "\n\nYou are FuzeCLI, a practical coding assistant. In this chat mode, answer naturally and do not modify files unless the user explicitly enters a project-generation command."
 
 	if a.Profile.Condensed() != "" {
 		system += "\nDeveloper profile:\n" +
