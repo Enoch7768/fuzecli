@@ -56,7 +56,7 @@ func (a *App) SessionWelcome(ctx context.Context, providerName, model string) (s
 	}
 
 	b.WriteString("\x1b[38;5;111mSafety\x1b[0m    Workspace paths validated · commands never auto-executed\n")
-	b.WriteString("\x1b[38;5;111mAI output\x1b[0m Strict instructions active · JSON parser ready for chat and edits\n")
+	b.WriteString("\x1b[38;5;111mAI output\x1b[0m Session response contract loaded · local JSON validation active\n")
 	b.WriteString("\n\x1b[38;5;244mTry: \x1b[0m\"Explain this project\"  or  \"Fix the failing tests\"\n")
 	return b.String(), nil
 }
