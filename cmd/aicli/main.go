@@ -15,6 +15,8 @@ import (
 	"github.com/Enoch7768/fuzecli/internal/config"
 	"github.com/Enoch7768/fuzecli/internal/mcpserver"
 	"github.com/Enoch7768/fuzecli/internal/profile"
+	"github.com/Enoch7768/fuzecli/internal/platform"
+	"github.com/Enoch7768/fuzecli/internal/provider"
 )
 
 var version = "Revision 2.4"
@@ -76,6 +78,14 @@ func run(args []string) error {
 		return gitStatusCommand()
 	case "diff":
 		return gitDiffCommand()
+	case "agent":
+		return agentCommand(args[1:])
+	case "platform":
+		return platformCommand()
+	case "review":
+		return reviewCommand()
+	case "benchmark":
+		return benchmarkCommand(args[1:])
 	case "help", "--help", "-h":
 		return usage()
 	default:
@@ -428,6 +438,39 @@ func mcpCommand() error {
 }
 
 
+
+func agentCommand(args []string) error {
+	prompt := strings.Join(args, " ")
+	if strings.TrimSpace(prompt) == "" { return fmt.Errorf("agent requires a prompt") }
+	a,err:=app.Load();if err!=nil{return err};defer a.Close();if err:=a.AttachWorkspace(".");err!=nil{return err}
+	job,err:=a.StartBackground(context.Background(),prompt,platform.ModeAgent);if err!=nil{return err}
+	fmt.Println("Fuze agent started:",job.ID)
+	fmt.Println("Use 'aicli platform' to inspect running jobs.")
+	return nil
+}
+
+func platformCommand() error {
+	a,err:=app.Load();if err!=nil{return err};defer a.Close();if err:=a.AttachWorkspace(".");err!=nil{return err}
+	value,err:=a.PlatformSnapshot();if err!=nil{return err}
+	data,_:=json.MarshalIndent(value,"","  ");fmt.Println(string(data));return nil
+}
+
+func reviewCommand() error {
+	a,err:=app.Load();if err!=nil{return err};defer a.Close();if err:=a.AttachWorkspace(".");err!=nil{return err}
+	diff,err:=app.GitDiffText(a.Store.Root);if err!=nil{return err}
+	review:=platform.ReviewDiff(diff);data,_:=json.MarshalIndent(review,"","  ");fmt.Println(string(data));if !review.Passed{return fmt.Errorf("review found blocking findings")};return nil
+}
+
+func benchmarkCommand(args []string) error {
+	if len(args)==0{return fmt.Errorf("usage: aicli benchmark <prompt>")}
+	prompt:=strings.Join(args," ");a,err:=app.Load();if err!=nil{return err};defer a.Close()
+	names:=a.Config.FallbackOrder;if len(names)==0{return fmt.Errorf("no provider candidates configured")}
+	results:=platform.RunBenchmark(context.Background(),prompt,"",names,func(ctx context.Context,name string,opts provider.RequestOptions)(provider.Response,error){
+		resp,err:=a.Registry.Send(ctx,name,[]provider.Message{{Role:"user",Content:prompt}},opts);if err!=nil{return provider.Response{},err};return *resp,nil
+	})
+	data,_:=json.MarshalIndent(results,"","  ");fmt.Println(string(data));return nil
+}
+
 func doctorCommand() error {
 	a, err := app.Load()
 	if err != nil {
@@ -648,6 +691,10 @@ Getting started:
   aicli setup                        Reconfigure provider/model
   aicli chat                         Start an interactive coding session
   aicli ask "prompt"                 Run a one-shot AI request
+  aicli agent "prompt"               Start an autonomous background task
+  aicli platform                     Show memory, graph, rules, skills and jobs
+  aicli review                       Review current Git diff for local risks
+  aicli benchmark "task"             Compare configured providers on a task
 
 Developer tools:
   aicli debug                        Safe diagnostic report for troubleshooting

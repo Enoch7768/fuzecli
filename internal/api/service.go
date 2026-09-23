@@ -14,6 +14,7 @@ import (
 	"github.com/Enoch7768/fuzecli/internal/config"
 	"github.com/Enoch7768/fuzecli/internal/generation"
 	"github.com/Enoch7768/fuzecli/internal/provider"
+	"github.com/Enoch7768/fuzecli/internal/platform"
 )
 
 const MaxAttachmentBytes = 65536
@@ -24,6 +25,7 @@ type Attachment struct {
 }
 
 type ChatRequest struct {
+	Mode     platform.Mode `json:"mode,omitempty"`
 	Prompt   string   `json:"prompt"`
 	Provider string   `json:"provider,omitempty"`
 	Model    string   `json:"model,omitempty"`
@@ -71,9 +73,21 @@ func (s *Service) Chat(ctx context.Context, req ChatRequest) (ChatResponse, erro
 	if err != nil {
 		return ChatResponse{}, err
 	}
+	rules, _ := platform.LoadRules(s.App.Store.Root)
+	skills, _ := platform.LoadSkills(s.App.Store.Root)
+	platformContext := ""
+	if s.App.Platform != nil {
+		platformContext = s.App.Platform.Context(ctx, req.Prompt, rules, skills)
+	}
 	system := generation.SessionSystemPrompt() + "\n\nYou are FuzeCLI, a practical coding assistant. Use the session response contract above for every response and never ask the user to provide source files that FuzeCLI already supplied."
 	if workspaceContext != "" {
 		system += "\nRelevant workspace files read from disk:\n" + workspaceContext
+	}
+	if platformContext != "" {
+		system += "\nFuze project platform context:\n" + platformContext
+	}
+	if req.Mode != "" {
+		system += "\nOperating mode: " + string(req.Mode)
 	}
 	if len(attachments) > 0 {
 		system += "\nUser-attached files:\n"
@@ -314,4 +328,62 @@ func (s *Service) SetProvider(name, model string) error {
 	c.Providers[name] = p
 	c.DefaultProvider = name
 	return config.Save(c)
+}
+
+
+func (s *Service) PlatformState() (map[string]any, error) {
+	if s == nil || s.App == nil || s.App.Platform == nil {
+		return nil, errors.New("platform not initialized")
+	}
+	memory, err := platform.LoadMemory(s.Root())
+	if err != nil { return nil, err }
+	rules, err := platform.LoadRules(s.Root())
+	if err != nil { return nil, err }
+	skills, err := platform.LoadSkills(s.Root())
+	if err != nil { return nil, err }
+	graph, err := platform.BuildGraph(s.Root())
+	if err != nil { return nil, err }
+	return map[string]any{"memory": memory, "rules": rules, "skills": skills, "graph": graph, "workspaces": s.App.Platform.Workspaces.List(), "jobs": s.App.Platform.Jobs.List()}, nil
+}
+
+func (s *Service) SaveMemory(memory platform.ProjectMemory) error {
+	if s == nil || s.App == nil { return errors.New("application not initialized") }
+	return platform.SaveMemory(s.Root(), memory)
+}
+
+func (s *Service) StartBackgroundJob(ctx context.Context, req ChatRequest) (platform.BackgroundJob, error) {
+	if s == nil || s.App == nil || s.App.Platform == nil { return platform.BackgroundJob{}, errors.New("platform not initialized") }
+	return s.App.Platform.Jobs.Start(ctx, req.Prompt, func(ctx context.Context, progress func(string)) (string, error) {
+		progress("agent started")
+		result, err := s.Chat(ctx, req)
+		if err != nil { return "", err }
+		progress("implementation verified")
+		return result.Content, nil
+	})
+}
+
+func (s *Service) Job(id string) (platform.BackgroundJob, bool) {
+	if s == nil || s.App == nil || s.App.Platform == nil { return platform.BackgroundJob{}, false }
+	return s.App.Platform.Jobs.Get(id)
+}
+
+func (s *Service) Autocomplete(ctx context.Context, providerName, model, language, prefix, suffix string) (string, error) {
+	if s == nil || s.App == nil { return "", errors.New("application not initialized") }
+	return platform.Complete(ctx, s.App.Registry, providerName, model, language, prefix, suffix)
+}
+
+func (s *Service) InspectURL(ctx context.Context, rawURL string) (platform.BrowserSession, error) {
+	return platform.InspectURL(ctx, rawURL)
+}
+
+func (s *Service) ReviewDiff(diff string) platform.Review { return platform.ReviewDiff(diff) }
+
+func (s *Service) ContextGraph() (platform.ContextGraph, error) {
+	if s == nil || s.App == nil { return platform.ContextGraph{}, errors.New("application not initialized") }
+	return platform.BuildGraph(s.Root())
+}
+
+func (s *Service) SaveProof(proof platform.Proof) (platform.Proof, error) {
+	if s == nil || s.App == nil { return platform.Proof{}, errors.New("application not initialized") }
+	return platform.SaveProof(s.Root(), proof)
 }

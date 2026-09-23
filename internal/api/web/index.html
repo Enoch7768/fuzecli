@@ -17,6 +17,7 @@
     <button class="nav-item" data-view="builder"><span>◈</span><div><b>Builder</b><small>Live site studio</small></div></button>
     <button class="nav-item" data-view="workspace"><span>▦</span><div><b>Files</b><small>Workspace explorer</small></div></button>
     <button class="nav-item" data-view="activity"><span>◷</span><div><b>Activity</b><small>Session history</small></div></button>
+    <button class="nav-item" data-view="platform"><span>✦</span><div><b>Fuze Core</b><small>Agents & context</small></div></button>
     <button class="nav-item" data-view="telemetry"><span>◌</span><div><b>Telemetry</b><small>Provider health</small></div></button>
     <button class="nav-item" data-view="settings"><span>⚙</span><div><b>Settings</b><small>Runtime controls</small></div></button>
   </nav>
@@ -25,7 +26,7 @@
 <main class="main">
 <header class="topbar">
   <div><span class="eyebrow">FUZECLI / LOCAL DEVELOPMENT</span><h1 id="pageTitle">Command</h1></div>
-  <div class="top-actions"><select id="providerSelect"></select><select id="modelSelect"></select><select id="billingMode" title="API access mode"><option value="auto">Auto safety</option><option value="free">Free / low quota</option><option value="paid">Paid API key</option></select><button class="icon-btn" id="refreshMemoryBtn" title="Refresh memory">↻ Memory</button><button class="icon-btn" id="refreshBtn" title="Refresh runtime">↻</button></div>
+  <div class="top-actions"><select id="providerSelect"></select><select id="modelSelect"></select><select id="modeSelect" title="Agent mode"><option value="ask">Ask</option><option value="plan">Plan</option><option value="agent">Agent</option><option value="autopilot">Autopilot</option></select><select id="billingMode" title="API access mode"><option value="auto">Auto safety</option><option value="free">Free / low quota</option><option value="paid">Paid API key</option></select><button class="icon-btn" id="refreshMemoryBtn" title="Refresh memory">↻ Memory</button><button class="icon-btn" id="refreshBtn" title="Refresh runtime">↻</button></div>
 </header>
 
 <section class="view active" id="view-chat">
@@ -64,6 +65,8 @@
 <section class="view" id="view-workspace"><div class="section-head"><div><span class="eyebrow">PROJECT</span><h2>Workspace</h2></div><button class="ghost" id="workspaceRefresh">Refresh</button></div><div class="workspace-grid"><div class="panel file-panel"><div class="panel-title">Files <span id="workspaceFileCount"></span></div><div id="fileList" class="file-list"></div></div><div class="panel preview-panel"><div class="panel-title"><span id="fileName">Select a file</span></div><pre id="fileContent">Choose a file from the workspace.</pre></div></div></section>
 
 <section class="view" id="view-activity"><div class="section-head"><div><span class="eyebrow">SESSION</span><h2>Activity</h2></div><button class="ghost" id="activityRefresh">Refresh</button></div><div class="panel activity-panel"><div id="activityList"></div></div></section>
+
+<section class="view" id="view-platform"><div class="section-head"><div><span class="eyebrow">FUZE CORE</span><h2>Developer intelligence</h2><p>Persistent memory, context graph, rules, skills, workspaces and autonomous jobs.</p></div><button class="ghost" id="platformRefresh">Refresh</button></div><div class="platform-grid"><div class="panel"><div class="panel-title">Project memory</div><pre id="platformMemory" class="platform-pre"></pre></div><div class="panel"><div class="panel-title">Agent jobs</div><div id="platformJobs"></div></div><div class="panel"><div class="panel-title">Context graph</div><div id="platformGraph"></div></div><div class="panel"><div class="panel-title">Rules & skills</div><div id="platformRules"></div></div></div></section>
 
 <section class="view" id="view-telemetry"><div class="section-head"><div><span class="eyebrow">RELIABILITY</span><h2>Provider telemetry</h2><p>Live request health, latency, errors, and token usage from this session.</p></div><button class="ghost" id="telemetryRefresh">Refresh</button></div><div class="telemetry-grid" id="telemetryGrid"></div></section>
 

@@ -14,6 +14,7 @@ import (
 	"github.com/Enoch7768/fuzecli/internal/config"
 	"github.com/Enoch7768/fuzecli/internal/generation"
 	"github.com/Enoch7768/fuzecli/internal/profile"
+	"github.com/Enoch7768/fuzecli/internal/platform"
 	"github.com/Enoch7768/fuzecli/internal/repository"
 	"github.com/Enoch7768/fuzecli/internal/provider"
 	"github.com/Enoch7768/fuzecli/internal/ui"
@@ -27,6 +28,7 @@ type App struct {
 	Store      *workspace.Store
 	Profile    profile.Profile
 	Repository *repository.Index
+	Platform *platform.Manager
 }
 
 func Load() (*App, error) {
@@ -73,6 +75,8 @@ func (a *App) AttachWorkspace(root string) error {
 
 	a.Store = s
 	a.Repository = index
+	a.Platform = platform.NewManager(s.Root)
+	_, _ = a.Platform.Workspaces.Add(filepath.Base(s.Root), s.Root)
 	return nil
 }
 

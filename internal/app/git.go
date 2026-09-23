@@ -34,3 +34,8 @@ func GitDiff(root string) error {
 	fmt.Print(out)
 	return nil
 }
+
+
+func GitDiffText(root string) (string, error) {
+	return gitworkspace.Diff(root, false)
+}
