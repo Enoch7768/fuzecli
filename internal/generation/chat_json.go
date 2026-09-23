@@ -204,7 +204,7 @@ func (e *Engine) normalizeChatResponse(ctx context.Context, raw string, parseErr
 	var errs []error
 	candidates := normalizerCandidates(e.Registry)
 	if len(candidates) == 0 {
-		return ChatResponse{}, fmt.Errorf("provider returned incomplete or invalid structured JSON; the response was not applied. Raw response length: %d bytes. JSON normalizer unavailable: no Gemini normalizer or Gemini provider is configured", len(raw))
+		return ChatResponse{}, fmt.Errorf("provider returned incomplete or invalid structured JSON; the response was not applied. Raw response length: %d bytes. JSON normalizer unavailable: no configured Gemini provider or fallback provider is available", len(raw))
 	}
 	for _, candidate := range candidates {
 		for attempt := 0; attempt < 3; attempt++ {
