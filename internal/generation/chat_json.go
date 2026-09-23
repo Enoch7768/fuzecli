@@ -41,6 +41,7 @@ func ChatResponseSchema() map[string]any {
 			"explanation": map[string]any{"type": "string"},
 			"commands":    map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
 		},
+		"required":         []string{"type", "response", "message", "files", "explanation", "commands"},
 		"propertyOrdering": []string{"type", "response", "message", "files", "explanation", "commands"},
 	}
 }
@@ -208,7 +209,7 @@ func (e *Engine) normalizeChatResponse(ctx context.Context, raw string, parseErr
 	for _, candidate := range candidates {
 		for attempt := 0; attempt < 3; attempt++ {
 			resp, err := e.Registry.Send(ctx, candidate, messages, provider.RequestOptions{
-				Model:       normalizerModel(candidate),
+				Model:       normalizerModel(e.Registry, candidate),
 				Temperature: 0,
 				MaxTokens:   12000,
 				JSONMode:    true,
@@ -236,9 +237,12 @@ func (e *Engine) normalizeChatResponse(ctx context.Context, raw string, parseErr
 	return ChatResponse{}, fmt.Errorf("provider returned incomplete or invalid structured JSON; the response was not applied. Raw response length: %d bytes. JSON normalizer failures: %s", len(raw), normalizeFailureSummary(errs))
 }
 
-func normalizerModel(providerName string) string {
-	if providerName == JSONNormalizerProvider || providerName == "gemini" {
-		return "gemini-3.6-flash"
+func normalizerModel(registry *provider.Registry, providerName string) string {
+	if registry == nil {
+		return ""
+	}
+	if providerName == "gemini" {
+		return registry.DefaultModel("gemini")
 	}
 	return ""
 }
