@@ -22,7 +22,7 @@ if resp.StatusCode<200||resp.StatusCode>=300{defer resp.Body.Close();body,_:=io.
 out:=make(chan provider.StreamChunk)
 go func(){defer close(out);defer resp.Body.Close();scanner:=bufio.NewScanner(resp.Body);scanner.Buffer(make([]byte,4096),1024*1024)
 for scanner.Scan(){line:=strings.TrimSpace(scanner.Text());if line==""||strings.HasPrefix(line,":"){continue};if !strings.HasPrefix(line,"data:"){continue};payload:=strings.TrimSpace(strings.TrimPrefix(line,"data:"));if payload=="[DONE]"{sendStreamChunk(ctx,out,provider.StreamChunk{Done:true});return}
-var event struct{Choices []struct{Delta struct{Content string \`json:"content"\`} \`json:"delta"\`} \`json:"choices"\`}
+var event struct{Choices []struct{Delta struct{Content string `json:"content"`} `json:"delta"`} `json:"choices"`}
 if e:=json.Unmarshal([]byte(payload),&event);e!=nil{sendStreamChunk(ctx,out,provider.StreamChunk{Error:fmt.Errorf("%s: invalid stream event: %w",p.name,e)});return}
 for _,choice:=range event.Choices{if choice.Delta.Content!=""{if !sendStreamChunk(ctx,out,provider.StreamChunk{Delta:choice.Delta.Content}){return}}}}
 if e:=scanner.Err();e!=nil{sendStreamChunk(ctx,out,provider.StreamChunk{Error:fmt.Errorf("%s: stream read failed: %w",p.name,e)});return};sendStreamChunk(ctx,out,provider.StreamChunk{Done:true})}();return out,nil}
