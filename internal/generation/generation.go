@@ -370,7 +370,7 @@ func Apply(root string, plan Plan) ([]string, error) {
 			if b.exists {
 				_ = os.MkdirAll(filepath.Dir(b.path), 0755)
 				tmp := fmt.Sprintf("%s.fuzerollback", b.path)
-				if os.WriteFile(tmp, b.content, b.mode.Perm()); err := err; err == nil {
+				if err := os.WriteFile(tmp, b.content, b.mode.Perm()); err == nil {
 					_ = os.Rename(tmp, b.path)
 				} else {
 					_ = os.Remove(tmp)
