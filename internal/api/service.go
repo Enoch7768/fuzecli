@@ -128,6 +128,14 @@ func (s *Service) Chat(ctx context.Context, req ChatRequest) (ChatResponse, erro
 	return result, nil
 }
 
+func (s *Service) RefreshMemory() error {
+	if s == nil || s.App == nil || s.App.Store == nil {
+		return errors.New("workspace not initialized")
+	}
+	_, err := s.App.Store.History(400)
+	return err
+}
+
 func (s *Service) WriteFile(rel, content string) error {
 	if s == nil || s.App == nil || s.App.Store == nil {
 		return errors.New("workspace not initialized")
