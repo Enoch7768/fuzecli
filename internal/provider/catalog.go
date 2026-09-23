@@ -70,7 +70,7 @@ var compatibleCatalog = []compatibleSpec{
 	{Name: "jan", BaseURL: "http://127.0.0.1:1337/v1", EnvKey: "JAN_API_KEY", MinInterval: 500 * time.Millisecond, MaxInputChars: 10000, MaxOutputTokens: 2200, JSONOutputTokens: 1800},
 	{Name: "litellm", BaseURL: "http://127.0.0.1:4000/v1", EnvKey: "LITELLM_API_KEY", MinInterval: 1 * time.Second, MaxInputChars: 18000, MaxOutputTokens: 3000, JSONOutputTokens: 2500},
 	{Name: "ai21", BaseURL: "https://api.ai21.com/studio/v1", EnvKey: "AI21_API_KEY", MinInterval: 5 * time.Second, MaxInputChars: 18000, MaxOutputTokens: 3000, JSONOutputTokens: 2500},
-	{Name: "aleph-alpha", BaseURL: "https://api.aleph-alpha.com", EnvKey: "ALEPH_ALPHA_API_KEY", MinInterval: 5 * time.Second, MaxInputChars: 18000, MaxOutputTokens: 3000, JSONOutputTokens: 2500},
+	{Name: "alephalpha", BaseURL: "https://api.aleph-alpha.com", EnvKey: "ALEPH_ALPHA_API_KEY", MinInterval: 5 * time.Second, MaxInputChars: 18000, MaxOutputTokens: 3000, JSONOutputTokens: 2500},
 	{Name: "inworld", BaseURL: "https://api.inworld.ai/llm/v1", EnvKey: "INWORLD_API_KEY", MinInterval: 5 * time.Second, MaxInputChars: 18000, MaxOutputTokens: 3000, JSONOutputTokens: 2500},
 	{Name: "novelai", BaseURL: "", EnvKey: "NOVELAI_API_KEY", MinInterval: 5 * time.Second, MaxInputChars: 16000, MaxOutputTokens: 2500, JSONOutputTokens: 2200},
 	{Name: "togetherai", BaseURL: "https://api.together.xyz/v1", EnvKey: "TOGETHER_API_KEY", MinInterval: 3 * time.Second, MaxInputChars: 22000, MaxOutputTokens: 3500, JSONOutputTokens: 3000},
