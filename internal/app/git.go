@@ -1,43 +1,36 @@
 package app
 
 import (
-	"bytes"
 	"fmt"
-	"os/exec"
+
+	gitworkspace "github.com/Enoch7768/fuzecli/internal/git"
 )
 
 func GitStatus(root string) error {
-	out, err := runGit(root, "status", "--short", "--branch")
+	status, err := gitworkspace.StatusOf(root)
 	if err != nil {
 		return err
 	}
-	if len(bytes.TrimSpace(out)) == 0 {
-		fmt.Println("Git: clean")
+	if status.Clean {
+		fmt.Printf("Git: clean (%s)\n", status.Branch)
 		return nil
 	}
-	fmt.Print(string(out))
+	fmt.Printf("Git branch: %s\n", status.Branch)
+	for _, file := range status.Files {
+		fmt.Printf("  %c%c %s\n", file.Index, file.Worktree, file.Path)
+	}
 	return nil
 }
 
 func GitDiff(root string) error {
-	out, err := runGit(root, "diff", "--")
+	out, err := gitworkspace.Diff(root, false)
 	if err != nil {
 		return err
 	}
-	if len(out) == 0 {
+	if out == "" {
 		fmt.Println("Git: no unstaged diff")
 		return nil
 	}
-	fmt.Print(string(out))
+	fmt.Print(out)
 	return nil
-}
-
-func runGit(root string, args ...string) ([]byte, error) {
-	cmd := exec.Command("git", args...)
-	cmd.Dir = root
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		return nil, fmt.Errorf("git %v: %w\n%s", args, err, bytes.TrimSpace(out))
-	}
-	return out, nil
 }
