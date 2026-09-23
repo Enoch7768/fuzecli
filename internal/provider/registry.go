@@ -39,6 +39,14 @@ func (r *Registry) Get(name string) (Provider, error) {
 	return p, nil
 }
 
+func (r *Registry) Capabilities(name string) (Capabilities, error) {
+	p, err := r.Get(name)
+	if err != nil {
+		return Capabilities{}, err
+	}
+	return CapabilitiesOf(p), nil
+}
+
 func (r *Registry) ListModels(ctx context.Context, name string) ([]string, error) {
 	p, err := r.Get(name)
 	if err != nil {
