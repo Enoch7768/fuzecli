@@ -147,6 +147,11 @@ func (r *Registry) sendWithRetry(ctx context.Context, name string, messages []Me
 		}
 		started := time.Now()
 		response, err := p.Send(ctx, messages, opts)
+		if err != nil && opts.JSONMode && opts.JSONSchema != nil && isStructuredJSONCompatibilityError(err) {
+			fallback := opts
+			fallback.JSONSchema = nil
+			response, err = p.Send(ctx, messages, fallback)
+		}
 		if err == nil && response != nil && strings.TrimSpace(response.Content) == "" {
 			err = &ProviderError{Kind: ErrorProviderUnavailable, Provider: name, Message: "model returned an empty response"}
 		}
@@ -273,6 +278,11 @@ func (r *Registry) streamWithRetry(ctx context.Context, name string, messages []
 		}
 		started := time.Now()
 		stream, err := p.Stream(ctx, messages, opts)
+		if err != nil && opts.JSONMode && opts.JSONSchema != nil && isStructuredJSONCompatibilityError(err) {
+			fallback := opts
+			fallback.JSONSchema = nil
+			stream, err = p.Stream(ctx, messages, fallback)
+		}
 		r.observe(name, err)
 		r.telemetry.Record(name, err, Usage{}, time.Since(started), true)
 		if err == nil {
@@ -295,6 +305,14 @@ func (r *Registry) providerLock(name string) *sync.Mutex {
 		r.requestMu[name] = lock
 	}
 	return lock
+}
+
+func isStructuredJSONCompatibilityError(err error) bool {
+	var providerErr *ProviderError
+	if !errors.As(err, &providerErr) {
+		return false
+	}
+	return providerErr.Kind == ErrorBadRequest
 }
 
 func isRetryableProviderError(err error) bool {
