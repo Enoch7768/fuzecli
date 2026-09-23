@@ -62,6 +62,7 @@ func (r *Registry) Send(ctx context.Context, name string, messages []Message, op
 		if request.Model == "" {
 			return nil, fmt.Errorf("no default model configured for provider %s", name)
 		}
+		if capabilities, capabilityErr := r.Capabilities(name); capabilityErr != nil { return nil, capabilityErr } else if !SupportsRequest(capabilities, request) { return nil, fmt.Errorf("provider %s does not support the requested capabilities", name) }
 		if err := validateRequestBudget(name, requestMessages, request); err != nil {
 			return nil, err
 		}
@@ -172,6 +173,7 @@ func (r *Registry) Stream(ctx context.Context, name string, messages []Message, 
 		if streamOptions.Model == "" {
 			return nil, fmt.Errorf("no default model configured for provider %s", name)
 		}
+		if capabilities, capabilityErr := r.Capabilities(name); capabilityErr != nil { return nil, capabilityErr } else if !capabilities.Streaming { return nil, fmt.Errorf("provider %s does not support streaming", name) } else if !SupportsRequest(capabilities, streamOptions) { return nil, fmt.Errorf("provider %s does not support the requested capabilities", name) }
 		if err := validateRequestBudget(name, streamMessages, streamOptions); err != nil {
 			return nil, err
 		}
