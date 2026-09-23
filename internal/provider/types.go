@@ -55,6 +55,7 @@ const (
 	ErrorProviderUnavailable ErrorKind = "provider_unavailable"
 	ErrorBadRequest          ErrorKind = "bad_request"
 	ErrorOverloaded          ErrorKind = "overloaded"
+	ErrorModelNotFound      ErrorKind = "model_not_found"
 	ErrorUnknown             ErrorKind = "unknown"
 )
 
@@ -88,6 +89,8 @@ func (e *ProviderError) Is(target error) bool {
 		return e.Kind == ErrorProviderUnavailable || e.Kind == ErrorOverloaded
 	case target == ErrRequestTooLarge:
 		return errors.Is(e.Err, ErrRequestTooLarge)
+	case target == ErrModelNotFound:
+		return e.Kind == ErrorModelNotFound
 	default:
 		return false
 	}
@@ -98,6 +101,7 @@ var (
 	ErrUnauthorized        = errors.New("provider unauthorized")
 	ErrProviderUnavailable = errors.New("provider unavailable")
 	ErrRequestTooLarge     = errors.New("provider request too large")
+	ErrModelNotFound      = errors.New("provider model not found")
 )
 
 func ClassifyError(err error) error {
