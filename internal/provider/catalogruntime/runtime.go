@@ -1,6 +1,6 @@
 package catalogruntime
 
-import("context";"encoding/json";"fmt";"net/http";"os";"strings";"time"
+import("bufio";"context";"encoding/json";"fmt";"io";"net/http";"os";"strings";"time"
 "github.com/Enoch7768/fuzecli/internal/provider")
 
 type Provider struct{name,apiKey,baseURL,env string;maxInput,maxOutput,jsonOutput int;client *http.Client}
@@ -9,5 +9,22 @@ func(p *Provider)Name()string{return p.name}
 func(p *Provider)headers()map[string]string{h:=map[string]string{};if p.apiKey!=""{h["Authorization"]="Bearer "+p.apiKey};return h}
 func(p *Provider)call(ctx context.Context,b any)([]byte,int,http.Header,error){if p.baseURL==""{return nil,0,nil,fmt.Errorf("%s: base URL is not configured",p.name)};d,e:=json.Marshal(b);if e!=nil{return nil,0,nil,e};r,e:=http.NewRequestWithContext(ctx,http.MethodPost,p.baseURL+"/chat/completions",strings.NewReader(string(d)));if e!=nil{return nil,0,nil,e};r.Header.Set("Content-Type","application/json");for k,v:=range p.headers(){r.Header.Set(k,v)};resp,e:=p.client.Do(r);if e!=nil{return nil,0,nil,e};defer resp.Body.Close();var out struct{Choices []struct{Message struct{Content string `json:"content"`} `json:"message"`} `json:"choices"`};_ = out;body:=make([]byte,0);buf:=make([]byte,8192);for{n,er:=resp.Body.Read(buf);if n>0{body=append(body,buf[:n]...)};if er!=nil{break}};return body,resp.StatusCode,resp.Header.Clone(),nil}
 func(p *Provider)Send(ctx context.Context,m []provider.Message,o provider.RequestOptions)(*provider.Response,error){model:=o.Model;if model==""||model=="auto"{model="default"};b:=map[string]any{"model":model,"messages":m,"temperature":o.Temperature,"max_tokens":o.MaxTokens};if o.JSONMode{b["response_format"]=map[string]any{"type":"json_schema","json_schema":map[string]any{"name":"fuzecli_response","strict":true,"schema":o.JSONSchema}}};body,status,_,e:=p.call(ctx,b);if e!=nil{return nil,&provider.ProviderError{Kind:provider.ErrorProviderUnavailable,Provider:p.name,Message:"request failed",Err:e}};if status<200||status>=300{return nil,&provider.ProviderError{Kind:provider.ErrorBadRequest,Provider:p.name,StatusCode:status,Message:strings.TrimSpace(string(body)),RetryAfter:0}};var out struct{Model string `json:"model"`;Choices []struct{Message struct{Content string `json:"content"`} `json:"message"`} `json:"choices"`;Usage provider.Usage `json:"usage"`};if e=json.Unmarshal(body,&out);e!=nil{return nil,e};if len(out.Choices)==0{return nil,fmt.Errorf("%s: response contained no choices",p.name)};return &provider.Response{Content:out.Choices[0].Message.Content,Model:out.Model,ProviderName:p.name,Usage:out.Usage},nil}
-func(p *Provider)Stream(ctx context.Context,m []provider.Message,o provider.RequestOptions)(<-chan provider.StreamChunk,error){r,e:=p.Send(ctx,m,o);if e!=nil{return nil,e};c:=make(chan provider.StreamChunk,2);go func(){defer close(c);c<-provider.StreamChunk{Delta:r.Content};c<-provider.StreamChunk{Done:true}}();return c,nil}
+func(p *Provider)Stream(ctx context.Context,m []provider.Message,o provider.RequestOptions)(<-chan provider.StreamChunk,error){
+if p.baseURL==""{return nil,fmt.Errorf("%s: base URL is not configured",p.name)}
+model:=o.Model;if model==""||model=="auto"{model="default"}
+b:=map[string]any{"model":model,"messages":m,"temperature":o.Temperature,"max_tokens":o.MaxTokens,"stream":true}
+if o.JSONMode{b["response_format"]=map[string]any{"type":"json_schema","json_schema":map[string]any{"name":"fuzecli_response","strict":true,"schema":o.JSONSchema}}}
+d,e:=json.Marshal(b);if e!=nil{return nil,e}
+req,e:=http.NewRequestWithContext(ctx,http.MethodPost,p.baseURL+"/chat/completions",strings.NewReader(string(d)));if e!=nil{return nil,e}
+req.Header.Set("Content-Type","application/json");req.Header.Set("Accept","text/event-stream");for k,v:=range p.headers(){req.Header.Set(k,v)}
+resp,e:=p.client.Do(req);if e!=nil{return nil,&provider.ProviderError{Kind:provider.ErrorProviderUnavailable,Provider:p.name,Message:"stream request failed",Err:e}}
+if resp.StatusCode<200||resp.StatusCode>=300{defer resp.Body.Close();body,_:=io.ReadAll(resp.Body);return nil,&provider.ProviderError{Kind:provider.ErrorBadRequest,Provider:p.name,StatusCode:resp.StatusCode,Message:strings.TrimSpace(string(body))}}
+out:=make(chan provider.StreamChunk)
+go func(){defer close(out);defer resp.Body.Close();scanner:=bufio.NewScanner(resp.Body);scanner.Buffer(make([]byte,4096),1024*1024)
+for scanner.Scan(){line:=strings.TrimSpace(scanner.Text());if line==""||strings.HasPrefix(line,":"){continue};if !strings.HasPrefix(line,"data:"){continue};payload:=strings.TrimSpace(strings.TrimPrefix(line,"data:"));if payload=="[DONE]"{sendStreamChunk(ctx,out,provider.StreamChunk{Done:true});return}
+var event struct{Choices []struct{Delta struct{Content string \`json:"content"\`} \`json:"delta"\`} \`json:"choices"\`}
+if e:=json.Unmarshal([]byte(payload),&event);e!=nil{sendStreamChunk(ctx,out,provider.StreamChunk{Error:fmt.Errorf("%s: invalid stream event: %w",p.name,e)});return}
+for _,choice:=range event.Choices{if choice.Delta.Content!=""{if !sendStreamChunk(ctx,out,provider.StreamChunk{Delta:choice.Delta.Content}){return}}}}
+if e:=scanner.Err();e!=nil{sendStreamChunk(ctx,out,provider.StreamChunk{Error:fmt.Errorf("%s: stream read failed: %w",p.name,e)});return};sendStreamChunk(ctx,out,provider.StreamChunk{Done:true})}();return out,nil}
+func sendStreamChunk(ctx context.Context,out chan<- provider.StreamChunk,chunk provider.StreamChunk)bool{select{case out<-chunk:return true;case <-ctx.Done():return false}}
 func(p *Provider)ListModels(ctx context.Context)([]string,error){if p.baseURL==""{return nil,fmt.Errorf("%s: base URL is not configured",p.name)};req,e:=http.NewRequestWithContext(ctx,http.MethodGet,p.baseURL+"/models",nil);if e!=nil{return nil,e};for k,v:=range p.headers(){req.Header.Set(k,v)};resp,e:=p.client.Do(req);if e!=nil{return nil,e};defer resp.Body.Close();var out struct{Data []struct{ID string `json:"id"`} `json:"data"`};if e=json.NewDecoder(resp.Body).Decode(&out);e!=nil{return nil,e};models:=make([]string,0,len(out.Data));for _,x:=range out.Data{if x.ID!=""{models=append(models,x.ID)}};return models,nil}
