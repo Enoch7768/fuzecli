@@ -19,7 +19,10 @@ FuzeCLI (`aicli.exe`) is a Windows-native Go CLI for chatting with multiple AI p
 - Streaming chat output with an explicit response-end event for the web interface and immediate next-message availability.
 - Local HTTP API for applications and integrations.
 - MCP server over stdio for MCP-compatible AI clients.
-- Repository code-indexing and symbol-search foundations for focused project understanding.
+- Repository code-indexing, context graphs, persistent project memory, project rules, and reusable skills for focused project understanding.
+- Fuze Studio modes: Ask, Plan, Agent, and Autopilot, with background jobs and developer progress.
+- Multi-workspace foundations, inline code completion, local browser inspection, visual preview workflows, and proof-of-work artifacts.
+- Local AI code review, provider benchmarking, and telemetry-aware developer workflows.
 - Structured diagnostics for verification failures.
 - Workspace snapshots and restoration for recoverable changes.
 - Git status and diff inspection without modifying the repository.
