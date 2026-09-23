@@ -14,6 +14,14 @@ func TestCompatibleCatalogHasAtLeastFiftyProviders(t *testing.T) {
 	}
 }
 
+func TestAzureOpenAIIsRemovedFromCatalog(t *testing.T) {
+	for _, name := range provider.CompatibleProviderNames() {
+		if name == "azure-openai" {
+			t.Fatal("azure-openai must not be present in the compatible provider catalog")
+		}
+	}
+}
+
 func TestDynamicCompatibleProviderRegistration(t *testing.T) {
 	c := config.Default()
 	providers := providerfactory.New(c)
