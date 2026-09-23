@@ -102,6 +102,8 @@ func isSchemaCompatibilityError(err error) bool {
 		"unknown name",
 		"cannot find field",
 		"invalid schema",
+		"requires unspecified property",
+		"required property",
 	} {
 		if strings.Contains(message, marker) {
 			return true
@@ -140,12 +142,39 @@ func buildGenerationConfig(opts provider.RequestOptions) map[string]any {
 	if opts.JSONMode {
 		config["responseMimeType"] = "application/json"
 		if opts.JSONSchema != nil {
-			config["responseJsonSchema"] = sanitizeJSONSchema(opts.JSONSchema)
+			config["responseJsonSchema"] = sanitizeJSONSchemaForGemini(opts.JSONSchema)
 		} else {
-			config["responseJsonSchema"] = sanitizeJSONSchema(generationJSONSchema())
+			config["responseJsonSchema"] = sanitizeJSONSchemaForGemini(generationJSONSchema())
 		}
 	}
 	return config
+}
+
+func sanitizeJSONSchemaForGemini(value any) any {
+	schema := sanitizeJSONSchema(value)
+	return stripRequiredConstraints(schema)
+}
+
+func stripRequiredConstraints(value any) any {
+	switch schema := value.(type) {
+	case map[string]any:
+		out := make(map[string]any, len(schema))
+		for key, item := range schema {
+			if key == "required" {
+				continue
+			}
+			out[key] = stripRequiredConstraints(item)
+		}
+		return out
+	case []any:
+		out := make([]any, len(schema))
+		for i, item := range schema {
+			out[i] = stripRequiredConstraints(item)
+		}
+		return out
+	default:
+		return value
+	}
 }
 
 func sanitizeJSONSchema(value any) any {
