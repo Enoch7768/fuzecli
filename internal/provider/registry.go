@@ -637,6 +637,31 @@ func truncateMessage(message Message, maxChars int) Message {
 }
 
 
+func continuationRequest(name string, original []Message, combined, instruction string, opts RequestOptions) ([]Message, RequestOptions) {
+	out := make([]Message, 0, 4)
+	if len(original) > 0 && original[0].Role == "system" {
+		out = append(out, original[0])
+	}
+	for i := len(original) - 1; i >= 0; i-- {
+		if original[i].Role == "user" {
+			out = append(out, original[i])
+			break
+		}
+	}
+	out = append(out, Message{Role: "assistant", Content: combined})
+	out = append(out, Message{Role: "user", Content: instruction})
+	request := opts
+	policy := ProviderPolicy(name)
+	request.RequestTokenLimit = estimateMessageTokens(out) + 256
+	if request.MaxTokens <= 0 || request.MaxTokens > policy.MaxOutputTokens {
+		request.MaxTokens = policy.MaxOutputTokens
+	}
+	if request.JSONMode && request.MaxTokens > policy.JSONOutputTokens {
+		request.MaxTokens = policy.JSONOutputTokens
+	}
+	return out, request
+}
+
 func (r *Registry) continueStream(ctx context.Context, name string, messages []Message, opts RequestOptions, initial <-chan StreamChunk) <-chan StreamChunk {
 	out := make(chan StreamChunk)
 	go func() {
@@ -664,11 +689,7 @@ func (r *Registry) continueStream(ctx context.Context, name string, messages []M
 				out <- StreamChunk{Done: true}
 				return
 			}
-			continuationMessages := make([]Message, 0, len(messages)+2)
-			continuationMessages = append(continuationMessages, messages...)
-			continuationMessages = append(continuationMessages, Message{Role: "assistant", Content: combined.String()})
-			continuationMessages = append(continuationMessages, Message{Role: "user", Content: "Continue the previous response exactly where it stopped. Do not repeat any content already given. Finish the requested answer completely."})
-			continuationMessages, continuationOptions := adaptRequest(name, continuationMessages, opts)
+			continuationMessages, continuationOptions := continuationRequest(name, messages, combined.String(), "Continue the previous response exactly where it stopped. Do not repeat any content already given. Finish the requested answer completely.", opts)
 			if err := validateRequestBudget(name, continuationMessages, continuationOptions); err != nil {
 				out <- StreamChunk{Error: err}
 				return
@@ -691,13 +712,7 @@ func (r *Registry) continueResponse(ctx context.Context, name string, messages [
 	}
 	combined := response.Content
 	for attempt := 0; attempt < 8; attempt++ {
-		continuationMessages := make([]Message, 0, len(messages)+2)
-		continuationMessages = append(continuationMessages, messages...)
-		continuationMessages = append(continuationMessages,
-			Message{Role: "assistant", Content: combined},
-			Message{Role: "user", Content: "Continue the previous response exactly where it stopped. Do not repeat any content already given. Return only the missing continuation and finish the response completely. If the response is structured JSON, continue until the JSON object is complete and valid."},
-		)
-		continuationMessages, continuationOptions := adaptRequest(name, continuationMessages, opts)
+		continuationMessages, continuationOptions := continuationRequest(name, messages, combined, "Continue the previous response exactly where it stopped. Do not repeat any content already given. Return only the missing continuation and finish the response completely. If the response is structured JSON, continue until the JSON object is complete and valid.", opts)
 		next, err := r.sendWithRetry(ctx, name, continuationMessages, continuationOptions)
 		if err != nil {
 			return nil, err
