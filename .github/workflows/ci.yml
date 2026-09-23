@@ -18,6 +18,7 @@ on:
       - phase11-intelligent-routing
       - phase12-provider-telemetry
       - final-apex-production-hardening
+      - developer-platform-evolution
   pull_request:
     branches:
       - main
