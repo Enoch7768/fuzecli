@@ -91,8 +91,17 @@ func (r *Registry) Send(ctx context.Context, name string, messages []Message, op
 		}
 		return nil, err
 	}
+	routed, routeErr := r.Route(ctx, messages, RoutingRequest{Options: opts})
+	candidates := r.fallback
+	if routeErr == nil {
+		ordered := make([]string, 0, len(routed.Candidates))
+		for _, candidate := range routed.Candidates {
+			ordered = append(ordered, candidate.Provider)
+		}
+		candidates = ordered
+	}
 	var last error
-	for _, candidate := range r.fallback {
+	for _, candidate := range candidates {
 		requestMessages, request := adaptRequest(candidate, messages, opts)
 		request.Model = r.model(candidate, request.Model)
 		if request.Model == "" {
@@ -202,8 +211,17 @@ func (r *Registry) Stream(ctx context.Context, name string, messages []Message, 
 		}
 		return nil, err
 	}
+	routed, routeErr := r.Route(ctx, messages, RoutingRequest{Options: opts, RequireStreaming: true})
+	candidates := r.fallback
+	if routeErr == nil {
+		ordered := make([]string, 0, len(routed.Candidates))
+		for _, candidate := range routed.Candidates {
+			ordered = append(ordered, candidate.Provider)
+		}
+		candidates = ordered
+	}
 	var last error
-	for _, candidate := range r.fallback {
+	for _, candidate := range candidates {
 		streamMessages, streamOptions := adaptRequest(candidate, messages, opts)
 		streamOptions.Model = r.model(candidate, streamOptions.Model)
 		if streamOptions.Model == "" {
