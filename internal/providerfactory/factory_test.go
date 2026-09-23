@@ -17,4 +17,7 @@ func TestFactoryRegistersCompatibleProviders(t *testing.T) {
 			t.Fatalf("provider factory did not register %q", name)
 		}
 	}
+	if seen["azure-openai"] {
+		t.Fatal("provider factory must not register azure-openai")
+	}
 }
