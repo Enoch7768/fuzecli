@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Enoch7768/fuzecli/internal/generation"
+	"github.com/Enoch7768/fuzecli/internal/platform"
 )
 
 type Server struct {
@@ -44,6 +45,14 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/v1/history", s.history)
 	mux.HandleFunc("/v1/touched", s.touched)
 	mux.HandleFunc("/v1/telemetry", s.telemetry)
+	mux.HandleFunc("/v1/platform", s.platformState)
+	mux.HandleFunc("/v1/graph", s.graph)
+	mux.HandleFunc("/v1/memory", s.memory)
+	mux.HandleFunc("/v1/jobs", s.jobs)
+	mux.HandleFunc("/v1/autocomplete", s.autocomplete)
+	mux.HandleFunc("/v1/browser/inspect", s.browserInspect)
+	mux.HandleFunc("/v1/review", s.review)
+	mux.HandleFunc("/v1/proof", s.proof)
 	return s.securityHeaders(s.origin(s.auth(mux)))
 }
 
@@ -418,4 +427,62 @@ func writeJSON(w http.ResponseWriter, status int, value any) {
 
 func writeError(w http.ResponseWriter, status int, message string) {
 	writeJSON(w, status, map[string]string{"error": message})
+}
+
+
+func (s *Server) platformState(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet { writeError(w,http.StatusMethodNotAllowed,"method not allowed");return }
+	value,err:=s.service.PlatformState();if err!=nil{writeError(w,classifyServiceError(err),err.Error());return};writeJSON(w,http.StatusOK,value)
+}
+
+func (s *Server) graph(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet { writeError(w,http.StatusMethodNotAllowed,"method not allowed");return }
+	value,err:=s.service.ContextGraph();if err!=nil{writeError(w,classifyServiceError(err),err.Error());return};writeJSON(w,http.StatusOK,value)
+}
+
+func (s *Server) memory(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost { writeError(w,http.StatusMethodNotAllowed,"method not allowed");return }
+	var value platform.ProjectMemory
+	if err:=json.NewDecoder(http.MaxBytesReader(w,r.Body,256<<10)).Decode(&value);err!=nil{writeError(w,http.StatusBadRequest,err.Error());return}
+	if err:=s.service.SaveMemory(value);err!=nil{writeError(w,classifyServiceError(err),err.Error());return};writeJSON(w,http.StatusOK,map[string]any{"ok":true,"memory":value})
+}
+
+func (s *Server) jobs(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodGet {
+		id:=strings.TrimSpace(r.URL.Query().Get("id"))
+		if id=="" { if s.service.App == nil || s.service.App.Platform == nil {writeError(w,500,"platform not initialized");return};writeJSON(w,http.StatusOK,s.service.App.Platform.Jobs.List());return }
+		job,ok:=s.service.Job(id);if !ok{writeError(w,http.StatusNotFound,"job not found");return};writeJSON(w,http.StatusOK,job);return
+	}
+	if r.Method != http.MethodPost {writeError(w,http.StatusMethodNotAllowed,"method not allowed");return}
+	r.Body=http.MaxBytesReader(w,r.Body,2<<20);var req ChatRequest
+	if err:=json.NewDecoder(r.Body).Decode(&req);err!=nil{writeError(w,http.StatusBadRequest,err.Error());return}
+	if strings.TrimSpace(req.Prompt)==""{writeError(w,http.StatusBadRequest,"prompt is required");return}
+	job,err:=s.service.StartBackgroundJob(r.Context(),req);if err!=nil{writeError(w,classifyServiceError(err),err.Error());return};writeJSON(w,http.StatusAccepted,job)
+}
+
+func (s *Server) autocomplete(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {writeError(w,http.StatusMethodNotAllowed,"method not allowed");return}
+	var req struct{Provider string `json:"provider,omitempty"`;Model string `json:"model,omitempty"`;Language string `json:"language,omitempty"`;Prefix string `json:"prefix"`;Suffix string `json:"suffix,omitempty"`}
+	if err:=json.NewDecoder(http.MaxBytesReader(w,r.Body,256<<10)).Decode(&req);err!=nil{writeError(w,http.StatusBadRequest,err.Error());return}
+	value,err:=s.service.Autocomplete(r.Context(),req.Provider,req.Model,req.Language,req.Prefix,req.Suffix);if err!=nil{writeError(w,classifyServiceError(err),err.Error());return};writeJSON(w,http.StatusOK,map[string]string{"completion":value})
+}
+
+func (s *Server) browserInspect(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {writeError(w,http.StatusMethodNotAllowed,"method not allowed");return}
+	var req struct{URL string `json:"url"`}
+	if err:=json.NewDecoder(http.MaxBytesReader(w,r.Body,32<<10)).Decode(&req);err!=nil{writeError(w,http.StatusBadRequest,err.Error());return}
+	value,err:=s.service.InspectURL(r.Context(),req.URL);if err!=nil{writeError(w,http.StatusBadRequest,err.Error());return};writeJSON(w,http.StatusOK,value)
+}
+
+func (s *Server) review(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {writeError(w,http.StatusMethodNotAllowed,"method not allowed");return}
+	var req struct{Diff string `json:"diff"`}
+	if err:=json.NewDecoder(http.MaxBytesReader(w,r.Body,2<<20)).Decode(&req);err!=nil{writeError(w,http.StatusBadRequest,err.Error());return};writeJSON(w,http.StatusOK,s.service.ReviewDiff(req.Diff))
+}
+
+func (s *Server) proof(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {writeError(w,http.StatusMethodNotAllowed,"method not allowed");return}
+	var value platform.Proof
+	if err:=json.NewDecoder(http.MaxBytesReader(w,r.Body,256<<10)).Decode(&value);err!=nil{writeError(w,http.StatusBadRequest,err.Error());return}
+	saved,err:=s.service.SaveProof(value);if err!=nil{writeError(w,classifyServiceError(err),err.Error());return};writeJSON(w,http.StatusOK,saved)
 }
