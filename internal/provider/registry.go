@@ -314,13 +314,59 @@ func (r *Registry) observe(name string, err error) {
 func adaptRequest(name string, messages []Message, opts RequestOptions) ([]Message, RequestOptions) {
 	budget := ProviderPolicy(name)
 	request := opts
+	inputChars := budget.MaxInputChars
+	if strings.EqualFold(strings.TrimSpace(request.BillingMode), "free") {
+		inputChars = minInt(inputChars, 16000)
+		if request.MaxTokens <= 0 || request.MaxTokens > 5000 {
+			request.MaxTokens = 5000
+		}
+	} else {
+		inputChars = minInt(inputChars, 20000)
+		if request.MaxTokens <= 0 || request.MaxTokens > 8000 {
+			request.MaxTokens = 8000
+		}
+	}
 	if request.MaxTokens <= 0 || request.MaxTokens > budget.MaxOutputTokens {
 		request.MaxTokens = budget.MaxOutputTokens
 	}
 	if request.JSONMode && request.MaxTokens > budget.JSONOutputTokens {
 		request.MaxTokens = budget.JSONOutputTokens
 	}
-	return trimProviderMessages(messages, budget.MaxInputChars), request
+	if request.RequestTokenLimit <= 0 {
+		request.RequestTokenLimit = inputChars / 3
+	}
+	messages = trimProviderMessages(messages, inputChars)
+	messages = trimToRequestTokenBudget(messages, request.RequestTokenLimit, request.MaxTokens)
+	return messages, request
+}
+
+func minInt(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+func estimateMessageTokens(messages []Message) int {
+	chars := 0
+	for _, message := range messages {
+		chars += len(message.Role) + len(message.Content) + 16
+	}
+	if chars == 0 {
+		return 1
+	}
+	return (chars + 2) / 3
+}
+
+func trimToRequestTokenBudget(messages []Message, limit, output int) []Message {
+	if limit <= 0 || estimateMessageTokens(messages)+output+256 <= limit {
+		return messages
+	}
+	target := limit - output - 256
+	if target < 1000 {
+		target = 1000
+	}
+	return trimProviderMessages(messages, target*3)
 }
 
 func trimProviderMessages(messages []Message, maxChars int) []Message {
