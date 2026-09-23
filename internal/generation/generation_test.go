@@ -41,3 +41,25 @@ func TestApplyCreatesAndDeletes(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestApplyPreventsPartialChanges(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "existing.txt")
+	if err := os.WriteFile(path, []byte("original"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	plan := Plan{Files: []FileChange{
+		{Path: "existing.txt", Content: "changed", Action: "modify"},
+		{Path: "existing.txt", Content: "again", Action: "modify"},
+	}}
+	if _, err := Apply(root, plan); err == nil {
+		t.Fatal("expected duplicate plan to fail")
+	}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(b) != "original" {
+		t.Fatalf("partial change was applied: %q", string(b))
+	}
+}
