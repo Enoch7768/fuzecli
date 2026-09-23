@@ -466,7 +466,7 @@ func benchmarkCommand(args []string) error {
 	prompt:=strings.Join(args," ");a,err:=app.Load();if err!=nil{return err};defer a.Close()
 	names:=a.Config.FallbackOrder;if len(names)==0{return fmt.Errorf("no provider candidates configured")}
 	results:=platform.RunBenchmark(context.Background(),prompt,"",names,func(ctx context.Context,name string,opts provider.RequestOptions)(provider.Response,error){
-		return a.Registry.Send(ctx,name,[]provider.Message{{Role:"user",Content:prompt}},opts)
+		resp,err:=a.Registry.Send(ctx,name,[]provider.Message{{Role:"user",Content:prompt}},opts);if err!=nil{return provider.Response{},err};return *resp,nil
 	})
 	data,_:=json.MarshalIndent(results,"","  ");fmt.Println(string(data));return nil
 }
