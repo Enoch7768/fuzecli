@@ -75,22 +75,28 @@ func estimateTokens(messages []provider.Message) int {
 }
 
 func openAIResponseFormat(opts provider.RequestOptions) any {
-	if !opts.JSONMode {
-		return nil
-	}
-	if opts.JSONSchema == nil {
-		return map[string]any{"type": "json_object"}
-	}
-	return map[string]any{
-		"type": "json_schema",
-		"json_schema": map[string]any{
-			"name": "fuzecli_response",
-			"strict": true,
-			"schema": opts.JSONSchema,
-		},
-	}
+	if !opts.JSONMode { return nil }
+	if opts.JSONSchema == nil { return map[string]any{"type": "json_object"} }
+	return map[string]any{"type": "json_schema", "json_schema": map[string]any{"name": "fuzecli_response", "strict": true, "schema": sanitizeOpenAISchema(opts.JSONSchema)}}
 }
 
+func sanitizeOpenAISchema(value any) any {
+	switch schema := value.(type) {
+	case map[string]any:
+		out := make(map[string]any, len(schema))
+		for key, item := range schema {
+			if key == "propertyOrdering" { continue }
+			out[key] = sanitizeOpenAISchema(item)
+		}
+		return out
+	case []any:
+		out := make([]any, len(schema))
+		for i, item := range schema { out[i] = sanitizeOpenAISchema(item) }
+		return out
+	default:
+		return value
+	}
+}
 func (p *Provider) Send(ctx context.Context, messages []provider.Message, opts provider.RequestOptions) (*provider.Response, error) {
 	opts = effectiveOptions(messages, opts)
 	var out response
