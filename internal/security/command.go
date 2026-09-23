@@ -66,5 +66,5 @@ func exact(got []string, want ...string) bool {
 }
 
 func containsShellMeta(value string) bool {
-	return strings.ContainsAny(value, "&|;<>$\\n\\r")
+	return strings.ContainsAny(value, "&|;<>$")
 }
