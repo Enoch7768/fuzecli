@@ -65,10 +65,29 @@ func (r *Registry) Send(ctx context.Context, name string, messages []Message, op
 			return nil, err
 		}
 		response, err := r.sendWithRetry(ctx, name, requestMessages, request)
-		if err != nil {
-			return nil, err
+		if err == nil {
+			return r.continueResponse(ctx, name, requestMessages, request, response)
 		}
-		return r.continueResponse(ctx, name, requestMessages, request, response)
+		if errors.Is(err, ErrRateLimited) || errors.Is(err, ErrProviderUnavailable) || errors.Is(err, ErrRequestTooLarge) {
+			for _, candidate := range r.fallback {
+				if candidate == name {
+					continue
+				}
+				fallbackMessages, fallbackRequest := adaptRequest(candidate, messages, opts)
+				fallbackRequest.Model = r.model(candidate, fallbackRequest.Model)
+				if fallbackRequest.Model == "" {
+					continue
+				}
+				if budgetErr := validateRequestBudget(candidate, fallbackMessages, fallbackRequest); budgetErr != nil {
+					continue
+				}
+				fallbackResponse, fallbackErr := r.sendWithRetry(ctx, candidate, fallbackMessages, fallbackRequest)
+				if fallbackErr == nil {
+					return r.continueResponse(ctx, candidate, fallbackMessages, fallbackRequest, fallbackResponse)
+				}
+			}
+		}
+		return nil, err
 	}
 	var last error
 	for _, candidate := range r.fallback {
@@ -153,10 +172,29 @@ func (r *Registry) Stream(ctx context.Context, name string, messages []Message, 
 			return nil, err
 		}
 		stream, err := r.streamWithRetry(ctx, name, streamMessages, streamOptions)
-		if err != nil {
-			return nil, err
+		if err == nil {
+			return r.continueStream(ctx, name, streamMessages, streamOptions, stream), nil
 		}
-		return r.continueStream(ctx, name, streamMessages, streamOptions, stream), nil
+		if errors.Is(err, ErrRateLimited) || errors.Is(err, ErrProviderUnavailable) || errors.Is(err, ErrRequestTooLarge) {
+			for _, candidate := range r.fallback {
+				if candidate == name {
+					continue
+				}
+				fallbackMessages, fallbackOptions := adaptRequest(candidate, messages, opts)
+				fallbackOptions.Model = r.model(candidate, fallbackOptions.Model)
+				if fallbackOptions.Model == "" {
+					continue
+				}
+				if budgetErr := validateRequestBudget(candidate, fallbackMessages, fallbackOptions); budgetErr != nil {
+					continue
+				}
+				fallbackStream, fallbackErr := r.streamWithRetry(ctx, candidate, fallbackMessages, fallbackOptions)
+				if fallbackErr == nil {
+					return r.continueStream(ctx, candidate, fallbackMessages, fallbackOptions, fallbackStream), nil
+				}
+			}
+		}
+		return nil, err
 	}
 	var last error
 	for _, candidate := range r.fallback {
