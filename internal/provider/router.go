@@ -88,7 +88,7 @@ func (r *Registry) Route(ctx context.Context, messages []Message, request Routin
 			continue
 		}
 
-		score := routeScore(name, capabilities, request)
+		score := r.routeScore(name, capabilities, request)
 		candidates = append(candidates, RoutingCandidate{
 			Provider: name,
 			Model: options.Model,
@@ -116,7 +116,7 @@ func (r *Registry) Route(ctx context.Context, messages []Message, request Routin
 	}, nil
 }
 
-func routeScore(name string, capabilities Capabilities, request RoutingRequest) int {
+func (r *Registry) routeScore(name string, capabilities Capabilities, request RoutingRequest) int {
 	score := 0
 	if strings.EqualFold(name, request.PreferredProvider) {
 		score += 1000
@@ -135,6 +135,18 @@ func routeScore(name string, capabilities Capabilities, request RoutingRequest) 
 	}
 	score += minInt(capabilities.MaxOutputTokens/1000, 20) * 5
 	score += minInt(capabilities.MaxInputChars/10000, 20) * 2
+
+	if telemetry, ok := r.telemetry.Provider(name); ok && telemetry.Requests > 0 {
+		successRate := float64(telemetry.Successes) / float64(telemetry.Requests)
+		score += int(successRate * 250)
+		if telemetry.Failures > 0 {
+			score -= minInt(int(telemetry.Failures)*10, 150)
+		}
+		if telemetry.LastLatency > 0 {
+			latencyMs := telemetry.LastLatency.Milliseconds()
+			score -= minInt(int(latencyMs/100), 100)
+		}
+	}
 	return score
 }
 
