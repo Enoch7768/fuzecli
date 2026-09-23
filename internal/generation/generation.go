@@ -168,17 +168,26 @@ func normalizeJSONDocument(raw string) ([]byte, error) {
 	if s == "" {
 		return nil, errors.New("empty model response")
 	}
-	s = strings.ReplaceAll(s, "```json", "```")
+
 	if strings.HasPrefix(s, "```") {
-		if end := strings.Index(s[3:], "```"); end >= 0 {
-			body := s[3 : 3+end]
-			body = strings.TrimSpace(strings.TrimPrefix(body, "json"))
-			s = strings.TrimSpace(body)
+		lines := strings.Split(s, "\n")
+		if len(lines) >= 2 {
+			first := strings.TrimSpace(lines[0])
+			if strings.EqualFold(first, "```json") || first == "```" {
+				for i := len(lines) - 1; i > 0; i-- {
+					if strings.TrimSpace(lines[i]) == "```" {
+						lines = lines[1:i]
+						break
+					}
+				}
+				s = strings.TrimSpace(strings.Join(lines, "\n"))
+			}
 		}
 	}
+
 	start := strings.IndexAny(s, "{[")
 	if start < 0 {
-		return nil, errors.New("response does not contain a JSON object")
+		return nil, errors.New("response does not contain a JSON document")
 	}
 	end, ok := balancedJSONEnd(s, start)
 	if !ok {
@@ -190,7 +199,6 @@ func normalizeJSONDocument(raw string) ([]byte, error) {
 	}
 	return []byte(candidate), nil
 }
-
 func balancedJSONEnd(s string, start int) (int, bool) {
 	stack := make([]byte, 0, 16)
 	inString := false
