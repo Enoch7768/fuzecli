@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Enoch7768/fuzecli/internal/diagnostics"
+	"github.com/Enoch7768/fuzecli/internal/security"
 )
 
 type Result struct {
@@ -44,6 +45,10 @@ func Detect(root string, touched []string) (Result, error) {
 }
 
 func run(root string, name string, args ...string) (Result, error) {
+	decision := security.Authorize(security.Command{Name: name, Args: args})
+	if !decision.Allowed {
+		return Result{Tool: name, Passed: false, Output: "verification command blocked by security policy: " + decision.Reason}, nil
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, name, args...)
