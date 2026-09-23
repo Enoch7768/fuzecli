@@ -24,10 +24,12 @@ func Detect(root string, touched []string) (Result, error) {
 	has := func(name string) bool { _, e := os.Stat(filepath.Join(root, name)); return e == nil }
 	switch {
 	case has("go.mod"):
-		return run(root, "go", "test", "./...")
+		return verifyGo(root)
 	case has("package.json") && has("tsconfig.json"):
 		if has("package-lock.json") {
-			return run(root, "npm", "test", "--", "--runInBand")
+			if result, err := run(root, "npm", "test", "--", "--runInBand"); err == nil && !result.Passed {
+				return result, nil
+			}
 		}
 		return run(root, "npx", "--yes", "tsc", "--noEmit")
 	case has("package.json"):
@@ -42,6 +44,31 @@ func Detect(root string, touched []string) (Result, error) {
 	default:
 		return Result{Tool: "none", Passed: true, Output: "No supported toolchain detected; verification skipped."}, nil
 	}
+}
+
+func verifyGo(root string) (Result, error) {
+	checks := []struct {
+		name string
+		args []string
+	}{
+		{name: "gofmt", args: []string{"gofmt", "-l", "."}},
+		{name: "go test", args: []string{"go", "test", "./..."}},
+		{name: "go vet", args: []string{"go", "vet", "./..."}},
+	}
+	var outputs []string
+	for _, check := range checks {
+		result, err := run(root, check.args[0], check.args[1:]...)
+		if err != nil {
+			return Result{}, err
+		}
+		outputs = append(outputs, fmt.Sprintf("[%s] %s", check.name, result.Output))
+		if !result.Passed {
+			result.Tool = check.name
+			result.Output = strings.Join(outputs, "\n")
+			return result, nil
+		}
+	}
+	return Result{Tool: "go test + go vet + gofmt", Passed: true, Output: strings.Join(outputs, "\n")}, nil
 }
 
 func run(root string, name string, args ...string) (Result, error) {
