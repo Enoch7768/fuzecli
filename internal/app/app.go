@@ -1,6 +1,7 @@
 package app
 
 import (
+	"github.com/Enoch7768/fuzecli/internal/agent"
 	"bufio"
 	"context"
 	"errors"
@@ -13,13 +14,8 @@ import (
 	"github.com/Enoch7768/fuzecli/internal/config"
 	"github.com/Enoch7768/fuzecli/internal/generation"
 	"github.com/Enoch7768/fuzecli/internal/profile"
+	"github.com/Enoch7768/fuzecli/internal/repository"
 	"github.com/Enoch7768/fuzecli/internal/provider"
-	"github.com/Enoch7768/fuzecli/internal/providerfactory"
-	"github.com/Enoch7768/fuzecli/internal/provider/anthropic"
-	"github.com/Enoch7768/fuzecli/internal/provider/gemini"
-	"github.com/Enoch7768/fuzecli/internal/provider/groq"
-	"github.com/Enoch7768/fuzecli/internal/provider/llamacpp"
-	"github.com/Enoch7768/fuzecli/internal/provider/openai"
 	"github.com/Enoch7768/fuzecli/internal/ui"
 	"github.com/Enoch7768/fuzecli/internal/verify"
 	"github.com/Enoch7768/fuzecli/internal/workspace"
@@ -28,8 +24,9 @@ import (
 type App struct {
 	Config   config.Config
 	Registry *provider.Registry
-	Store    *workspace.Store
-	Profile  profile.Profile
+	Store      *workspace.Store
+	Profile    profile.Profile
+	Repository *repository.Index
 }
 
 func Load() (*App, error) {
@@ -38,40 +35,16 @@ func Load() (*App, error) {
 		return nil, err
 	}
 
-	procs := []provider.Provider{
-		openai.New(
-			c.Providers["openai"].APIKey,
-			"",
-		),
-		gemini.New(
-			c.Providers["gemini"].APIKey,
-			"",
-		),
-		groq.New(
-			c.Providers["groq"].APIKey,
-			"",
-		),
-		anthropic.New(
-			c.Providers["anthropic"].APIKey,
-			"",
-		),
-		llamacpp.New(
-			c.Providers["llamacpp"].BaseURL,
-		),
-	}
-
 	defaults := map[string]string{}
 
 	for name, cfg := range c.Providers {
 		defaults[name] = cfg.DefaultModel
 	}
 
-	procs = append(procs, providerfactory.New(c)...)
-
 	r := provider.NewRegistry(
 		c.FallbackOrder,
 		defaults,
-		procs...,
+		buildProviders(c)...,
 	)
 
 	p, err := profile.Load()
@@ -92,7 +65,14 @@ func (a *App) AttachWorkspace(root string) error {
 		return err
 	}
 
+	index, err := repository.Build(s.Root)
+	if err != nil {
+		_ = s.Close()
+		return fmt.Errorf("build repository index: %w", err)
+	}
+
 	a.Store = s
+	a.Repository = index
 	return nil
 }
 
@@ -209,6 +189,11 @@ func (a *App) askOnce(
 	if err != nil {
 		return nil, err
 	}
+	if a.Repository != nil {
+		if intelligence := a.Repository.Context(prompt, 24); intelligence != "" {
+			ctxText += "\n" + intelligence
+		}
+	}
 
 	engine := generation.Engine{
 		Registry:        a.Registry,
@@ -316,117 +301,73 @@ func (a *App) askOnce(
 		}
 	}
 
-	written, err := generation.Apply(
-		a.Store.Root,
-		plan,
-	)
-	if err != nil {
-		return nil, err
+	written := []string{}
+	for attempt := 0; attempt <= a.Config.Verification.SelfCorrectionAttempts; attempt++ {
+		executor := agent.Executor{Root: a.Store.Root}
+		verification := agent.VerificationResult{}
+		written = nil
+		verification, err = executor.Execute(plan, func() agent.VerificationResult {
+			vr, detectErr := verify.Detect(a.Store.Root, planPaths(plan))
+			if detectErr != nil {
+				return agent.VerificationResult{Passed: false, Output: detectErr.Error()}
+			}
+			fmt.Println(verify.Format(vr))
+			return agent.VerificationResult{Passed: vr.Passed, Output: vr.Output}
+		})
+		if verification.Passed {
+			written = verification.Changed
+			break
+		}
+		if attempt == a.Config.Verification.SelfCorrectionAttempts {
+			return nil, fmt.Errorf("verification failed after %d self-correction attempts", attempt)
+		}
+
+		correction := generation.BuildCorrectionPrompt(plan, verification.Output)
+		history, _ = a.Store.History(400)
+		history, _ = a.compactHistory(ctx, name, mdl, history)
+		ctxText, _ = a.Store.WorkspaceContext()
+		if a.Repository != nil {
+			if intelligence := a.Repository.Context(correction, 24); intelligence != "" {
+				ctxText += "\n" + intelligence
+			}
+		}
+		msgs = engine.Messages(a.Profile.Condensed(), ctxText, history, correction)
+
+		resp, err = a.Registry.Send(ctx, name, msgs, provider.RequestOptions{
+			Model: mdl, Temperature: 0, MaxTokens: 16000, JSONMode: true,
+		})
+		if err != nil {
+			return nil, err
+		}
+		plan, err = generation.ParsePlan(resp.Content)
+		if err != nil {
+			return nil, err
+		}
+		ui.Preview(plan, a.Store.Root)
 	}
 
-	if err := a.Store.MarkTouched(
-		written,
-	); err != nil {
+	if err := a.Store.MarkTouched(written); err != nil {
 		return nil, err
 	}
 
 	st, _ := a.Store.LoadState()
-
 	st.ActiveProvider = resp.ProviderName
 	st.ActiveModel = resp.Model
-
 	if st.ActiveModel == "" {
 		st.ActiveModel = mdl
 	}
-
 	_ = a.Store.SaveState(st)
 	_ = a.Store.RefreshHashes(written)
 
-	for attempt := 0; attempt <= a.Config.Verification.SelfCorrectionAttempts; attempt++ {
-		vr, _ := verify.Detect(
-			a.Store.Root,
-			written,
-		)
-
-		fmt.Println(
-			verify.Format(vr),
-		)
-
-		if vr.Passed {
-			break
-		}
-
-		if attempt ==
-			a.Config.Verification.SelfCorrectionAttempts {
-			return nil, fmt.Errorf(
-				"verification failed after %d self-correction attempts",
-				attempt,
-			)
-		}
-
-		correction := generation.BuildCorrectionPrompt(
-			plan,
-			vr.Output,
-		)
-
-		history, _ = a.Store.History(400)
-
-		history, _ = a.compactHistory(
-			ctx,
-			name,
-			mdl,
-			history,
-		)
-
-		ctxText, _ = a.Store.WorkspaceContext()
-
-		msgs = engine.Messages(
-			a.Profile.Condensed(),
-			ctxText,
-			history,
-			correction,
-		)
-
-		resp, err = a.Registry.Send(
-			ctx,
-			name,
-			msgs,
-			provider.RequestOptions{
-				Model:       mdl,
-				Temperature: 0,
-				MaxTokens:   16000,
-				JSONMode:    true,
-			},
-		)
-		if err != nil {
-			return nil, err
-		}
-
-		plan, err = generation.ParsePlan(
-			resp.Content,
-		)
-		if err != nil {
-			return nil, err
-		}
-
-		ui.Preview(
-			plan,
-			a.Store.Root,
-		)
-
-		written, err = generation.Apply(
-			a.Store.Root,
-			plan,
-		)
-		if err != nil {
-			return nil, err
-		}
-
-		_ = a.Store.MarkTouched(written)
-		_ = a.Store.RefreshHashes(written)
-	}
-
 	return &plan, nil
+}
+
+func planPaths(plan generation.Plan) []string {
+	paths := make([]string, 0, len(plan.Files))
+	for _, file := range plan.Files {
+		paths = append(paths, file.Path)
+	}
+	return paths
 }
 
 func (a *App) AskPlanned(
@@ -909,6 +850,11 @@ func (a *App) chatTurn(
 	if workspaceContext != "" {
 		system += "\nRelevant workspace files:\n" +
 			workspaceContext
+	}
+	if a.Repository != nil {
+		if intelligence := a.Repository.Context(prompt, 24); intelligence != "" {
+			system += "\n" + intelligence
+		}
 	}
 
 	msgs := []provider.Message{

@@ -427,6 +427,7 @@ func mcpCommand() error {
 	return mcpserver.Run(context.Background(), a)
 }
 
+
 func doctorCommand() error {
 	a, err := app.Load()
 	if err != nil {

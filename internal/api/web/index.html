@@ -17,6 +17,7 @@
     <button class="nav-item" data-view="builder"><span>◈</span><div><b>Builder</b><small>Live site studio</small></div></button>
     <button class="nav-item" data-view="workspace"><span>▦</span><div><b>Files</b><small>Workspace explorer</small></div></button>
     <button class="nav-item" data-view="activity"><span>◷</span><div><b>Activity</b><small>Session history</small></div></button>
+    <button class="nav-item" data-view="telemetry"><span>◌</span><div><b>Telemetry</b><small>Provider health</small></div></button>
     <button class="nav-item" data-view="settings"><span>⚙</span><div><b>Settings</b><small>Runtime controls</small></div></button>
   </nav>
   <div class="side-bottom"><div class="status-pill"><i></i><span id="statusText">Connecting</span></div><div class="side-note">Built for people who ship.</div></div>
@@ -63,6 +64,8 @@
 <section class="view" id="view-workspace"><div class="section-head"><div><span class="eyebrow">PROJECT</span><h2>Workspace</h2></div><button class="ghost" id="workspaceRefresh">Refresh</button></div><div class="workspace-grid"><div class="panel file-panel"><div class="panel-title">Files <span id="workspaceFileCount"></span></div><div id="fileList" class="file-list"></div></div><div class="panel preview-panel"><div class="panel-title"><span id="fileName">Select a file</span></div><pre id="fileContent">Choose a file from the workspace.</pre></div></div></section>
 
 <section class="view" id="view-activity"><div class="section-head"><div><span class="eyebrow">SESSION</span><h2>Activity</h2></div><button class="ghost" id="activityRefresh">Refresh</button></div><div class="panel activity-panel"><div id="activityList"></div></div></section>
+
+<section class="view" id="view-telemetry"><div class="section-head"><div><span class="eyebrow">RELIABILITY</span><h2>Provider telemetry</h2><p>Live request health, latency, errors, and token usage from this session.</p></div><button class="ghost" id="telemetryRefresh">Refresh</button></div><div class="telemetry-grid" id="telemetryGrid"></div></section>
 
 <section class="view" id="view-settings"><div class="section-head"><div><span class="eyebrow">CONTROL</span><h2>Settings</h2></div></div><div class="settings-grid"><div class="panel"><div class="panel-title">Runtime</div><label>Default provider<select id="settingsProvider"></select></label><label>Default model<input id="settingsModel" type="text"></label><button class="primary" id="saveProvider">Save provider</button></div><div class="panel"><div class="panel-title">Provider keys</div><p class="muted">Credentials stay on the machine. The UI only reports whether a provider is configured.</p><div id="keyRows"></div></div></div></section>
 </main>

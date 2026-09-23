@@ -20,3 +20,10 @@ func TestSummaryEmpty(t *testing.T) {
 		t.Fatal("unexpected empty summary")
 	}
 }
+
+func TestParseTestFailure(t *testing.T) {
+	got := Parse("--- FAIL: TestExample (0.00s)\n")
+	if len(got) != 1 || got[0].Kind != Test {
+		t.Fatalf("unexpected test diagnostic: %+v", got)
+	}
+}

@@ -20,6 +20,7 @@ type Registry struct {
 	lastCall   map[string]time.Time
 	retryUntil map[string]time.Time
 	attempts   map[string]int
+	telemetry  *Telemetry
 }
 
 func NewRegistry(fallback []string, defaults map[string]string, providers ...Provider) *Registry {
@@ -29,7 +30,7 @@ func NewRegistry(fallback []string, defaults map[string]string, providers ...Pro
 		registered[p.Name()] = p
 		requestMu[p.Name()] = &sync.Mutex{}
 	}
-	return &Registry{providers: registered, fallback: append([]string(nil), fallback...), models: defaults, requestMu: requestMu, lastCall: map[string]time.Time{}, retryUntil: map[string]time.Time{}, attempts: map[string]int{}}
+	return &Registry{providers: registered, fallback: append([]string(nil), fallback...), models: defaults, requestMu: requestMu, lastCall: map[string]time.Time{}, retryUntil: map[string]time.Time{}, attempts: map[string]int{}, telemetry: NewTelemetry()}
 }
 func (r *Registry) Get(name string) (Provider, error) {
 	p, ok := r.providers[name]
@@ -37,6 +38,14 @@ func (r *Registry) Get(name string) (Provider, error) {
 		return nil, fmt.Errorf("provider %q is not configured", name)
 	}
 	return p, nil
+}
+
+func (r *Registry) Capabilities(name string) (Capabilities, error) {
+	p, err := r.Get(name)
+	if err != nil {
+		return Capabilities{}, err
+	}
+	return CapabilitiesOf(p), nil
 }
 
 func (r *Registry) ListModels(ctx context.Context, name string) ([]string, error) {
@@ -54,6 +63,7 @@ func (r *Registry) Send(ctx context.Context, name string, messages []Message, op
 		if request.Model == "" {
 			return nil, fmt.Errorf("no default model configured for provider %s", name)
 		}
+		if capabilities, capabilityErr := r.Capabilities(name); capabilityErr != nil { return nil, capabilityErr } else if !SupportsRequest(capabilities, request) { return nil, fmt.Errorf("provider %s does not support the requested capabilities", name) }
 		if err := validateRequestBudget(name, requestMessages, request); err != nil {
 			return nil, err
 		}
@@ -82,8 +92,17 @@ func (r *Registry) Send(ctx context.Context, name string, messages []Message, op
 		}
 		return nil, err
 	}
+	routed, routeErr := r.Route(ctx, messages, RoutingRequest{Options: opts})
+	candidates := r.fallback
+	if routeErr == nil {
+		ordered := make([]string, 0, len(routed.Candidates))
+		for _, candidate := range routed.Candidates {
+			ordered = append(ordered, candidate.Provider)
+		}
+		candidates = ordered
+	}
 	var last error
-	for _, candidate := range r.fallback {
+	for _, candidate := range candidates {
 		requestMessages, request := adaptRequest(candidate, messages, opts)
 		request.Model = r.model(candidate, request.Model)
 		if request.Model == "" {
@@ -126,11 +145,17 @@ func (r *Registry) sendWithRetry(ctx context.Context, name string, messages []Me
 		if err != nil {
 			return nil, err
 		}
+		started := time.Now()
 		response, err := p.Send(ctx, messages, opts)
 		if err == nil && response != nil && strings.TrimSpace(response.Content) == "" {
 			err = &ProviderError{Kind: ErrorProviderUnavailable, Provider: name, Message: "model returned an empty response"}
 		}
 		r.observe(name, err)
+		var usage Usage
+		if response != nil {
+			usage = response.Usage
+		}
+		r.telemetry.Record(name, err, usage, time.Since(started), false)
 		if err == nil {
 			return response, nil
 		}
@@ -164,6 +189,7 @@ func (r *Registry) Stream(ctx context.Context, name string, messages []Message, 
 		if streamOptions.Model == "" {
 			return nil, fmt.Errorf("no default model configured for provider %s", name)
 		}
+		if capabilities, capabilityErr := r.Capabilities(name); capabilityErr != nil { return nil, capabilityErr } else if !capabilities.Streaming { return nil, fmt.Errorf("provider %s does not support streaming", name) } else if !SupportsRequest(capabilities, streamOptions) { return nil, fmt.Errorf("provider %s does not support the requested capabilities", name) }
 		if err := validateRequestBudget(name, streamMessages, streamOptions); err != nil {
 			return nil, err
 		}
@@ -192,8 +218,17 @@ func (r *Registry) Stream(ctx context.Context, name string, messages []Message, 
 		}
 		return nil, err
 	}
+	routed, routeErr := r.Route(ctx, messages, RoutingRequest{Options: opts, RequireStreaming: true})
+	candidates := r.fallback
+	if routeErr == nil {
+		ordered := make([]string, 0, len(routed.Candidates))
+		for _, candidate := range routed.Candidates {
+			ordered = append(ordered, candidate.Provider)
+		}
+		candidates = ordered
+	}
 	var last error
-	for _, candidate := range r.fallback {
+	for _, candidate := range candidates {
 		streamMessages, streamOptions := adaptRequest(candidate, messages, opts)
 		streamOptions.Model = r.model(candidate, streamOptions.Model)
 		if streamOptions.Model == "" {
@@ -236,8 +271,10 @@ func (r *Registry) streamWithRetry(ctx context.Context, name string, messages []
 		if err != nil {
 			return nil, err
 		}
+		started := time.Now()
 		stream, err := p.Stream(ctx, messages, opts)
 		r.observe(name, err)
+		r.telemetry.Record(name, err, Usage{}, time.Since(started), true)
 		if err == nil {
 			return stream, nil
 		}
@@ -273,6 +310,18 @@ func (r *Registry) model(name, requested string) string {
 
 func (r *Registry) DefaultModel(name string) string {
 	return r.model(name, "")
+}
+
+func (r *Registry) Telemetry() TelemetrySnapshot {
+	return r.telemetry.Snapshot()
+}
+
+func (r *Registry) ProviderTelemetry(name string) (ProviderTelemetry, bool) {
+	return r.telemetry.Provider(name)
+}
+
+func (r *Registry) ResetTelemetry() {
+	r.telemetry.Reset()
 }
 
 func (r *Registry) wait(ctx context.Context, name string) error {

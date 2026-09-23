@@ -43,6 +43,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/v1/files", s.files)
 	mux.HandleFunc("/v1/history", s.history)
 	mux.HandleFunc("/v1/touched", s.touched)
+	mux.HandleFunc("/v1/telemetry", s.telemetry)
 	return s.securityHeaders(s.origin(s.auth(mux)))
 }
 
@@ -351,6 +352,19 @@ func (s *Server) touched(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"files": paths})
+}
+
+func (s *Server) telemetry(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	value, err := s.service.Telemetry()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, value)
 }
 
 func (s *Server) config(w http.ResponseWriter, r *http.Request) {
