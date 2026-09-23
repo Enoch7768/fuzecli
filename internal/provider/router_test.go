@@ -108,3 +108,27 @@ func TestRegistryRouteRejectsUnsupportedRequest(t *testing.T) {
 func timeNow() time.Time {
 	return time.Now()
 }
+
+func TestRegistryRouteUsesTelemetryHealth(t *testing.T) {
+	registry := NewRegistry(
+		[]string{"slow", "healthy"},
+		map[string]string{"slow": "slow-model", "healthy": "healthy-model"},
+		routingProvider{name: "slow", cap: Capabilities{Streaming: true, StructuredJSON: true, ListModels: true, MaxInputChars: 100000, MaxOutputTokens: 16000, JSONOutputTokens: 12000}},
+		routingProvider{name: "healthy", cap: Capabilities{Streaming: true, StructuredJSON: true, ListModels: true, MaxInputChars: 100000, MaxOutputTokens: 16000, JSONOutputTokens: 12000}},
+	)
+
+	for i := 0; i < 8; i++ {
+		registry.telemetry.Record("slow", ErrProviderUnavailable, Usage{}, time.Second, false)
+	}
+	for i := 0; i < 8; i++ {
+		registry.telemetry.Record("healthy", nil, Usage{}, 10*time.Millisecond, false)
+	}
+
+	decision, err := registry.Route(context.Background(), []Message{{Role: "user", Content: "hello"}}, RoutingRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if decision.Provider != "healthy" {
+		t.Fatalf("expected telemetry-healthy provider, got %q", decision.Provider)
+	}
+}
