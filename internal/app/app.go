@@ -13,6 +13,7 @@ import (
 	"github.com/Enoch7768/fuzecli/internal/config"
 	"github.com/Enoch7768/fuzecli/internal/generation"
 	"github.com/Enoch7768/fuzecli/internal/profile"
+	"github.com/Enoch7768/fuzecli/internal/repository"
 	"github.com/Enoch7768/fuzecli/internal/provider"
 	"github.com/Enoch7768/fuzecli/internal/ui"
 	"github.com/Enoch7768/fuzecli/internal/verify"
@@ -22,8 +23,9 @@ import (
 type App struct {
 	Config   config.Config
 	Registry *provider.Registry
-	Store    *workspace.Store
-	Profile  profile.Profile
+	Store      *workspace.Store
+	Profile    profile.Profile
+	Repository *repository.Index
 }
 
 func Load() (*App, error) {
@@ -62,7 +64,14 @@ func (a *App) AttachWorkspace(root string) error {
 		return err
 	}
 
+	index, err := repository.Build(s.Root)
+	if err != nil {
+		_ = s.Close()
+		return fmt.Errorf("build repository index: %w", err)
+	}
+
 	a.Store = s
+	a.Repository = index
 	return nil
 }
 
@@ -178,6 +187,11 @@ func (a *App) askOnce(
 	ctxText, err := a.Store.WorkspaceContext()
 	if err != nil {
 		return nil, err
+	}
+	if a.Repository != nil {
+		if intelligence := a.Repository.Context(prompt, 24); intelligence != "" {
+			ctxText += "\n" + intelligence
+		}
 	}
 
 	engine := generation.Engine{
