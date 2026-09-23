@@ -51,3 +51,15 @@ func TestCapabilitiesOfLegacyProvider(t *testing.T) {
 		t.Fatalf("legacy defaults = %#v", got)
 	}
 }
+
+func TestSupportsRequest(t *testing.T) {
+	if !SupportsRequest(Capabilities{StructuredJSON: true}, RequestOptions{JSONMode: true}) {
+		t.Fatal("structured JSON should be supported")
+	}
+	if SupportsRequest(Capabilities{StructuredJSON: false}, RequestOptions{JSONMode: true}) {
+		t.Fatal("structured JSON should be rejected")
+	}
+	if !SupportsRequest(Capabilities{}, RequestOptions{}) {
+		t.Fatal("ordinary request should be supported")
+	}
+}
