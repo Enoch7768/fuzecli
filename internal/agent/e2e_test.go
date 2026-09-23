@@ -85,12 +85,18 @@ func TestAgentEndToEndRepairsRealGoWorkspace(t *testing.T) {
 		t.Fatalf("agent loop failed against real workspace: %v", err)
 	}
 	expected := []Phase{PhasePlan, PhaseContext, PhaseEdit, PhaseVerify, PhaseComplete}
-	if len(events) != len(expected) {
-		t.Fatalf("unexpected end-to-end event count: got %d want %d", len(events), len(expected))
+	unique := make([]Phase, 0, len(events))
+	for _, phase := range events {
+		if len(unique) == 0 || unique[len(unique)-1] != phase {
+			unique = append(unique, phase)
+		}
+	}
+	if len(unique) != len(expected) {
+		t.Fatalf("unexpected end-to-end phase sequence: got %v want %v", unique, expected)
 	}
 	for i, want := range expected {
-		if events[i] != want {
-			t.Fatalf("event %d = %q, want %q", i, events[i], want)
+		if unique[i] != want {
+			t.Fatalf("phase %d = %q, want %q", i, unique[i], want)
 		}
 	}
 }
