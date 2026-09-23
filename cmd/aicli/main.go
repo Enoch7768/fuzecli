@@ -8,7 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sort"
 	"time"
 
 	"github.com/Enoch7768/fuzecli/internal/api"
@@ -67,8 +66,6 @@ func run(args []string) error {
 		return mcpCommand()
 	case "doctor":
 		return doctorCommand()
-	case "debug":
-		return debugCommand()
 	case "debug":
 		return debugCommand()
 	case "snapshot":
@@ -430,17 +427,6 @@ func mcpCommand() error {
 	return mcpserver.Run(context.Background(), a)
 }
 
-func debugCommand() error {
-	a, err := app.Load()
-	if err != nil {
-		return err
-	}
-	defer a.Close()
-	if err := a.AttachWorkspace("."); err != nil {
-		return err
-	}
-	return a.Debug()
-}
 
 func doctorCommand() error {
 	a, err := app.Load()
