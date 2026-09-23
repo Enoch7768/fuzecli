@@ -1,6 +1,10 @@
 package provider
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/Enoch7768/fuzecli/internal/provider/openrouter"
+)
 
 func TestCompatibleCatalogHasAtLeastFiftyProviders(t *testing.T) {
 	if len(CompatibleProviderNames()) < 50 {
@@ -8,9 +12,8 @@ func TestCompatibleCatalogHasAtLeastFiftyProviders(t *testing.T) {
 	}
 }
 
-func TestDynamicCompatibleProviderRegistration(t *testing.T) {
-	Configure("openrouter", "test-key", "https://example.com/v1")
-	r := NewRegistry(nil, map[string]string{"openrouter": "test-model"})
+func TestProviderRegistration(t *testing.T) {
+	r := NewRegistry(nil, map[string]string{"openrouter": "test-model"}, openrouter.New("test-key", "https://example.com/v1"))
 	p, err := r.Get("openrouter")
 	if err != nil {
 		t.Fatalf("Get(openrouter): %v", err)
