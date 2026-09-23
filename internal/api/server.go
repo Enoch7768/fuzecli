@@ -35,6 +35,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/assets/styles.css", s.assetCSS)
 	mux.HandleFunc("/v1/health", s.health)
 	mux.HandleFunc("/v1/config", s.config)
+	mux.HandleFunc("/v1/memory/refresh", s.memoryRefresh)
 	mux.HandleFunc("/v1/chat", s.chat)
 	mux.HandleFunc("/v1/file", s.file)
 	mux.HandleFunc("/preview/", s.preview)
@@ -151,6 +152,18 @@ func (s *Server) health(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "workspace": s.service.Root()})
+}
+
+func (s *Server) memoryRefresh(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	if err := s.service.RefreshMemory(); err != nil {
+		writeError(w, classifyServiceError(err), err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "message": "conversation memory refreshed"})
 }
 
 func (s *Server) chat(w http.ResponseWriter, r *http.Request) {
