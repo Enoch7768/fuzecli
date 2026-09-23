@@ -131,7 +131,7 @@ func TestApplyChatPlanInfersCreateAndModify(t *testing.T) {
 }
 
 func TestParseChatResponseHandlesPreambleAndTrailingProse(t *testing.T) {
-	raw := "Result:\n\`\`\`json\n{\"type\":\"chat\",\"response\":\"done\"}\n\`\`\`\nFinished."
+	raw := "Result:\n```json\n{\"type\":\"chat\",\"response\":\"done\"}\n```\nFinished."
 	got, err := ParseChatResponse(raw)
 	if err != nil {
 		t.Fatalf("preamble/trailing prose rejected: %v", err)
