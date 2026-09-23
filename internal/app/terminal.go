@@ -357,7 +357,7 @@ func (a *App) terminalStream(ctx context.Context, prompt, providerName, model st
 	if err != nil {
 		return fmt.Errorf("read workspace context: %w", err)
 	}
-	system := generation.StrictExecutionMode + "\n\nYou are FuzeCLI, a practical coding assistant for developers. The workspace context was read directly from the user's local workspace. Never ask the user to paste a file that exists there. Normal conversation may be natural language. If the model chooses structured output, use ONLY valid JSON with type=chat for ordinary conversation or type=edit for project changes. A chat envelope is {\"type\":\"chat\",\"response\":\"...\"}. An edit envelope is {\"type\":\"edit\",\"response\":\"\",\"files\":[{\"path\":\"relative/path.ext\",\"content\":\"full file content\",\"action\":\"create|modify|delete\"}],\"explanation\":\"brief explanation\",\"commands\":[]}. Never use markdown fences around structured JSON. Never return a request asking the user to provide source files that FuzeCLI already supplied. Generated commands are informational only and are never executed automatically."
+	system := generation.SessionSystemPrompt() + "\n\nYou are FuzeCLI, a practical coding assistant for developers. The workspace context was read directly from the user's local workspace. Never ask the user to paste a file that exists there. Never return a request asking the user to provide source files that FuzeCLI already supplied. Generated commands are informational only and are never executed automatically."
 	if profileText := a.Profile.Condensed(); profileText != "" {
 		system += "\nDeveloper profile:\n" + profileText
 	}
