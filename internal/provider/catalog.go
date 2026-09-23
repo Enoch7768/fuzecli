@@ -124,7 +124,7 @@ func ProviderPolicy(name string) compatibleSpec {
 	// These are native providers implemented in this repository rather than
 	// entries in compatibleCatalog. Their old fallback budget of 16k characters
 	// silently truncated large workspaces and made structured JSON responses hit
-	// the output ceiling too early. Gemini 2.5 Flash supports a 1M-token context
+	// the output ceiling too early. Current Gemini Flash models support very large context windows
 	// window, so keep a large local budget and let the provider API enforce its
 	// real model limit. The character budget is deliberately below that token
 	// ceiling to leave room for system instructions and conversation history.
