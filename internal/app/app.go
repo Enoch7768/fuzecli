@@ -14,12 +14,6 @@ import (
 	"github.com/Enoch7768/fuzecli/internal/generation"
 	"github.com/Enoch7768/fuzecli/internal/profile"
 	"github.com/Enoch7768/fuzecli/internal/provider"
-	"github.com/Enoch7768/fuzecli/internal/providerfactory"
-	"github.com/Enoch7768/fuzecli/internal/provider/anthropic"
-	"github.com/Enoch7768/fuzecli/internal/provider/gemini"
-	"github.com/Enoch7768/fuzecli/internal/provider/groq"
-	"github.com/Enoch7768/fuzecli/internal/provider/llamacpp"
-	"github.com/Enoch7768/fuzecli/internal/provider/openai"
 	"github.com/Enoch7768/fuzecli/internal/ui"
 	"github.com/Enoch7768/fuzecli/internal/verify"
 	"github.com/Enoch7768/fuzecli/internal/workspace"
@@ -38,40 +32,16 @@ func Load() (*App, error) {
 		return nil, err
 	}
 
-	procs := []provider.Provider{
-		openai.New(
-			c.Providers["openai"].APIKey,
-			"",
-		),
-		gemini.New(
-			c.Providers["gemini"].APIKey,
-			"",
-		),
-		groq.New(
-			c.Providers["groq"].APIKey,
-			"",
-		),
-		anthropic.New(
-			c.Providers["anthropic"].APIKey,
-			"",
-		),
-		llamacpp.New(
-			c.Providers["llamacpp"].BaseURL,
-		),
-	}
-
 	defaults := map[string]string{}
 
 	for name, cfg := range c.Providers {
 		defaults[name] = cfg.DefaultModel
 	}
 
-	procs = append(procs, providerfactory.New(c)...)
-
 	r := provider.NewRegistry(
 		c.FallbackOrder,
 		defaults,
-		procs...,
+		buildProviders(c)...,
 	)
 
 	p, err := profile.Load()
