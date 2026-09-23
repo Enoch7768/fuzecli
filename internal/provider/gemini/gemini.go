@@ -141,8 +141,11 @@ func buildGenerationConfig(opts provider.RequestOptions) map[string]any {
 	config := map[string]any{"temperature": opts.Temperature, "maxOutputTokens": opts.MaxTokens}
 	if opts.JSONMode {
 		schema := opts.JSONSchema
-		if schema == nil { schema = generationJSONSchema() }
-		config["responseFormat"] = map[string]any{"text": map[string]any{"mimeType": "application/json", "schema": sanitizeJSONSchemaForGemini(schema)}}
+		if schema == nil {
+			schema = generationJSONSchema()
+		}
+		config["responseMimeType"] = "application/json"
+		config["responseJsonSchema"] = sanitizeJSONSchemaForGemini(schema)
 	}
 	return config
 }
