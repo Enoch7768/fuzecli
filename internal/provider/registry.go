@@ -20,6 +20,7 @@ type Registry struct {
 	lastCall   map[string]time.Time
 	retryUntil map[string]time.Time
 	attempts   map[string]int
+	telemetry  *Telemetry
 }
 
 func NewRegistry(fallback []string, defaults map[string]string, providers ...Provider) *Registry {
@@ -29,7 +30,7 @@ func NewRegistry(fallback []string, defaults map[string]string, providers ...Pro
 		registered[p.Name()] = p
 		requestMu[p.Name()] = &sync.Mutex{}
 	}
-	return &Registry{providers: registered, fallback: append([]string(nil), fallback...), models: defaults, requestMu: requestMu, lastCall: map[string]time.Time{}, retryUntil: map[string]time.Time{}, attempts: map[string]int{}}
+	return &Registry{providers: registered, fallback: append([]string(nil), fallback...), models: defaults, requestMu: requestMu, lastCall: map[string]time.Time{}, retryUntil: map[string]time.Time{}, attempts: map[string]int{}, telemetry: NewTelemetry()}
 }
 func (r *Registry) Get(name string) (Provider, error) {
 	p, ok := r.providers[name]
@@ -144,11 +145,17 @@ func (r *Registry) sendWithRetry(ctx context.Context, name string, messages []Me
 		if err != nil {
 			return nil, err
 		}
+		started := time.Now()
 		response, err := p.Send(ctx, messages, opts)
 		if err == nil && response != nil && strings.TrimSpace(response.Content) == "" {
 			err = &ProviderError{Kind: ErrorProviderUnavailable, Provider: name, Message: "model returned an empty response"}
 		}
 		r.observe(name, err)
+		var usage Usage
+		if response != nil {
+			usage = response.Usage
+		}
+		r.telemetry.Record(name, err, usage, time.Since(started), false)
 		if err == nil {
 			return response, nil
 		}
@@ -264,8 +271,10 @@ func (r *Registry) streamWithRetry(ctx context.Context, name string, messages []
 		if err != nil {
 			return nil, err
 		}
+		started := time.Now()
 		stream, err := p.Stream(ctx, messages, opts)
 		r.observe(name, err)
+		r.telemetry.Record(name, err, Usage{}, time.Since(started), true)
 		if err == nil {
 			return stream, nil
 		}
@@ -301,6 +310,18 @@ func (r *Registry) model(name, requested string) string {
 
 func (r *Registry) DefaultModel(name string) string {
 	return r.model(name, "")
+}
+
+func (r *Registry) Telemetry() TelemetrySnapshot {
+	return r.telemetry.Snapshot()
+}
+
+func (r *Registry) ProviderTelemetry(name string) (ProviderTelemetry, bool) {
+	return r.telemetry.Provider(name)
+}
+
+func (r *Registry) ResetTelemetry() {
+	r.telemetry.Reset()
 }
 
 func (r *Registry) wait(ctx context.Context, name string) error {
