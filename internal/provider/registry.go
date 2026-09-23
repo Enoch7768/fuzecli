@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"unicode/utf8"
 	"time"
 )
 
@@ -603,10 +604,27 @@ func truncateString(value string, max int) string {
 	if len(value) <= max {
 		return value
 	}
-	return value[:max]
+	end := max
+	for end > 0 && !utf8.ValidString(value[:end]) {
+		end--
+	}
+	return value[:end]
 }
 
 func validateRequestBudget(name string, messages []Message, opts RequestOptions) error {
+	policy := ProviderPolicy(name)
+	if policy.MaxInputChars > 0 {
+		total := 0
+		for _, message := range messages {
+			total += len(message.Content)
+		}
+		if total > policy.MaxInputChars {
+			return fmt.Errorf("%w: %s request is %d characters but the provider budget is %d", ErrRequestTooLarge, name, total, policy.MaxInputChars)
+		}
+	}
+	if opts.RequestTokenLimit > 0 && estimateMessageTokens(messages) > opts.RequestTokenLimit {
+		return fmt.Errorf("%w: %s request is estimated at %d tokens but the request budget is %d", ErrRequestTooLarge, name, estimateMessageTokens(messages), opts.RequestTokenLimit)
+	}
 	return nil
 }
 
@@ -617,7 +635,7 @@ func truncateMessage(message Message, maxChars int) Message {
 	if len(message.Content) <= maxChars {
 		return message
 	}
-	message.Content = message.Content[:maxChars]
+	message.Content = truncateString(message.Content, maxChars)
 	return message
 }
 
