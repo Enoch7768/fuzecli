@@ -81,6 +81,35 @@ type modelsResponse struct {
 	NextPageToken string      `json:"nextPageToken"`
 }
 
+func buildJSONOnlyConfig(opts provider.RequestOptions) map[string]any {
+	return map[string]any{
+		"temperature": opts.Temperature,
+		"maxOutputTokens": opts.MaxTokens,
+		"responseMimeType": "application/json",
+	}
+}
+
+func isSchemaCompatibilityError(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := strings.ToLower(err.Error())
+	for _, marker := range []string{
+		"response_schema",
+		"responsejsonschema",
+		"response json schema",
+		"property is not defined",
+		"unknown name",
+		"cannot find field",
+		"invalid schema",
+	} {
+		if strings.Contains(message, marker) {
+			return true
+		}
+	}
+	return false
+}
+
 func generationJSONSchema() map[string]any {
 	return map[string]any{
 		"type": "object",
@@ -181,6 +210,11 @@ func (p *Provider) Send(ctx context.Context, messages []provider.Message, opts p
 	var result responseBody
 	endpoint := p.BaseURL + "/models/" + url.PathEscape(opts.Model) + ":generateContent"
 	err := provider.DoJSON(ctx, p.HTTPClient, http.MethodPost, endpoint, map[string]string{"x-goog-api-key": p.APIKey}, payload, &result, p.Name())
+	if err != nil && opts.JSONMode && opts.JSONSchema != nil && isSchemaCompatibilityError(err) {
+		fallback := requestBody{Contents: contents, SystemInstruction: system, GenerationConfig: buildJSONOnlyConfig(opts)}
+		result = responseBody{}
+		err = provider.DoJSON(ctx, p.HTTPClient, http.MethodPost, endpoint, map[string]string{"x-goog-api-key": p.APIKey}, fallback, &result, p.Name())
+	}
 	if err != nil {
 		return nil, err
 	}
