@@ -336,7 +336,7 @@ func adaptRequest(name string, messages []Message, opts RequestOptions) ([]Messa
 		request.RequestTokenLimit = inputChars / 3
 	}
 	messages = trimProviderMessages(messages, inputChars)
-	messages = trimToRequestTokenBudget(messages, request.RequestTokenLimit, request.MaxTokens)
+	messages = trimToRequestTokenBudget(messages, request.RequestTokenLimit)
 	return messages, request
 }
 
@@ -358,7 +358,7 @@ func estimateMessageTokens(messages []Message) int {
 	return (chars + 2) / 3
 }
 
-func trimToRequestTokenBudget(messages []Message, limit, output int) []Message {
+func trimToRequestTokenBudget(messages []Message, limit int) []Message {
 	if limit <= 0 || estimateMessageTokens(messages)+256 <= limit {
 		return messages
 	}
