@@ -9,6 +9,12 @@ on:
       - phase2-code-intelligence
       - phase3-debug-test-git
       - phase4-final-polish
+      - phase5-agent-engine
+      - phase6-command-security
+      - phase7-transaction-engine
+      - phase8-provider-conformance
+      - phase9-true-streaming
+      - phase10-provider-capabilities
   pull_request:
     branches:
       - main
