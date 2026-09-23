@@ -98,7 +98,6 @@ func New(c config.Config) []provider.Provider {
 		inferencenet.New(p("inference-net").APIKey, p("inference-net").BaseURL),
 		portkey.New(p("portkey").APIKey, p("portkey").BaseURL),
 		databricks.New(p("databricks").APIKey, p("databricks").BaseURL),
-		azureopenai.New(p("azure-openai").APIKey, p("azure-openai").BaseURL),
 		ollama.New(p("ollama").APIKey, p("ollama").BaseURL),
 		vllm.New(p("vllm").APIKey, p("vllm").BaseURL),
 		textgenerationinference.New(p("textgenerationinference").APIKey, p("textgenerationinference").BaseURL),
