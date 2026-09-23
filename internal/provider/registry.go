@@ -354,13 +354,10 @@ func adaptRequest(name string, messages []Message, opts RequestOptions) ([]Messa
 		if request.MaxTokens <= 0 || request.MaxTokens > 5000 {
 			request.MaxTokens = 5000
 		}
-	} else {
-		inputChars = minInt(inputChars, 20000)
-		if request.MaxTokens <= 0 || request.MaxTokens > 8000 {
-			request.MaxTokens = 8000
-		}
+	} else if request.MaxTokens <= 0 {
+		request.MaxTokens = budget.MaxOutputTokens
 	}
-	if request.MaxTokens <= 0 || request.MaxTokens > budget.MaxOutputTokens {
+	if request.MaxTokens > budget.MaxOutputTokens {
 		request.MaxTokens = budget.MaxOutputTokens
 	}
 	if request.JSONMode && request.MaxTokens > budget.JSONOutputTokens {
