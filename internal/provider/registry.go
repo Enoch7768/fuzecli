@@ -134,6 +134,9 @@ func (r *Registry) sendWithRetry(ctx context.Context, name string, messages []Me
 			return nil, err
 		}
 		response, err := p.Send(ctx, messages, opts)
+		if err == nil && response != nil && strings.TrimSpace(response.Content) == "" {
+			err = &ProviderError{Kind: ErrorProviderUnavailable, Provider: name, Message: "model returned an empty response"}
+		}
 		r.observe(name, err)
 		if err == nil {
 			return response, nil
