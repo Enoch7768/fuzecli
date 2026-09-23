@@ -81,8 +81,13 @@ Do excellent work for the user's actual request. Be decisive, technically rigoro
 
 const systemSchema = `You are a production code generation engine. Respond with ONLY valid JSON matching exactly this schema: {"files":[{"path":"relative/path.ext","content":"full file content","action":"create|modify|delete"}],"explanation":"one paragraph explaining what was done","commands":["optional shell commands"]}. Never use markdown fences. Never omit full content for create or modify. Paths must be relative and must not contain '..'. For delete, content must be empty. Do not invent files outside the user's requested scope.`
 
+func SessionSystemPrompt() string {
+	data, _ := json.Marshal(ChatResponseSchema())
+	return StrictExecutionMode + "\n\n" + systemSchema + "\n\nSESSION RESPONSE CONTRACT\nBefore responding to the user's first request and every request after it, follow this exact response contract. Ordinary conversation must use type \"chat\" and provide the natural-language answer in both \"response\" and \"message\". Project changes must use type \"edit\" and include every requested file with complete content, a valid relative path, and action \"create\", \"modify\", or \"delete\". Delete actions must have empty content. Never use markdown fences or commentary outside the JSON object. Never invent missing code, files, APIs, dependencies, commands, credentials, or requirements. Never truncate files. Preserve the user's exact intent and all requested changes. The JSON structure to return is:\n" + string(data)
+}
+
 func (e *Engine) Messages(profileText string, workspaceContext string, conversation []provider.Message, prompt string) []provider.Message {
-	system := StrictExecutionMode + "\n\n" + systemSchema
+	system := SessionSystemPrompt()
 	if profileText != "" {
 		system += "\nDeveloper profile:\n" + profileText
 	}
