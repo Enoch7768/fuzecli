@@ -29,7 +29,8 @@ func (a *App) TerminalChat(ctx context.Context, _ bool) error {
 	}
 	scanner := bufio.NewScanner(os.Stdin)
 	scanner.Buffer(make([]byte, 4096), 1024*1024)
-	if err := a.terminalSessionPreflight(ctx, providerName, model, scanner); err != nil {
+	billingMode, err := a.terminalSessionPreflight(ctx, providerName, model, scanner)
+	if err != nil {
 		return err
 	}
 	attachments := make(map[string]string)
@@ -222,46 +223,56 @@ func filepathSlash(value string) string {
 	return strings.ReplaceAll(strings.TrimSpace(value), "\\", "/")
 }
 
-func (a *App) terminalSessionPreflight(ctx context.Context, providerName, model string, scanner *bufio.Scanner) error {
+func (a *App) terminalSessionPreflight(ctx context.Context, providerName, model string, scanner *bufio.Scanner) (string, error) {
 	fmt.Println("\n\x1b[1;38;5;117mFuzeCLI SESSION\x1b[0m")
 	fmt.Println("\x1b[38;5;244m────────────────────────────────────────────────────────────\x1b[0m")
 	fmt.Printf("Provider: %s    Model: %s\n", providerName, model)
-	fmt.Println("Your workspace is available to FuzeCLI, and no shell command will be executed without your action.")
-	fmt.Println("\n[M] Continue with memory   [F] Start fresh")
-	fmt.Print("\n\x1b[38;5;111mChoice\x1b[0m: ")
+	fmt.Println("FuzeCLI uses conservative provider-aware request budgets and handles transient limits with retry and fallback.")
+	fmt.Println("\n[M] Keep memory   [R] Refresh memory   [F] Start fresh")
+	fmt.Print("\n\x1b[38;5;111mMemory choice\x1b[0m: ")
 	for scanner.Scan() {
 		choice := strings.ToLower(strings.TrimSpace(scanner.Text()))
 		switch choice {
 		case "m", "memory", "continue":
 			fmt.Println("\x1b[38;5;244mMemory retained.\x1b[0m")
+		case "r", "refresh", "reload":
+			if _, err := a.Store.History(400); err != nil { return "", fmt.Errorf("refresh conversation memory: %w", err) }
+			fmt.Println("\x1b[38;5;244mConversation memory refreshed from disk.\x1b[0m")
 		case "f", "fresh", "clear", "new":
-			if err := a.Store.ClearMemory(); err != nil {
-				return fmt.Errorf("clear conversation memory: %w", err)
-			}
+			if err := a.Store.ClearMemory(); err != nil { return "", fmt.Errorf("clear conversation memory: %w", err) }
 			fmt.Println("\x1b[38;5;244mConversation memory cleared.\x1b[0m")
 		default:
-			fmt.Print("\x1b[38;5;214mChoose M or F:\x1b[0m ")
+			fmt.Print("\x1b[38;5;214mChoose M, R, or F:\x1b[0m ")
 			continue
 		}
 		break
 	}
-	if err := scanner.Err(); err != nil {
-		return err
+	if err := scanner.Err(); err != nil { return "", err }
+	fmt.Println("\n\x1b[38;5;111mAPI access mode\x1b[0m")
+	fmt.Println("[A] Automatic safety profile   [F] Free/low-quota profile   [P] Paid/API-key profile")
+	fmt.Print("\x1b[38;5;111mChoice\x1b[0m: ")
+	mode := "auto"
+	for scanner.Scan() {
+		choice := strings.ToLower(strings.TrimSpace(scanner.Text()))
+		switch choice {
+		case "a", "auto": mode = "auto"
+		case "f", "free": mode = "free"
+		case "p", "paid", "apikey": mode = "paid"
+		default:
+			fmt.Print("\x1b[38;5;214mChoose A, F, or P:\x1b[0m")
+			continue
+		}
+		break
 	}
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	default:
-	}
+	if err := scanner.Err(); err != nil { return "", err }
+	fmt.Printf("\x1b[38;5;244mSafety profile: %s\x1b[0m\n", mode)
+	select { case <-ctx.Done(): return "", ctx.Err(); default: }
 	welcome, err := a.SessionWelcome(ctx, providerName, model)
-	if err != nil {
-		return fmt.Errorf("session welcome failed: %w", err)
-	}
+	if err != nil { return "", fmt.Errorf("session welcome failed: %w", err) }
 	fmt.Printf("\n%s\n", welcome)
-	fmt.Println("\n\x1b[38;5;244mSession ready. Talk naturally. For project changes, FuzeCLI validates structured JSON before applying anything.\x1b[0m")
-	return nil
+	fmt.Println("\n\x1b[38;5;244mSession ready. Structured responses are validated locally before files are applied.\x1b[0m")
+	return mode, nil
 }
-
 func splitTerminalCommand(line string) (string, string) {
 	parts := strings.SplitN(line, " ", 2)
 	command := strings.ToLower(strings.TrimSpace(parts[0]))
@@ -376,7 +387,7 @@ func (a *App) terminalStream(ctx context.Context, prompt, providerName, model st
 	if err := a.Store.AddMessage(provider.Message{Role: "user", Content: prompt}); err != nil {
 		return fmt.Errorf("save user message: %w", err)
 	}
-	stream, err := a.Registry.Stream(ctx, name, msgs, provider.RequestOptions{Model: mdl, Temperature: 0.3, MaxTokens: 32768, JSONMode: true, JSONSchema: generation.ChatResponseSchema()})
+	stream, err := a.Registry.Stream(ctx, name, msgs, provider.RequestOptions{Model: mdl, Temperature: 0.3, MaxTokens: 32768, JSONMode: true, JSONSchema: generation.ChatResponseSchema(), BillingMode: billingMode})
 	if err != nil {
 		return fmt.Errorf("provider request failed: %w", err)
 	}
