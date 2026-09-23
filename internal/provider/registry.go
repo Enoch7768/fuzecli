@@ -80,7 +80,7 @@ func (r *Registry) Send(ctx context.Context, name string, messages []Message, op
 		}
 		if err := validateRequestBudget(candidate, requestMessages, request); err != nil {
 			last = err
-			if errors.Is(err, ErrRequestTooLarge) || errors.Is(err, ErrRateLimited) || errors.Is(err, ErrProviderUnavailable) {
+			if errors.Is(err, ErrRequestTooLarge) || errors.Is(err, ErrRateLimited) || errors.Is(err, ErrProviderUnavailable) || errors.Is(err, ErrModelNotFound) {
 				continue
 			}
 			return nil, err
@@ -220,6 +220,10 @@ func (r *Registry) model(name, requested string) string {
 		return requested
 	}
 	return r.models[name]
+}
+
+func (r *Registry) DefaultModel(name string) string {
+	return r.model(name, "")
 }
 
 func (r *Registry) wait(ctx context.Context, name string) error {
