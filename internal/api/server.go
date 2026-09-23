@@ -131,7 +131,7 @@ func (s *Server) web(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	http.SetCookie(w, &http.Cookie{Name: "fuzecli_ui", Value: s.uiSession, Path: "/", HttpOnly: true, SameSite: http.SameSiteStrictMode, MaxAge: 86400})
+	http.SetCookie(w, &http.Cookie{Name: "fuzecli_ui", Value: s.uiSession, Path: "/", HttpOnly: true, Secure: r.TLS != nil, SameSite: http.SameSiteStrictMode, MaxAge: 86400})
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_, _ = w.Write(webIndex)
 }
