@@ -15,6 +15,7 @@ on:
       - phase8-provider-conformance
       - phase9-true-streaming
       - phase10-provider-capabilities
+      - phase11-intelligent-routing
   pull_request:
     branches:
       - main
