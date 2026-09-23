@@ -34,7 +34,7 @@ func normalizerCandidates(registry *provider.Registry) []string {
 		return nil
 	}
 	candidates := make([]string, 0, 3)
-	for _, name := range []string{JSONNormalizerProvider, "gemini", "auto"} {
+	for _, name := range []string{"gemini", "auto"} {
 		if _, err := registry.Get(name); err == nil {
 			candidates = append(candidates, name)
 		}
