@@ -55,9 +55,9 @@ func (t *Telemetry) Record(provider string, err error, usage Usage, latency time
 	if streaming {
 		entry.StreamRequests++
 	}
-	entry.PromptTokens += uint64(maxInt(usage.PromptTokens, 0))
-	entry.CompletionTokens += uint64(maxInt(usage.CompletionTokens, 0))
-	entry.TotalTokens += uint64(maxInt(usage.TotalTokens, 0))
+	entry.PromptTokens += uint64(nonNegativeInt(usage.PromptTokens))
+	entry.CompletionTokens += uint64(nonNegativeInt(usage.CompletionTokens))
+	entry.TotalTokens += uint64(nonNegativeInt(usage.TotalTokens))
 	entry.TotalLatency += latency
 	entry.LastLatency = latency
 
@@ -94,6 +94,13 @@ func (t *Telemetry) Record(provider string, err error, usage Usage, latency time
 		entry.UnknownErrors++
 	}
 	t.entries[provider] = entry
+}
+
+func nonNegativeInt(value int) int {
+	if value < 0 {
+		return 0
+	}
+	return value
 }
 
 func (t *Telemetry) Snapshot() TelemetrySnapshot {
