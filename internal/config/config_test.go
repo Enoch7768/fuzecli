@@ -31,7 +31,7 @@ func TestDefaultConfigShape(t *testing.T) {
 		t.Fatalf("unexpected fallback order: %#v", c.FallbackOrder)
 	}
 
-	if c.Providers["gemini"].DefaultModel != "gemini-3.6-flash" {
+	if c.Providers["gemini"].DefaultModel != "gemini-3.8-flash" {
 		t.Fatalf("unexpected Gemini default model: %q", c.Providers["gemini"].DefaultModel)
 	}
 
