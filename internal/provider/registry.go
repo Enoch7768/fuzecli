@@ -120,6 +120,21 @@ func (r *Registry) sendWithRetry(ctx context.Context, name string, messages []Me
 			return response, nil
 		}
 		last = err
+		if errors.Is(err, ErrModelNotFound) {
+			models, listErr := p.ListModels(ctx)
+			if listErr == nil {
+				for _, model := range models {
+					if strings.TrimSpace(model) != "" {
+						opts.Model = model
+						break
+					}
+				}
+				if opts.Model != "" {
+					continue
+				}
+			}
+			return nil, err
+		}
 		if !isRetryableProviderError(err) {
 			return nil, err
 		}
