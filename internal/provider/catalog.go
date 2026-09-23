@@ -79,7 +79,6 @@ var compatibleCatalog = []compatibleSpec{
 	{Name: "custom-1", BaseURL: "", EnvKey: "FUZECLI_CUSTOM_1_API_KEY", MinInterval: 3 * time.Second, MaxInputChars: 20000, MaxOutputTokens: 3000, JSONOutputTokens: 2500},
 	{Name: "custom-2", BaseURL: "", EnvKey: "FUZECLI_CUSTOM_2_API_KEY", MinInterval: 3 * time.Second, MaxInputChars: 20000, MaxOutputTokens: 3000, JSONOutputTokens: 2500},
 	{Name: "custom-3", BaseURL: "", EnvKey: "FUZECLI_CUSTOM_3_API_KEY", MinInterval: 3 * time.Second, MaxInputChars: 20000, MaxOutputTokens: 3000, JSONOutputTokens: 2500},
-	{Name: "gemini-normalizer", BaseURL: "https://generativelanguage.googleapis.com/v1beta/openai", EnvKey: "FUZECLI_GEMINI_NORMALIZER_API_KEY", MinInterval: 2 * time.Second, MaxInputChars: 30000, MaxOutputTokens: 12000, JSONOutputTokens: 12000},
 }
 
 func Configure(name, apiKey, baseURL string) {
