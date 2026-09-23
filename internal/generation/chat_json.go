@@ -204,7 +204,7 @@ func (e *Engine) normalizeChatResponse(ctx context.Context, raw string, parseErr
 	var errs []error
 	candidates := normalizerCandidates(e.Registry)
 	if len(candidates) == 0 {
-		return ChatResponse{}, fmt.Errorf("provider returned incomplete or invalid structured JSON; the response was not applied. Raw response length: %d bytes. JSON normalizer unavailable: no configured Gemini provider or fallback provider is available", len(raw))
+		return ChatResponse{}, fmt.Errorf("provider returned incomplete or invalid structured JSON; the response was not applied. Raw response length: %d bytes. JSON normalizer unavailable: Groq is not configured", len(raw))
 	}
 	for _, candidate := range candidates {
 		for attempt := 0; attempt < 3; attempt++ {
@@ -237,12 +237,22 @@ func (e *Engine) normalizeChatResponse(ctx context.Context, raw string, parseErr
 	return ChatResponse{}, fmt.Errorf("provider returned incomplete or invalid structured JSON; the response was not applied. Raw response length: %d bytes. JSON normalizer failures: %s", len(raw), normalizeFailureSummary(errs))
 }
 
+func normalizerCandidates(registry *provider.Registry) []string {
+	if registry == nil {
+		return nil
+	}
+	if _, err := registry.Get("groq"); err != nil {
+		return nil
+	}
+	return []string{"groq"}
+}
+
 func normalizerModel(registry *provider.Registry, providerName string) string {
 	if registry == nil {
 		return ""
 	}
-	if providerName == "gemini" {
-		return registry.DefaultModel("gemini")
+	if providerName == "groq" {
+		return registry.DefaultModel("groq")
 	}
 	return ""
 }
