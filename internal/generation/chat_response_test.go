@@ -2,6 +2,7 @@ package generation
 
 import (
 	"os"
+	"strings"
 	"path/filepath"
 	"testing"
 )
@@ -126,5 +127,41 @@ func TestApplyChatPlanInfersCreateAndModify(t *testing.T) {
 	}
 	if string(b) != "const cart = [1, 2];" {
 		t.Fatalf("modified content = %q", b)
+	}
+}
+
+func TestParseChatResponseHandlesPreambleAndTrailingProse(t *testing.T) {
+	raw := "Result:\n\`\`\`json\n{\"type\":\"chat\",\"response\":\"done\"}\n\`\`\`\nFinished."
+	got, err := ParseChatResponse(raw)
+	if err != nil {
+		t.Fatalf("preamble/trailing prose rejected: %v", err)
+	}
+	if got.Response != "done" {
+		t.Fatalf("unexpected response: %#v", got)
+	}
+}
+
+func TestParseChatResponsePreservesNestedEscapedJSON(t *testing.T) {
+	raw := `{"type":"edit","response":"","files":[{"path":"data.json","content":"{\"nested\":[{\"text\":\"} and ] inside a string\"}]}","action":"create","line_start":0,"line_end":0}],"explanation":"nested","commands":[]}`
+	got, err := ParseChatResponse(raw)
+	if err != nil {
+		t.Fatalf("escaped nested JSON rejected: %v", err)
+	}
+	if got.Plan == nil || len(got.Plan.Files) != 1 || !strings.Contains(got.Plan.Files[0].Content, "inside a string") {
+		t.Fatalf("nested content was not preserved: %#v", got)
+	}
+}
+
+func TestParseChatResponseRejectsTruncatedString(t *testing.T) {
+	_, err := ParseChatResponse(`{"type":"chat","response":"unterminated`)
+	if err == nil || !strings.Contains(strings.ToLower(err.Error()), "incomplete") {
+		t.Fatalf("expected incomplete JSON error, got %v", err)
+	}
+}
+
+func TestParseChatResponseRejectsMismatchedNesting(t *testing.T) {
+	_, err := ParseChatResponse(`{"type":"chat","response":["broken"}`)
+	if err == nil {
+		t.Fatal("expected mismatched nesting rejection")
 	}
 }
