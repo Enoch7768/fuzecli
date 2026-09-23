@@ -1,6 +1,7 @@
 package provider_test
 
 import (
+  "fmt"
   "testing"
 
   "github.com/Enoch7768/fuzecli/internal/config"
@@ -14,6 +15,11 @@ func TestRegisteredProvidersConformToProviderContract(t *testing.T) {
   if len(providers) == 0 { t.Fatal("provider factory returned no providers") }
 
   seen := make(map[string]struct{}, len(providers))
+  for _, name := range provider.CompatibleProviderNames() {
+    if _, err := findProvider(providers, name); err != nil {
+      t.Fatalf("compatible catalog provider %q is missing from provider factory: %v", name, err)
+    }
+  }
   for _, p := range providers {
     if p == nil { t.Fatal("provider factory returned a nil provider") }
     var _ provider.Provider = p
@@ -41,4 +47,13 @@ func TestProviderContractIsUsableByRegistry(t *testing.T) {
     if err != nil { t.Fatalf("capability lookup failed for %q: %v", p.Name(), err) }
     if capabilities.JSONOutputTokens > 0 && capabilities.MaxOutputTokens > 0 && capabilities.JSONOutputTokens > capabilities.MaxOutputTokens { t.Fatalf("registry exposed invalid JSON output capacity for %q", p.Name()) }
   }
+}
+
+func findProvider(providers []provider.Provider, name string) (provider.Provider, error) {
+  for _, p := range providers {
+    if p != nil && p.Name() == name {
+      return p, nil
+    }
+  }
+  return nil, fmt.Errorf("not registered")
 }
