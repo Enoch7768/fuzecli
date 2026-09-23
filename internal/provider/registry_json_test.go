@@ -18,7 +18,7 @@ func (p *jsonContinuationProvider) Stream(context.Context, []Message, RequestOpt
 func (p *jsonContinuationProvider) Send(context.Context, []Message, RequestOptions) (*Response, error) {
 	p.calls++
 	if p.calls == 1 {
-		return &Response{Content: "{\"type\":\"edit\",\"files\":[{\"path\":\"index.html\",\"content\":\"<div>"}, Model: "test-model", ProviderName: p.Name()}, nil
+		return &Response{Content: "{\"type\":\"edit\",\"files\":[{\"path\":\"index.html\",\"content\":\"<div>", Model: "test-model", ProviderName: p.Name()}, nil
 	}
 	return &Response{Content: "div</div>\"}],\"explanation\":\"complete\",\"commands\":[]}", Model: "test-model", ProviderName: p.Name()}, nil
 }
