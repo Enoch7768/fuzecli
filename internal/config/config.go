@@ -33,7 +33,7 @@ type VerificationConfig struct {
 func Default() Config {
 	providers := map[string]ProviderConfig{
 		"openai":            {DefaultModel: "gpt-4o"},
-		"gemini":            {DefaultModel: "gemini-3.6-flash"},
+		"gemini":            {DefaultModel: "gemini-3.8-flash"},
 		"groq":              {DefaultModel: "openai/gpt-oss-20b"},
 		"anthropic":         {DefaultModel: "claude-sonnet-4-6"},
 		"llamacpp":          {BaseURL: "http://localhost:8080", DefaultModel: "local"},
@@ -82,7 +82,7 @@ func Load() (Config, error) {
 		c.Providers["gemini"] = ProviderConfig{
 			APIKey: c.Providers["gemini"].APIKey,
 			BaseURL: c.Providers["gemini"].BaseURL,
-			DefaultModel: "gemini-3.6-flash",
+			DefaultModel: "gemini-3.8-flash",
 		}
 		if err := Save(c); err != nil {
 			return Config{}, err
