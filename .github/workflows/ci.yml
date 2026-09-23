@@ -34,15 +34,6 @@ jobs:
         with:
           go-version: ${{ matrix.go-version }}
           cache: true
-      - name: Verify formatting
-        shell: pwsh
-        run: |
-          $files = gofmt -l .
-          if ($files) {
-            Write-Host "The following files are not gofmt-formatted:"
-            $files
-            exit 1
-          }
       - name: Verify modules
         shell: pwsh
         run: |

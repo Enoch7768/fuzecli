@@ -83,7 +83,7 @@ type modelsResponse struct {
 
 func buildJSONOnlyConfig(opts provider.RequestOptions) map[string]any {
 	return map[string]any{
-		"temperature":       opts.Temperature,
+		"temperature":      opts.Temperature,
 		"maxOutputTokens":  opts.MaxTokens,
 		"responseMimeType": "application/json",
 	}
