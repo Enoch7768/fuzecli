@@ -61,6 +61,9 @@ func verifyGo(root string) (Result, error) {
 		if err != nil {
 			return Result{}, err
 		}
+		if check.name == "gofmt" && result.Passed && strings.TrimSpace(result.Output) != "" {
+			result.Passed = false
+		}
 		outputs = append(outputs, fmt.Sprintf("[%s] %s", check.name, result.Output))
 		if !result.Passed {
 			result.Tool = check.name
