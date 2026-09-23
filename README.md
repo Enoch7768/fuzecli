@@ -28,7 +28,7 @@ FuzeCLI (`aicli.exe`) is a Windows-native Go CLI for chatting with multiple AI p
 
 ## Build
 
-Requirements for development are Go 1.23+ and a network connection so Go can resolve modules. The SQLite driver is `modernc.org/sqlite`, and the official MCP Go SDK is used for the MCP server.
+Requirements for development are Go 1.25+ and a network connection so Go can resolve modules. The SQLite driver is `modernc.org/sqlite`, and the official MCP Go SDK is used for the MCP server.
 
 ```powershell
 git clone your-repository-url
@@ -145,7 +145,7 @@ Inside chat:
 /file list
 /file clear
 /provider gemini
-/model gemini-2.5-flash
+/model gemini-3.8-flash
 /status
 /clear
 /help
