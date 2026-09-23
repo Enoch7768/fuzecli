@@ -14,6 +14,7 @@ import (
 	"github.com/Enoch7768/fuzecli/internal/generation"
 	"github.com/Enoch7768/fuzecli/internal/profile"
 	"github.com/Enoch7768/fuzecli/internal/provider"
+	"github.com/Enoch7768/fuzecli/internal/providerfactory"
 	"github.com/Enoch7768/fuzecli/internal/provider/anthropic"
 	"github.com/Enoch7768/fuzecli/internal/provider/gemini"
 	"github.com/Enoch7768/fuzecli/internal/provider/groq"
