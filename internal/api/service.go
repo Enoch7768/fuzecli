@@ -241,6 +241,38 @@ func (s *Service) ListFiles(prefix string) ([]string, error) {
 	return files, nil
 }
 
+func (s *Service) Models(ctx context.Context, name string) (map[string]any, error) {
+	if s == nil || s.App == nil || s.App.Registry == nil {
+		return nil, errors.New("application not initialized")
+	}
+	name = strings.TrimSpace(name)
+	if name == "" {
+		name = s.App.Config.DefaultProvider
+	}
+	if name == "auto" {
+		name = s.App.Config.DefaultProvider
+	}
+	models, err := s.App.Registry.ListModels(ctx, name)
+	if err != nil {
+		return nil, err
+	}
+	clean := make([]string, 0, len(models))
+	seen := make(map[string]struct{}, len(models))
+	for _, model := range models {
+		model = strings.TrimSpace(model)
+		if model == "" || strings.EqualFold(model, "default") || strings.EqualFold(model, "auto") {
+			continue
+		}
+		if _, ok := seen[model]; ok {
+			continue
+		}
+		seen[model] = struct{}{}
+		clean = append(clean, model)
+	}
+	sort.Strings(clean)
+	return map[string]any{"provider": name, "models": clean, "default_model": s.App.Registry.DefaultModel(name)}, nil
+}
+
 func (s *Service) Telemetry() (provider.TelemetrySnapshot, error) {
 	if s == nil || s.App == nil || s.App.Registry == nil {
 		return provider.TelemetrySnapshot{}, errors.New("application not initialized")
