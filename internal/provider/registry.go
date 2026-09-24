@@ -151,6 +151,12 @@ func (r *Registry) sendWithRetry(ctx context.Context, name string, messages []Me
 			fallback := opts
 			fallback.JSONSchemaStrict = false
 			response, err = p.Send(ctx, messages, fallback)
+			if err != nil && isStructuredJSONCompatibilityError(err) {
+				objectMode := opts
+				objectMode.JSONSchema = nil
+				objectMode.JSONSchemaStrict = false
+				response, err = p.Send(ctx, messages, objectMode)
+			}
 		}
 		if err == nil && response != nil && strings.TrimSpace(response.Content) == "" {
 			err = &ProviderError{Kind: ErrorProviderUnavailable, Provider: name, Message: "model returned an empty response"}
@@ -282,6 +288,12 @@ func (r *Registry) streamWithRetry(ctx context.Context, name string, messages []
 			fallback := opts
 			fallback.JSONSchemaStrict = false
 			stream, err = p.Stream(ctx, messages, fallback)
+			if err != nil && isStructuredJSONCompatibilityError(err) {
+				objectMode := opts
+				objectMode.JSONSchema = nil
+				objectMode.JSONSchemaStrict = false
+				stream, err = p.Stream(ctx, messages, objectMode)
+			}
 		}
 		r.observe(name, err)
 		r.telemetry.Record(name, err, Usage{}, time.Since(started), true)
