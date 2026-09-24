@@ -35,6 +35,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/assets/styles.css", s.assetCSS)
 	mux.HandleFunc("/v1/health", s.health)
 	mux.HandleFunc("/v1/config", s.config)
+	mux.HandleFunc("/v1/models", s.models)
 	mux.HandleFunc("/v1/memory/refresh", s.memoryRefresh)
 	mux.HandleFunc("/v1/chat", s.chat)
 	mux.HandleFunc("/v1/file", s.file)
@@ -362,6 +363,19 @@ func (s *Server) telemetry(w http.ResponseWriter, r *http.Request) {
 	value, err := s.service.Telemetry()
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, value)
+}
+
+func (s *Server) models(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	value, err := s.service.Models(r.Context(), r.URL.Query().Get("provider"))
+	if err != nil {
+		writeError(w, classifyServiceError(err), err.Error())
 		return
 	}
 	writeJSON(w, http.StatusOK, value)
