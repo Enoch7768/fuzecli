@@ -115,6 +115,10 @@ func parseChatResponseDocument(clean []byte) (ChatResponse, error) {
 		return response, nil
 	}
 	if len(response.Files) == 0 {
+		if message != "" || strings.TrimSpace(response.Explanation) != "" {
+			response.Type = "chat"
+			return response, nil
+		}
 		return ChatResponse{}, errors.New("edit JSON contains no file changes")
 	}
 	plan, err := response.ToPlan()
