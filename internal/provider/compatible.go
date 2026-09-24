@@ -63,7 +63,7 @@ func (p *compatibleProvider) Send(ctx context.Context, messages []Message, opts 
 	req := compatibleRequest{Model: model, Messages: messages, Temperature: opts.Temperature, MaxTokens: opts.MaxTokens}
 	if opts.JSONMode {
 		if opts.JSONSchema != nil {
-			req.ResponseFormat = map[string]any{"type": "json_schema", "json_schema": map[string]any{"name": "fuzecli_response", "strict": true, "schema": opts.JSONSchema}}
+			req.ResponseFormat = map[string]any{"type": "json_schema", "json_schema": map[string]any{"name": "fuzecli_response", "strict": opts.JSONSchemaStrict, "schema": opts.JSONSchema}}
 		} else {
 			req.ResponseFormat = map[string]any{"type": "json_object"}
 		}
