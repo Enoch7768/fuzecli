@@ -17,6 +17,7 @@ type RequestOptions struct {
 	MaxTokens         int
 	JSONMode          bool
 	JSONSchema        map[string]any
+	JSONSchemaStrict  bool
 	RequestTokenLimit int
 	BillingMode       string
 }
