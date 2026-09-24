@@ -131,7 +131,6 @@ func ParsePlan(raw string) (Plan, error) {
 		return Plan{}, fmt.Errorf("invalid generation JSON: %w", err)
 	}
 	dec := json.NewDecoder(bytes.NewReader(clean))
-	dec.DisallowUnknownFields()
 	if err := dec.Decode(&plan); err != nil {
 		return Plan{}, fmt.Errorf("invalid generation JSON: %s", explainJSONDecodeError(err))
 	}
