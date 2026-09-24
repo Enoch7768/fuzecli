@@ -77,7 +77,7 @@ func estimateTokens(messages []provider.Message) int {
 func openAIResponseFormat(opts provider.RequestOptions) any {
 	if !opts.JSONMode { return nil }
 	if opts.JSONSchema == nil { return map[string]any{"type": "json_object"} }
-	return map[string]any{"type": "json_schema", "json_schema": map[string]any{"name": "fuzecli_response", "strict": true, "schema": sanitizeOpenAISchema(opts.JSONSchema)}}
+	return map[string]any{"type": "json_schema", "json_schema": map[string]any{"name": "fuzecli_response", "strict": opts.JSONSchemaStrict, "schema": sanitizeOpenAISchema(opts.JSONSchema)}}
 }
 
 func sanitizeOpenAISchema(value any) any {
