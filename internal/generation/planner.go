@@ -109,7 +109,6 @@ func ParseProjectPlan(raw string) (ProjectPlan, error) {
 	}
 	var plan ProjectPlan
 	decoder := json.NewDecoder(bytes.NewReader(clean))
-	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&plan); err != nil {
 		return ProjectPlan{}, fmt.Errorf("invalid project planner JSON: %s", explainJSONDecodeError(err))
 	}
