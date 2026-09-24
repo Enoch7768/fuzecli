@@ -54,7 +54,7 @@ func ChatResponseSchema() map[string]any {
 			"explanation": map[string]any{"type": "string"},
 			"commands":    map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
 		},
-		"required":         []string{"type"},
+		"required": []string{"type", "response", "message", "files", "explanation", "commands"},
 		"propertyOrdering": []string{"type", "response", "message", "files", "explanation", "commands"},
 	}
 }
