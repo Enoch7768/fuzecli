@@ -48,7 +48,7 @@ func ChatResponseSchema() map[string]any {
 						"line_start": map[string]any{"type": "integer"},
 						"line_end":   map[string]any{"type": "integer"},
 					},
-					"required": []string{"path", "content", "action"},
+					"required": []string{"path", "content", "action", "line_start", "line_end"},
 				},
 			},
 			"explanation": map[string]any{"type": "string"},
@@ -70,7 +70,6 @@ func ParseChatResponse(raw string) (ChatResponse, error) {
 func parseChatResponseDocument(clean []byte) (ChatResponse, error) {
 	var response ChatResponse
 	dec := json.NewDecoder(bytes.NewReader(clean))
-	dec.DisallowUnknownFields()
 	if err := dec.Decode(&response); err != nil {
 		return ChatResponse{}, fmt.Errorf("invalid chat JSON: %w", err)
 	}
