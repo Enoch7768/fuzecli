@@ -35,7 +35,7 @@ func ChatResponseSchema() map[string]any {
 		"properties": map[string]any{
 			"type":        map[string]any{"type": "string", "enum": []string{"chat", "edit"}},
 			"response":    map[string]any{"type": "string", "description": "Natural-language response for compatibility with the FuzeCLI chat envelope."},
-			"message":     map[string]any{"type": "string", "description": "Natural-language response when no file changes are required."},
+			"message":     map[string]any{"type": "string", "description": "Natural-language response shown before or alongside file changes."},
 			"files": map[string]any{
 				"type": "array",
 				"items": map[string]any{
@@ -94,19 +94,24 @@ func parseChatResponseDocument(clean []byte) (ChatResponse, error) {
 	if response.Type != "chat" && response.Type != "edit" {
 		return ChatResponse{}, fmt.Errorf("invalid chat JSON type %q; expected chat or edit", response.Type)
 	}
-	if response.Type == "chat" && len(response.Files) > 0 {
-		return ChatResponse{}, errors.New("chat JSON cannot contain file changes; use type edit")
-	}
-	if response.Type == "chat" && message == "" && strings.TrimSpace(response.Explanation) == "" {
+		if response.Type == "chat" && message == "" && strings.TrimSpace(response.Explanation) == "" {
 		return ChatResponse{}, errors.New("chat JSON contains neither a message nor an explanation")
 	}
+	if response.Response == "" {
+		response.Response = response.Message
+	}
+	if response.Message == "" {
+		response.Message = response.Response
+	}
 	if response.Type == "chat" {
-		if response.Response == "" {
-			response.Response = response.Message
+		if len(response.Files) == 0 {
+			return response, nil
 		}
-		if response.Message == "" {
-			response.Message = response.Response
+		plan, err := response.ToPlan()
+		if err != nil {
+			return ChatResponse{}, err
 		}
+		response.Plan = &plan
 		return response, nil
 	}
 	if len(response.Files) == 0 {
@@ -118,7 +123,6 @@ func parseChatResponseDocument(clean []byte) (ChatResponse, error) {
 	}
 	response.Plan = &plan
 	return response, nil
-}
 
 func completeJSONCandidate(raw string) bool {
 	s := strings.TrimSpace(strings.TrimPrefix(raw, "\ufeff"))
