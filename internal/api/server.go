@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"io"
 	"net"
 	"net/http"
 	"os"
@@ -39,6 +40,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/v1/memory/refresh", s.memoryRefresh)
 	mux.HandleFunc("/v1/chat", s.chat)
 	mux.HandleFunc("/v1/file", s.file)
+	mux.HandleFunc("/v1/upload", s.upload)
 	mux.HandleFunc("/preview/", s.preview)
 	mux.HandleFunc("/v1/preview/runtime", s.runtimePreviewHandler)
 	mux.HandleFunc("/v1/files", s.files)
@@ -187,6 +189,46 @@ func (s *Server) chat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, result)
+}
+
+func (s *Server) upload(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	if err := r.ParseMultipartForm(20 << 20); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid upload: "+err.Error())
+		return
+	}
+	files := r.MultipartForm.File["files"]
+	if len(files) == 0 {
+		writeError(w, http.StatusBadRequest, "at least one file is required")
+		return
+	}
+	written := make([]string, 0, len(files))
+	for _, header := range files {
+		if header.Size < 0 || header.Size > 10<<20 {
+			writeError(w, http.StatusRequestEntityTooLarge, "each uploaded file must be 10 MiB or smaller")
+			return
+		}
+		name := filepath.ToSlash(strings.TrimSpace(header.Filename))
+		if name == "" || filepath.Base(name) != filepath.Base(header.Filename) || strings.Contains(name, "..") {
+			writeError(w, http.StatusBadRequest, "invalid uploaded filename")
+			return
+		}
+		src, err := header.Open()
+		if err != nil { writeError(w, http.StatusBadRequest, "open uploaded file failed"); return }
+		data, err := io.ReadAll(io.LimitReader(src, 10<<20+1))
+		_ = src.Close()
+		if err != nil { writeError(w, http.StatusBadRequest, "read uploaded file failed"); return }
+		if len(data) > 10<<20 { writeError(w, http.StatusRequestEntityTooLarge, "uploaded file is too large"); return }
+		if err := s.service.WriteUploadedFile(name, data); err != nil {
+			writeError(w, classifyServiceError(err), err.Error())
+			return
+		}
+		written = append(written, name)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "files": written})
 }
 
 func (s *Server) file(w http.ResponseWriter, r *http.Request) {
