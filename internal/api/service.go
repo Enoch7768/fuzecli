@@ -136,6 +136,19 @@ func (s *Service) RefreshMemory() error {
 	return err
 }
 
+func (s *Service) WriteUploadedFile(rel string, data []byte) error {
+	if s == nil || s.App == nil || s.App.Store == nil { return errors.New("workspace not initialized") }
+	if len(data) > 10<<20 { return errors.New("uploaded file is larger than 10 MiB") }
+	clean := filepath.ToSlash(strings.TrimSpace(rel))
+	if clean == "" || filepath.Base(clean) != filepath.Base(rel) || strings.Contains(clean, "..") { return errors.New("invalid uploaded filename") }
+	path, err := generation.Resolve(s.App.Store.Root, clean)
+	if err != nil { return err }
+	if info, statErr := os.Stat(path); statErr == nil && info.IsDir() { return fmt.Errorf("%s is a directory", clean) }
+	if err := os.WriteFile(path, data, 0600); err != nil { return fmt.Errorf("write uploaded file: %w", err) }
+	if err := s.App.Store.MarkTouched([]string{clean}); err != nil { return err }
+	return s.App.Store.RefreshHashes([]string{clean})
+}
+
 func (s *Service) WriteFile(rel, content string) error {
 	if s == nil || s.App == nil || s.App.Store == nil {
 		return errors.New("workspace not initialized")
