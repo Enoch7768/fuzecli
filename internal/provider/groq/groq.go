@@ -101,6 +101,9 @@ func (p *Provider) headers() map[string]string { return map[string]string{"Autho
 
 func (p *Provider) responseFormat(opts provider.RequestOptions) any {
 	if !opts.JSONMode { return nil }
+	if opts.JSONSchema != nil {
+		return map[string]any{"type": "json_schema", "json_schema": map[string]any{"name": "fuzecli_response", "strict": true, "schema": sanitizeSchema(opts.JSONSchema)}}
+	}
 	return map[string]any{"type": "json_object"}
 }
 
