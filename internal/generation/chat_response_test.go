@@ -40,9 +40,13 @@ func TestParseChatResponseFencedJSON(t *testing.T) {
 	}
 }
 
-func TestParseChatResponseRejectsUnknownFields(t *testing.T) {
-	if _, err := ParseChatResponse(`{"type":"chat","response":"Hello","unexpected":true}`); err == nil {
-		t.Fatal("expected unknown field rejection")
+func TestParseChatResponseIgnoresUnknownFields(t *testing.T) {
+	got, err := ParseChatResponse(`{"type":"chat","response":"Hello","unexpected":true}`)
+	if err != nil {
+		t.Fatalf("unexpected field should not break compatible JSON: %v", err)
+	}
+	if got.Response != "Hello" {
+		t.Fatalf("unexpected response: %#v", got)
 	}
 }
 
