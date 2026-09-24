@@ -6,12 +6,14 @@ import (
 	"testing"
 )
 
-func TestParsePlanRejectsFencesAndUnknownFields(t *testing.T) {
-	if _, err := ParsePlan("```json\n{}\n```"); err == nil {
-		t.Fatal("expected fence response to fail")
+func TestParsePlanAcceptsFencesAndUnknownFields(t *testing.T) {
+	raw := "```json\n{\"files\":[{\"path\":\"x.go\",\"content\":\"package x\",\"action\":\"create\"}],\"explanation\":\"x\",\"commands\":[],\"extra\":1}\n```"
+	plan, err := ParsePlan(raw)
+	if err != nil {
+		t.Fatalf("compatible JSON should be accepted: %v", err)
 	}
-	if _, err := ParsePlan(`{"files":[{"path":"x.go","content":"package x","action":"create","extra":1}],"explanation":"x","commands":[]}`); err == nil {
-		t.Fatal("expected unknown field to fail")
+	if len(plan.Files) != 1 || plan.Files[0].Path != "x.go" {
+		t.Fatalf("unexpected plan: %#v", plan)
 	}
 }
 
