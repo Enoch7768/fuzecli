@@ -123,6 +123,7 @@ func parseChatResponseDocument(clean []byte) (ChatResponse, error) {
 	}
 	response.Plan = &plan
 	return response, nil
+}
 
 func completeJSONCandidate(raw string) bool {
 	s := strings.TrimSpace(strings.TrimPrefix(raw, "\ufeff"))
