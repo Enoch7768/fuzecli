@@ -48,13 +48,13 @@ func ChatResponseSchema() map[string]any {
 						"line_start": map[string]any{"type": "integer"},
 						"line_end":   map[string]any{"type": "integer"},
 					},
-					"required": []string{"path", "content", "action", "line_start", "line_end"},
+					"required": []string{"path", "content", "action"},
 				},
 			},
 			"explanation": map[string]any{"type": "string"},
 			"commands":    map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
 		},
-		"required":         []string{"type", "response", "message", "files", "explanation", "commands"},
+		"required":         []string{"type"},
 		"propertyOrdering": []string{"type", "response", "message", "files", "explanation", "commands"},
 	}
 }
