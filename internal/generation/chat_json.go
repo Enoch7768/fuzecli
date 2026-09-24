@@ -70,7 +70,6 @@ func ParseChatResponse(raw string) (ChatResponse, error) {
 func parseChatResponseDocument(clean []byte) (ChatResponse, error) {
 	var response ChatResponse
 	dec := json.NewDecoder(bytes.NewReader(clean))
-	dec.DisallowUnknownFields()
 	if err := dec.Decode(&response); err != nil {
 		return ChatResponse{}, fmt.Errorf("invalid chat JSON: %w", err)
 	}
