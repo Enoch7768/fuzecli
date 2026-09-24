@@ -60,6 +60,9 @@ func (r *Registry) Send(ctx context.Context, name string, messages []Message, op
 	if name != "auto" {
 		requestMessages, request := adaptRequest(name, messages, opts)
 		request.Model = r.model(name, request.Model)
+		if request.Model == "" || strings.EqualFold(strings.TrimSpace(request.Model), "default") || strings.EqualFold(strings.TrimSpace(request.Model), "auto") {
+			request.Model = r.resolveModel(ctx, name, request.Model)
+		}
 		if request.Model == "" {
 			return nil, fmt.Errorf("no default model configured for provider %s", name)
 		}
@@ -105,6 +108,9 @@ func (r *Registry) Send(ctx context.Context, name string, messages []Message, op
 	for _, candidate := range candidates {
 		requestMessages, request := adaptRequest(candidate, messages, opts)
 		request.Model = r.model(candidate, request.Model)
+		if request.Model == "" || strings.EqualFold(strings.TrimSpace(request.Model), "default") || strings.EqualFold(strings.TrimSpace(request.Model), "auto") {
+			request.Model = r.resolveModel(ctx, candidate, request.Model)
+		}
 		if request.Model == "" {
 			last = fmt.Errorf("no default model configured for provider %s", candidate)
 			continue
@@ -166,25 +172,16 @@ func (r *Registry) sendWithRetry(ctx context.Context, name string, messages []Me
 		if response != nil {
 			usage = response.Usage
 		}
-		r.telemetry.Record(name, err, usage, time.Since(started), false)
+		r.telemetry.Record(name, err, usage, time.Since(started), false, opts.Model)
 		if err == nil {
 			return response, nil
 		}
 		last = err
-		if errors.Is(err, ErrModelNotFound) {
-			models, listErr := p.ListModels(ctx)
-			if listErr == nil {
-				for _, model := range models {
-					if strings.TrimSpace(model) != "" {
-						opts.Model = model
-						break
-					}
-				}
-				if opts.Model != "" {
-					continue
-				}
+		if isModelAvailabilityError(err) {
+			if model := r.resolveModel(ctx, name, opts.Model); model != "" && model != opts.Model {
+				opts.Model = model
+				continue
 			}
-			return nil, err
 		}
 		if !isRetryableProviderError(err) {
 			return nil, err
@@ -197,6 +194,9 @@ func (r *Registry) Stream(ctx context.Context, name string, messages []Message, 
 	if name != "auto" {
 		streamMessages, streamOptions := adaptRequest(name, messages, opts)
 		streamOptions.Model = r.model(name, streamOptions.Model)
+		if streamOptions.Model == "" || strings.EqualFold(strings.TrimSpace(streamOptions.Model), "default") || strings.EqualFold(strings.TrimSpace(streamOptions.Model), "auto") {
+			streamOptions.Model = r.resolveModel(ctx, name, streamOptions.Model)
+		}
 		if streamOptions.Model == "" {
 			return nil, fmt.Errorf("no default model configured for provider %s", name)
 		}
@@ -242,6 +242,9 @@ func (r *Registry) Stream(ctx context.Context, name string, messages []Message, 
 	for _, candidate := range candidates {
 		streamMessages, streamOptions := adaptRequest(candidate, messages, opts)
 		streamOptions.Model = r.model(candidate, streamOptions.Model)
+		if streamOptions.Model == "" || strings.EqualFold(strings.TrimSpace(streamOptions.Model), "default") || strings.EqualFold(strings.TrimSpace(streamOptions.Model), "auto") {
+			streamOptions.Model = r.resolveModel(ctx, candidate, streamOptions.Model)
+		}
 		if streamOptions.Model == "" {
 			last = fmt.Errorf("no default model configured for provider %s", candidate)
 			continue
@@ -296,7 +299,7 @@ func (r *Registry) streamWithRetry(ctx context.Context, name string, messages []
 			}
 		}
 		r.observe(name, err)
-		r.telemetry.Record(name, err, Usage{}, time.Since(started), true)
+		r.telemetry.Record(name, err, Usage{}, time.Since(started), true, opts.Model)
 		if err == nil {
 			return stream, nil
 		}
@@ -335,6 +338,34 @@ func isStructuredJSONCompatibilityError(err error) bool {
 
 func isRetryableProviderError(err error) bool {
 	return errors.Is(err, ErrRateLimited) || errors.Is(err, ErrProviderUnavailable)
+}
+
+func isModelAvailabilityError(err error) bool {
+	if errors.Is(err, ErrModelNotFound) {
+		return true
+	}
+	message := strings.ToLower(err.Error())
+	for _, marker := range []string{"invalid model", "model not found", "model is not available", "not available in your subscription", "subscription tier", "does not have access to model", "unknown model"} {
+		if strings.Contains(message, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+func (r *Registry) resolveModel(ctx context.Context, name, current string) string {
+	models, err := r.ListModels(ctx, name)
+	if err != nil {
+		return ""
+	}
+	for _, model := range models {
+		model = strings.TrimSpace(model)
+		if model == "" || strings.EqualFold(model, "default") || strings.EqualFold(model, "auto") {
+			continue
+		}
+		return model
+	}
+	return ""
 }
 
 func (r *Registry) model(name, requested string) string {
