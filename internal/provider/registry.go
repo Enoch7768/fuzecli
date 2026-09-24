@@ -149,7 +149,7 @@ func (r *Registry) sendWithRetry(ctx context.Context, name string, messages []Me
 		response, err := p.Send(ctx, messages, opts)
 		if err != nil && opts.JSONMode && opts.JSONSchema != nil && isStructuredJSONCompatibilityError(err) {
 			fallback := opts
-			fallback.JSONSchema = nil
+			fallback.JSONSchemaStrict = false
 			response, err = p.Send(ctx, messages, fallback)
 		}
 		if err == nil && response != nil && strings.TrimSpace(response.Content) == "" {
@@ -280,7 +280,7 @@ func (r *Registry) streamWithRetry(ctx context.Context, name string, messages []
 		stream, err := p.Stream(ctx, messages, opts)
 		if err != nil && opts.JSONMode && opts.JSONSchema != nil && isStructuredJSONCompatibilityError(err) {
 			fallback := opts
-			fallback.JSONSchema = nil
+			fallback.JSONSchemaStrict = false
 			stream, err = p.Stream(ctx, messages, fallback)
 		}
 		r.observe(name, err)
@@ -432,6 +432,9 @@ func adaptRequest(name string, messages []Message, opts RequestOptions) ([]Messa
 	}
 	if request.MaxTokens > budget.MaxOutputTokens {
 		request.MaxTokens = budget.MaxOutputTokens
+	}
+	if request.JSONMode && request.JSONSchema != nil {
+		request.JSONSchemaStrict = true
 	}
 	if request.JSONMode && request.MaxTokens > budget.JSONOutputTokens {
 		request.MaxTokens = budget.JSONOutputTokens
