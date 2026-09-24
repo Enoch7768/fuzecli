@@ -309,10 +309,16 @@ func (r *Registry) providerLock(name string) *sync.Mutex {
 
 func isStructuredJSONCompatibilityError(err error) bool {
 	var providerErr *ProviderError
-	if !errors.As(err, &providerErr) {
+	if !errors.As(err, &providerErr) || providerErr.Kind != ErrorBadRequest {
 		return false
 	}
-	return providerErr.Kind == ErrorBadRequest
+	message := strings.ToLower(providerErr.Error())
+	for _, marker := range []string{"schema", "json_schema", "json schema", "response_format", "responsejsonschema", "response json schema", "structured output", "structured outputs", "unsupported", "not supported", "invalid parameter", "unknown parameter", "unrecognized parameter"} {
+		if strings.Contains(message, marker) {
+			return true
+		}
+	}
+	return false
 }
 
 func isRetryableProviderError(err error) bool {
