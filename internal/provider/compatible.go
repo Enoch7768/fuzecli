@@ -62,7 +62,11 @@ func (p *compatibleProvider) Send(ctx context.Context, messages []Message, opts 
 
 	req := compatibleRequest{Model: model, Messages: messages, Temperature: opts.Temperature, MaxTokens: opts.MaxTokens}
 	if opts.JSONMode {
-		req.ResponseFormat = map[string]any{"type": "json_object"}
+		if opts.JSONSchema != nil {
+			req.ResponseFormat = map[string]any{"type": "json_schema", "json_schema": map[string]any{"name": "fuzecli_response", "strict": true, "schema": opts.JSONSchema}}
+		} else {
+			req.ResponseFormat = map[string]any{"type": "json_object"}
+		}
 	}
 
 	var out compatibleResponse
@@ -91,7 +95,11 @@ func (p *compatibleProvider) Stream(ctx context.Context, messages []Message, opt
 
 	body := compatibleRequest{Model: model, Messages: messages, Temperature: opts.Temperature, MaxTokens: opts.MaxTokens, Stream: true}
 	if opts.JSONMode {
-		body.ResponseFormat = map[string]any{"type": "json_object"}
+		if opts.JSONSchema != nil {
+			body.ResponseFormat = map[string]any{"type": "json_schema", "json_schema": map[string]any{"name": "fuzecli_response", "strict": true, "schema": opts.JSONSchema}}
+		} else {
+			body.ResponseFormat = map[string]any{"type": "json_object"}
+		}
 	}
 	data, err := json.Marshal(body)
 	if err != nil {
