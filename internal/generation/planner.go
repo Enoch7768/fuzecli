@@ -56,6 +56,7 @@ func PromptHash(prompt string) string {
 func PlannerSchema() map[string]any {
 	return map[string]any{
 		"type": "object",
+		"additionalProperties": false,
 		"properties": map[string]any{
 			"project": map[string]any{"type": "string"},
 			"summary": map[string]any{"type": "string"},
