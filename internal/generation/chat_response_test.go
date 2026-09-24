@@ -169,3 +169,10 @@ func TestParseChatResponseRejectsMismatchedNesting(t *testing.T) {
 		t.Fatal("expected mismatched nesting rejection")
 	}
 }
+
+func TestParseChatResponseAllowsChatThenFiles(t *testing.T) {
+	raw := "{\"type\":\"chat\",\"response\":\"I will build the coffee site first, then apply these files.\",\"message\":\"I will build the coffee site first, then apply these files.\",\"files\":[{\"path\":\"index.html\",\"content\":\"<!doctype html>\",\"action\":\"create\",\"line_start\":0,\"line_end\":0}],\"explanation\":\"Created the page.\",\"commands\":[]}"
+	got, err := ParseChatResponse(raw)
+	if err != nil { t.Fatalf("chat with file changes rejected: %v", err) }
+	if got.Type != "chat" || got.Response == "" || got.Plan == nil || len(got.Plan.Files) != 1 { t.Fatalf("unexpected combined response: %#v", got) }
+}
