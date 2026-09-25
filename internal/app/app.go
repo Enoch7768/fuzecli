@@ -73,6 +73,7 @@ func (a *App) AttachWorkspace(root string) error {
 
 	a.Store = s
 	a.Repository = index
+	a.Registry.SetTelemetrySink(func(event provider.TelemetryEvent) { _ = a.Store.SaveTelemetryEvent(event) })
 	return nil
 }
 
