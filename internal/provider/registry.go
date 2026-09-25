@@ -832,6 +832,7 @@ func (r *Registry) continueStream(ctx context.Context, name string, messages []M
 	out := make(chan StreamChunk)
 	go func() {
 		defer close(out)
+		started := time.Now()
 		current := initial
 		combined := strings.Builder{}
 		continuations := 0
@@ -840,6 +841,8 @@ func (r *Registry) continueStream(ctx context.Context, name string, messages []M
 			var usage Usage
 			for chunk := range current {
 				if chunk.Error != nil {
+					event := TelemetryEvent{RequestID: opts.RequestID, Time: time.Now(), Provider: name, Model: opts.Model, PromptTokens: uint64(nonNegativeInt(usage.PromptTokens)), CompletionTokens: uint64(nonNegativeInt(usage.CompletionTokens)), TotalTokens: uint64(nonNegativeInt(usage.TotalTokens)), LatencyMs: time.Since(started).Milliseconds(), Streaming: true, Success: false, Error: errorString(chunk.Error), ErrorKind: errorKind(chunk.Error)}
+					r.recordTelemetry(event, chunk.Error)
 					out <- chunk
 					return
 				}
@@ -856,7 +859,7 @@ func (r *Registry) continueStream(ctx context.Context, name string, messages []M
 			}
 			partial := strings.TrimSpace(combined.String())
 			if !finished || continuations >= 8 || !responseNeedsContinuation(partial) {
-				event := TelemetryEvent{RequestID: opts.RequestID, Time: time.Now(), Provider: name, Model: opts.Model, PromptTokens: uint64(nonNegativeInt(usage.PromptTokens)), CompletionTokens: uint64(nonNegativeInt(usage.CompletionTokens)), TotalTokens: uint64(nonNegativeInt(usage.TotalTokens)), Streaming: true, Success: true}
+				event := TelemetryEvent{RequestID: opts.RequestID, Time: time.Now(), Provider: name, Model: opts.Model, PromptTokens: uint64(nonNegativeInt(usage.PromptTokens)), CompletionTokens: uint64(nonNegativeInt(usage.CompletionTokens)), TotalTokens: uint64(nonNegativeInt(usage.TotalTokens)), LatencyMs: time.Since(started).Milliseconds(), Streaming: true, Success: true}
 				r.recordTelemetry(event, nil)
 				out <- StreamChunk{Done: true, Usage: usage}
 				return
