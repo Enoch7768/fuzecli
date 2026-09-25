@@ -209,7 +209,7 @@ func (r *Registry) Stream(ctx context.Context, name string, messages []Message, 
 		if err == nil {
 			return r.continueStream(ctx, name, streamMessages, streamOptions, stream), nil
 		}
-		if errors.Is(err, ErrRateLimited) || errors.Is(err, ErrProviderUnavailable) || errors.Is(err, ErrRequestTooLarge) {
+		if errors.Is(err, ErrRateLimited) || errors.Is(err, ErrProviderUnavailable) || errors.Is(err, ErrRequestTooLarge) || errors.Is(err, ErrModelNotFound) {
 			for _, candidate := range r.fallback {
 				if candidate == name {
 					continue
