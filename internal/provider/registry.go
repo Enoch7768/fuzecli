@@ -59,12 +59,9 @@ func (r *Registry) ListModels(ctx context.Context, name string) ([]string, error
 func (r *Registry) Send(ctx context.Context, name string, messages []Message, opts RequestOptions) (*Response, error) {
 	if name != "auto" {
 		requestMessages, request := adaptRequest(name, messages, opts)
-		request.Model = r.model(name, request.Model)
-		if request.Model == "" || strings.EqualFold(strings.TrimSpace(request.Model), "default") || strings.EqualFold(strings.TrimSpace(request.Model), "auto") {
-			request.Model = r.resolveModel(ctx, name, request.Model)
-		}
+		request.Model = r.resolveRequestModel(ctx, name, request.Model)
 		if request.Model == "" {
-			return nil, fmt.Errorf("no default model configured for provider %s", name)
+			return nil, fmt.Errorf("no usable model is available for provider %s", name)
 		}
 		if capabilities, capabilityErr := r.Capabilities(name); capabilityErr != nil { return nil, capabilityErr } else if !SupportsRequest(capabilities, request) { return nil, fmt.Errorf("provider %s does not support the requested capabilities", name) }
 		if err := validateRequestBudget(name, requestMessages, request); err != nil {
@@ -80,7 +77,7 @@ func (r *Registry) Send(ctx context.Context, name string, messages []Message, op
 					continue
 				}
 				fallbackMessages, fallbackRequest := adaptRequest(candidate, messages, opts)
-				fallbackRequest.Model = r.model(candidate, fallbackRequest.Model)
+				fallbackRequest.Model = r.resolveRequestModel(ctx, candidate, fallbackRequest.Model)
 				if fallbackRequest.Model == "" {
 					continue
 				}
@@ -193,12 +190,9 @@ func (r *Registry) sendWithRetry(ctx context.Context, name string, messages []Me
 func (r *Registry) Stream(ctx context.Context, name string, messages []Message, opts RequestOptions) (<-chan StreamChunk, error) {
 	if name != "auto" {
 		streamMessages, streamOptions := adaptRequest(name, messages, opts)
-		streamOptions.Model = r.model(name, streamOptions.Model)
-		if streamOptions.Model == "" || strings.EqualFold(strings.TrimSpace(streamOptions.Model), "default") || strings.EqualFold(strings.TrimSpace(streamOptions.Model), "auto") {
-			streamOptions.Model = r.resolveModel(ctx, name, streamOptions.Model)
-		}
+		streamOptions.Model = r.resolveRequestModel(ctx, name, streamOptions.Model)
 		if streamOptions.Model == "" {
-			return nil, fmt.Errorf("no default model configured for provider %s", name)
+			return nil, fmt.Errorf("no usable model is available for provider %s", name)
 		}
 		if capabilities, capabilityErr := r.Capabilities(name); capabilityErr != nil { return nil, capabilityErr } else if !capabilities.Streaming { return nil, fmt.Errorf("provider %s does not support streaming", name) } else if !SupportsRequest(capabilities, streamOptions) { return nil, fmt.Errorf("provider %s does not support the requested capabilities", name) }
 		if err := validateRequestBudget(name, streamMessages, streamOptions); err != nil {
@@ -214,7 +208,7 @@ func (r *Registry) Stream(ctx context.Context, name string, messages []Message, 
 					continue
 				}
 				fallbackMessages, fallbackOptions := adaptRequest(candidate, messages, opts)
-				fallbackOptions.Model = r.model(candidate, fallbackOptions.Model)
+				fallbackOptions.Model = r.resolveRequestModel(ctx, candidate, fallbackOptions.Model)
 				if fallbackOptions.Model == "" {
 					continue
 				}
@@ -241,12 +235,9 @@ func (r *Registry) Stream(ctx context.Context, name string, messages []Message, 
 	var last error
 	for _, candidate := range candidates {
 		streamMessages, streamOptions := adaptRequest(candidate, messages, opts)
-		streamOptions.Model = r.model(candidate, streamOptions.Model)
-		if streamOptions.Model == "" || strings.EqualFold(strings.TrimSpace(streamOptions.Model), "default") || strings.EqualFold(strings.TrimSpace(streamOptions.Model), "auto") {
-			streamOptions.Model = r.resolveModel(ctx, candidate, streamOptions.Model)
-		}
+		streamOptions.Model = r.resolveRequestModel(ctx, candidate, streamOptions.Model)
 		if streamOptions.Model == "" {
-			last = fmt.Errorf("no default model configured for provider %s", candidate)
+			last = fmt.Errorf("no usable model is available for provider %s", candidate)
 			continue
 		}
 		if err := validateRequestBudget(candidate, streamMessages, streamOptions); err != nil {
@@ -351,6 +342,19 @@ func isModelAvailabilityError(err error) bool {
 		}
 	}
 	return false
+}
+
+func (r *Registry) resolveRequestModel(ctx context.Context, name, requested string) string {
+	model := strings.TrimSpace(requested)
+	if model != "" && !strings.EqualFold(model, "auto") && !strings.EqualFold(model, "default") {
+		return model
+	}
+	if configured := strings.TrimSpace(r.models[name]); configured != "" &&
+		!strings.EqualFold(configured, "auto") &&
+		!strings.EqualFold(configured, "default") {
+		return configured
+	}
+	return r.resolveModel(ctx, name, model)
 }
 
 func (r *Registry) resolveModel(ctx context.Context, name, current string) string {
