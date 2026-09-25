@@ -40,7 +40,7 @@ func TestHTTPErrorClassification(t *testing.T) {
 func TestListModelsFiltersUnsafeAndDuplicateIDs(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte("{"data":[{"id":"default"},{"id":"auto"},{"id":" real-model "},{"id":"real-model"},{"id":""}]}"))
+		_, _ = w.Write([]byte(`{"data":[{"id":"default"},{"id":"auto"},{"id":" real-model "},{"id":"real-model"},{"id":""}]}`))
 	}))
 	defer server.Close()
 
