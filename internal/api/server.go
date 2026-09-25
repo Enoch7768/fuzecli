@@ -47,7 +47,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/v1/config", s.config)
 	mux.HandleFunc("/v1/models", s.models)
 	mux.HandleFunc("/v1/memory/refresh", s.memoryRefresh)
-	mux.HandleFunc("/v1/chat", s.chat)
+	mux.Handle("/v1/chat", s.withChatSlot(http.HandlerFunc(s.chat)))
 	mux.HandleFunc("/v1/file", s.file)
 	mux.HandleFunc("/v1/upload", s.upload)
 	mux.HandleFunc("/preview/", s.preview)
@@ -56,7 +56,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/v1/history", s.history)
 	mux.HandleFunc("/v1/touched", s.touched)
 	mux.HandleFunc("/v1/telemetry", s.telemetry)
-	return s.securityHeaders(s.origin(s.auth(s.rateLimit(mux))))
+	return s.securityHeaders(s.origin(s.auth(requestContext(s.rateLimit(mux)))))
 }
 
 func (s *Server) ListenAndServe(addr string) error {
