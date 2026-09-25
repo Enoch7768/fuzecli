@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"mime"
 	"sort"
 	"strings"
 	"unicode/utf8"
@@ -19,8 +20,10 @@ import (
 const MaxAttachmentBytes = 65536
 
 type Attachment struct {
-	Path    string `json:"path"`
+	Path string `json:"path"`
 	Content string `json:"content"`
+	MIMEType string `json:"mime_type"`
+	SizeBytes int64 `json:"size_bytes"`
 }
 
 type ChatRequest struct {
@@ -202,16 +205,22 @@ func (s *Service) ReadAttachments(paths []string) ([]Attachment, error) {
 	files := make([]Attachment, 0, len(paths))
 	for _, rel := range paths {
 		rel = filepath.ToSlash(strings.TrimSpace(rel))
-		if rel == "" {
-			continue
-		}
+		if rel == "" { continue }
 		content, err := s.ReadFile(rel)
-		if err != nil {
-			return nil, err
-		}
-		files = append(files, Attachment{Path: rel, Content: content})
+		if err != nil { return nil, err }
+		path, err := generation.Resolve(s.App.Store.Root, rel)
+		if err != nil { return nil, err }
+		info, err := os.Stat(path)
+		if err != nil { return nil, err }
+		files = append(files, Attachment{Path: rel, Content: content, MIMEType: mime.TypeByExtension(filepath.Ext(rel)), SizeBytes: info.Size()})
 	}
 	return files, nil
+}
+
+func attachmentSummary(file Attachment) string {
+	kind := file.MIMEType
+	if kind == "" { kind = "text/plain" }
+	return fmt.Sprintf("ATTACHMENT: %s\nMIME: %s\nSIZE: %d bytes\nBEGIN_ATTACHMENT\n%s\nEND_ATTACHMENT", file.Path, kind, file.SizeBytes, file.Content)
 }
 
 func (s *Service) ListFiles(prefix string) ([]string, error) {
