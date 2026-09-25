@@ -114,7 +114,7 @@ func printTerminalCard(width int, body string) {
 		if padding < 0 {
 			padding = 0
 		}
-		fmt.Printf("│ %-19s │ %s│%s%s%s  %s│%s\n", " ", uiLine, uiReset, line, "", strings.Repeat(" ", padding), uiLine, uiReset)
+		fmt.Printf("│ %-19s │ %s│%s%s%s  %s│%s\n", " ", uiLine, uiReset, line, uiReset, strings.Repeat(" ", padding), uiLine, uiReset)
 	}
 	fmt.Printf("│ %-19s │ %s└%s┘%s\n", " ", uiLine, strings.Repeat("─", inner), uiReset)
 }
