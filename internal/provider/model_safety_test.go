@@ -39,8 +39,15 @@ func TestRegistryNeverSendsPlaceholderModel(t *testing.T) {
 	}
 }
 
+type emptyModelProvider struct{}
+func (p *emptyModelProvider) Name() string { return "empty" }
+func (p *emptyModelProvider) ListModels(context.Context) ([]string, error) { return nil, nil }
+func (p *emptyModelProvider) Send(context.Context, []Message, RequestOptions) (*Response, error) { return nil, nil }
+func (p *emptyModelProvider) Stream(context.Context, []Message, RequestOptions) (<-chan StreamChunk, error) { return nil, nil }
+
 func TestRegistryRejectsUnresolvableModel(t *testing.T) {
-	p := &modelSafetyProvider{name: "test"}
-	p.ListModels = nil
-	_ = p
+	p := &emptyModelProvider{}
+	r := NewRegistry(nil, map[string]string{"empty": "default"}, p)
+	_, err := r.Send(context.Background(), "empty", []Message{{Role: "user", Content: "hi"}}, RequestOptions{Model: "default"})
+	if err == nil || !strings.Contains(err.Error(), "no usable model") { t.Fatalf("expected no usable model error, got %v", err) }
 }
