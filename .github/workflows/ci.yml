@@ -49,6 +49,16 @@ jobs:
         run: |
           go mod tidy
           git diff --exit-code -- go.mod go.sum
+      - name: Verify formatting
+        shell: pwsh
+        run: |
+          $files = gofmt -l .
+          if ($files) {
+            Write-Host "The following Go files are not gofmt-formatted:"
+            $files
+            exit 1
+          }
+
       - name: Test
         run: go test ./...
       - name: Race-sensitive package tests
@@ -68,6 +78,19 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           & .\dist\aicli.exe --help
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+  race:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.x'
+          cache: true
+      - name: Race tests
+        run: go test -race ./...
+      - name: Vet
+        run: go vet ./...
 
   vulnerability-scan:
     runs-on: ubuntu-latest
