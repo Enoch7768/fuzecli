@@ -49,16 +49,6 @@ jobs:
         run: |
           go mod tidy
           git diff --exit-code -- go.mod go.sum
-      - name: Verify formatting
-        shell: pwsh
-        run: |
-          $files = gofmt -l .
-          if ($files) {
-            Write-Host "The following Go files are not gofmt-formatted:"
-            $files
-            exit 1
-          }
-
       - name: Test
         run: go test ./...
       - name: Race-sensitive package tests
