@@ -176,8 +176,7 @@ func (r *Registry) sendWithRetry(ctx context.Context, name string, messages []Me
 		if response != nil {
 			usage = response.Usage
 		}
-		r.telemetry.RecordWithRequestID(opts.RequestID, name, err, usage, time.Since(started), false, opts.Model)
-	if r.telemetrySink != nil { snap := r.telemetry.Snapshot(); if len(snap.Events) > 0 { r.telemetrySink(snap.Events[len(snap.Events)-1]) } }
+		r.recordTelemetry(TelemetryEvent{RequestID: opts.RequestID, Time: time.Now(), Provider: name, Model: opts.Model, PromptTokens: uint64(nonNegativeInt(usage.PromptTokens)), CompletionTokens: uint64(nonNegativeInt(usage.CompletionTokens)), TotalTokens: uint64(nonNegativeInt(usage.TotalTokens)), LatencyMs: time.Since(started).Milliseconds(), Streaming: false, Success: err == nil, Error: errorString(err), ErrorKind: errorKind(err)})
 		if err == nil {
 			return response, nil
 		}
@@ -302,8 +301,7 @@ func (r *Registry) streamWithRetry(ctx context.Context, name string, messages []
 		}
 		r.observe(name, err)
 		if err != nil {
-			r.telemetry.RecordWithRequestID(opts.RequestID, name, err, Usage{}, time.Since(started), true, opts.Model)
-	if r.telemetrySink != nil { snap := r.telemetry.Snapshot(); if len(snap.Events) > 0 { r.telemetrySink(snap.Events[len(snap.Events)-1]) } }
+			r.recordTelemetry(TelemetryEvent{RequestID: opts.RequestID, Time: time.Now(), Provider: name, Model: opts.Model, LatencyMs: time.Since(started).Milliseconds(), Streaming: true, Success: err == nil, Error: errorString(err), ErrorKind: errorKind(err)})
 		}
 		if err == nil {
 			return stream, nil
@@ -428,6 +426,37 @@ func (r *Registry) wait(ctx context.Context, name string) error {
 	case <-timer.C:
 		return nil
 	}
+}
+
+func (r *Registry) recordTelemetry(event TelemetryEvent) {
+	var err error
+	if event.Error != "" {
+		err = errors.New(event.Error)
+	}
+	usage := Usage{PromptTokens: int(event.PromptTokens), CompletionTokens: int(event.CompletionTokens), TotalTokens: int(event.TotalTokens)}
+	latency := time.Duration(event.LatencyMs) * time.Millisecond
+	r.telemetry.RecordWithRequestID(event.RequestID, event.Provider, err, usage, latency, event.Streaming, event.Model)
+	if r.telemetrySink != nil {
+		r.telemetrySink(event)
+	}
+}
+
+func errorString(err error) string {
+	if err == nil {
+		return ""
+	}
+	return err.Error()
+}
+
+func errorKind(err error) string {
+	if err == nil {
+		return ""
+	}
+	var providerErr *ProviderError
+	if errors.As(err, &providerErr) {
+		return string(providerErr.Kind)
+	}
+	return ""
 }
 
 func (r *Registry) observe(name string, err error) {
