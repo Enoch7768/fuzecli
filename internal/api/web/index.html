@@ -14,6 +14,7 @@
   <div class="workspace-badge"><span class="live-dot"></span><div><b>Local workspace</b><small id="workspacePath">Loading…</small></div></div>
   <nav id="nav">
     <button class="nav-item active" data-view="chat"><span>⌁</span><div><b>Command</b><small>AI coding session</small></div></button>
+    <button class="nav-item" data-view="ide"><span>⌘</span><div><b>Studio</b><small>Code workspace</small></div></button>
     <button class="nav-item" data-view="builder"><span>◈</span><div><b>Builder</b><small>Live site studio</small></div></button>
     <button class="nav-item" data-view="workspace"><span>▦</span><div><b>Files</b><small>Workspace explorer</small></div></button>
     <button class="nav-item" data-view="activity"><span>◷</span><div><b>Activity</b><small>Session history</small></div></button>
@@ -42,7 +43,7 @@
   </div>
 </section>
 
-<section class="view" id="view-builder">
+<section class="view" id="view-ide"><div class="ide-shell"><aside class="ide-rail"><button class="ide-rail-btn active" data-ide-panel="explorer">▱</button><button class="ide-rail-btn" data-ide-panel="search">⌕</button><button class="ide-rail-btn" data-ide-panel="source">⑂</button><button class="ide-rail-btn" data-ide-panel="outline">☷</button></aside><aside class="ide-explorer"><div class="ide-panel-head"><span id="idePanelTitle">EXPLORER</span><div><button class="ide-mini" id="ideRefresh">↻</button><button class="ide-mini" id="ideCollapse">‹</button></div></div><div class="ide-workspace-title"><span class="live-dot"></span><b id="ideWorkspaceName">WORKSPACE</b></div><div id="ideExplorerTree" class="ide-tree"></div><div id="ideSearchPanel" hidden><input id="ideSearch" class="ide-search" placeholder="Search files…"><div id="ideSearchResults"></div></div></aside><section class="ide-center"><div class="ide-tabs" id="ideTabs"></div><div class="ide-breadcrumbs" id="ideBreadcrumbs">FuzeCLI Studio</div><div class="ide-editor" id="ideEditor"><div class="ide-editor-empty"><div class="ide-logo">F</div><h3>FuzeCLI Studio</h3><p>Open a file to start editing.</p></div></div><div class="ide-bottom"><div class="ide-bottom-tabs"><button class="active" data-bottom="problems">PROBLEMS <b id="problemCount">0</b></button><button data-bottom="output">OUTPUT</button><button data-bottom="terminal">TERMINAL</button><button data-bottom="diff">CHANGES</button></div><div class="ide-bottom-body" id="ideBottomBody"><div class="ide-terminal-line"><span class="terminal-prompt">fuze</span><span>Workspace ready.</span></div></div></div></section><aside class="ide-ai"><div class="ide-ai-head"><div><span class="eyebrow">FUZE INTELLIGENCE</span><strong>Code partner</strong></div><span class="ai-pulse"></span></div><div class="ide-ai-context" id="ideAIContext">No file selected</div><div class="ide-ai-actions"><button data-ide-action="explain">Explain</button><button data-ide-action="fix">Fix</button><button data-ide-action="refactor">Refactor</button><button data-ide-action="tests">Tests</button></div><div class="ide-ai-messages" id="ideAIMessages"><div class="ide-ai-empty"><b>Build with intent.</b><span>Select a file, then ask Fuze to work with it.</span></div></div><div class="ide-ai-compose"><textarea id="idePrompt" rows="2" placeholder="Ask about the current file…"></textarea><button id="ideAsk">Ask Fuze <span>↵</span></button></div></aside></div></section><section class="view" id="view-builder">
   <div class="builder-head"><div><span class="eyebrow">VISUAL DEVELOPMENT</span><h2>Live Builder</h2><p>Click an element in the preview, change it on the right, and save the real file.</p></div><div class="builder-actions"><select id="previewFile"></select><select id="runtimeSelect"><option value="auto">Auto runtime</option><option value="php">PHP</option><option value="node">Node</option><option value="python">Python</option></select><button class="ghost" id="deviceDesktop">Desktop</button><button class="ghost" id="deviceMobile">Mobile</button><button class="primary" id="runRuntimePreview">▶ Run app</button><button class="primary" id="openPreview">↗ Open</button><button class="primary" id="savePreview">Save changes</button></div></div>
   <div class="builder-shell">
     <aside class="builder-files panel"><div class="panel-title">Site files <span id="fileCount"></span></div><div id="builderFileList" class="file-list"></div></aside>
@@ -72,6 +73,6 @@
 </main>
 </div>
 <div id="toast" class="toast"></div>
-<script src="/assets/app.js" defer></script>
+<script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js"></script><script src="/assets/app.js" defer></script>
 </body>
 </html>
