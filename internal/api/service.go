@@ -145,7 +145,7 @@ func (s *Service) RefreshMemory() error {
 
 func (s *Service) WriteUploadedFile(rel string, data []byte) error {
 	if s == nil || s.App == nil || s.App.Store == nil { return errors.New("workspace not initialized") }
-	if len(data) > 10<<20 { return errors.New("uploaded file is larger than 10 MiB") }
+	if len(data) > MaxAttachmentBytes { return errors.New("uploaded file is larger than 2 MiB") }
 	clean := filepath.ToSlash(strings.TrimSpace(rel))
 	if clean == "" || filepath.Base(clean) != filepath.Base(rel) || strings.Contains(clean, "..") { return errors.New("invalid uploaded filename") }
 	path, err := generation.Resolve(s.App.Store.Root, clean)
