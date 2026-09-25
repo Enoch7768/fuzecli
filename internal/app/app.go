@@ -22,6 +22,7 @@ import (
 )
 
 type App struct {
+	SafeMode bool
 	Config   config.Config
 	Registry *provider.Registry
 	Store      *workspace.Store
@@ -58,6 +59,8 @@ func Load() (*App, error) {
 		Profile:  p,
 	}, nil
 }
+
+func (a *App) SetSafeMode(enabled bool) { a.SafeMode = enabled }
 
 func (a *App) AttachWorkspace(root string) error {
 	s, err := workspace.Open(root)
@@ -285,6 +288,14 @@ func (a *App) askOnce(
 				Content: resp2.Content,
 			},
 		)
+	}
+
+	if a.SafeMode {
+		for _, file := range plan.Files {
+			if file.Action == "delete" {
+				return nil, fmt.Errorf("safe mode blocks delete operation: %s", file.Path)
+			}
+		}
 	}
 
 	ui.Preview(
