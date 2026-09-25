@@ -36,11 +36,14 @@ type ChatRequest struct {
 }
 
 type ChatResponse struct {
-	Content      string   `json:"content"`
-	Provider     string   `json:"provider"`
-	Model        string   `json:"model"`
-	WrittenFiles []string `json:"written_files,omitempty"`
-	Applied      bool     `json:"applied"`
+	Content       string         `json:"content"`
+	Provider      string         `json:"provider"`
+	Model         string         `json:"model"`
+	PromptTokens  int            `json:"prompt_tokens"`
+	CompletionTokens int         `json:"completion_tokens"`
+	TotalTokens   int            `json:"total_tokens"`
+	WrittenFiles  []string       `json:"written_files,omitempty"`
+	Applied       bool           `json:"applied"`
 }
 
 type Service struct {
@@ -109,7 +112,7 @@ func (s *Service) Chat(ctx context.Context, req ChatRequest) (ChatResponse, erro
 	if err := s.App.Store.AddMessage(provider.Message{Role: "assistant", Content: content}); err != nil {
 		return ChatResponse{}, err
 	}
-	result := ChatResponse{Content: content, Provider: resp.ProviderName, Model: resp.Model}
+	result := ChatResponse{Content: content, Provider: resp.ProviderName, Model: resp.Model, PromptTokens: resp.Usage.PromptTokens, CompletionTokens: resp.Usage.CompletionTokens, TotalTokens: resp.Usage.TotalTokens}
 	if result.Provider == "" {
 		result.Provider = name
 	}
