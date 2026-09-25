@@ -138,8 +138,113 @@ func containsSearchTerm(line, term string) bool {
 	if term == "" {
 		return true
 	}
-	pattern := `(?i)(^|[^[:alnum:]_$])` + regexp.QuoteMeta(term) + `([^[:alnum:]_$]|$)`
-	return regexp.MustCompile(pattern).MatchString(line)
+	start := 0
+	for start <= len(line) {
+		offset := strings.Index(line[start:], term)
+		if offset < 0 {
+			return false
+		}
+		matchStart := start + offset
+		matchEnd := matchStart + len(term)
+		beforeOK := matchStart == 0 || !searchWordRune(line[matchStart-1])
+		afterOK := matchEnd == len(line) || !searchWordRune(line[matchEnd])
+		if beforeOK && afterOK {
+			return true
+		}
+		start = matchEnd
+	}
+	return false
+}
+
+func searchWordRune(b byte) bool {
+	return (b >= 'a' && b <= 'z') ||
+		(b >= '0' && b <= '9') ||
+		(b >= 'A' && b <= 'Z') ||
+		b == '_' || b == '
+
+func (i *Index) FindSymbols(query string, limit int) []Symbol {
+	q := strings.ToLower(strings.TrimSpace(query))
+	if limit <= 0 {
+		limit = 50
+	}
+	out := make([]Symbol, 0, limit)
+	for _, s := range i.Symbols {
+		if q == "" || strings.Contains(strings.ToLower(s.Name), q) || strings.Contains(strings.ToLower(s.Kind), q) || strings.Contains(strings.ToLower(s.Path), q) {
+			out = append(out, s)
+			if len(out) >= limit {
+				break
+			}
+		}
+	}
+	return out
+}
+
+func symbolsInFile(root, path string) ([]Symbol, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	rel, err := filepath.Rel(root, path)
+	if err != nil {
+		return nil, err
+	}
+	s := bufio.NewScanner(f)
+	s.Buffer(make([]byte, 4096), 1024*1024)
+	var out []Symbol
+	line := 0
+	for s.Scan() {
+		line++
+		text := s.Text()
+		if m := goFunc.FindStringSubmatch(text); len(m) == 2 {
+			out = append(out, Symbol{m[1], "function", filepath.ToSlash(rel), line})
+			continue
+		}
+		if m := goType.FindStringSubmatch(text); len(m) == 3 {
+			out = append(out, Symbol{m[1], "type", filepath.ToSlash(rel), line})
+			continue
+		}
+		if m := pyDef.FindStringSubmatch(text); len(m) == 2 {
+			out = append(out, Symbol{m[1], "function", filepath.ToSlash(rel), line})
+			continue
+		}
+		if m := jsDef.FindStringSubmatch(text); len(m) == 2 {
+			out = append(out, Symbol{m[1], "function", filepath.ToSlash(rel), line})
+			continue
+		}
+		if m := classDef.FindStringSubmatch(text); len(m) == 2 {
+			out = append(out, Symbol{m[1], "class", filepath.ToSlash(rel), line})
+		}
+	}
+	return out, s.Err()
+}
+
+func ignoredDir(name string) bool {
+	switch name {
+	case ".git", ".aicli", "node_modules", "vendor", "dist", "build", "target", ".venv", "venv":
+		return true
+	}
+	return false
+}
+
+func ignoredPath(path string) bool {
+	base := filepath.Base(path)
+	lower := strings.ToLower(base)
+	if strings.HasPrefix(lower, ".env") || strings.Contains(lower, "credential") || strings.Contains(lower, "secret") || strings.HasSuffix(lower, ".pem") || strings.HasSuffix(lower, ".key") {
+		return true
+	}
+	return false
+}
+
+func isSourceFile(path string) bool {
+	ext := strings.ToLower(filepath.Ext(path))
+	switch ext {
+	case ".go", ".py", ".js", ".jsx", ".ts", ".tsx", ".php", ".java", ".kt", ".rs", ".c", ".h", ".cpp", ".hpp", ".cs", ".rb", ".swift", ".sql", ".vue", ".svelte", ".html", ".css", ".scss", ".json", ".yaml", ".yml", ".toml":
+		return true
+	}
+	return false
+}
+
 }
 
 func (i *Index) FindSymbols(query string, limit int) []Symbol {
