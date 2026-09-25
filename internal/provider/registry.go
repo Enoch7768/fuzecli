@@ -840,8 +840,6 @@ func (r *Registry) continueStream(ctx context.Context, name string, messages []M
 			var usage Usage
 			for chunk := range current {
 				if chunk.Error != nil {
-					r.telemetry.RecordWithRequestID(opts.RequestID, name, chunk.Error, usage, 0, true, opts.Model)
-					if r.telemetrySink != nil { snap := r.telemetry.Snapshot(); if len(snap.Events) > 0 { r.telemetrySink(snap.Events[len(snap.Events)-1]) } }
 					out <- chunk
 					return
 				}
@@ -858,8 +856,8 @@ func (r *Registry) continueStream(ctx context.Context, name string, messages []M
 			}
 			partial := strings.TrimSpace(combined.String())
 			if !finished || continuations >= 8 || !responseNeedsContinuation(partial) {
-				r.telemetry.RecordWithRequestID(opts.RequestID, name, nil, usage, 0, true, opts.Model)
-				if r.telemetrySink != nil { snap := r.telemetry.Snapshot(); if len(snap.Events) > 0 { r.telemetrySink(snap.Events[len(snap.Events)-1]) } }
+				event := TelemetryEvent{RequestID: opts.RequestID, Time: time.Now(), Provider: name, Model: opts.Model, PromptTokens: uint64(nonNegativeInt(usage.PromptTokens)), CompletionTokens: uint64(nonNegativeInt(usage.CompletionTokens)), TotalTokens: uint64(nonNegativeInt(usage.TotalTokens)), Streaming: true, Success: true}
+				r.recordTelemetry(event, nil)
 				out <- StreamChunk{Done: true, Usage: usage}
 				return
 			}
