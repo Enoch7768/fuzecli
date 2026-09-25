@@ -21,6 +21,7 @@ type Server struct {
 	token          string
 	uiSession      string
 	runtimePreview *runtimePreviewManager
+	workbench *workbenchRuntime
 	limiter        *requestLimiter
 	chatSlots      chan struct{}
 }
@@ -33,6 +34,7 @@ func NewServer(service *Service, token string) *Server {
 		token: strings.TrimSpace(token),
 		uiSession: hex.EncodeToString(session),
 		runtimePreview: &runtimePreviewManager{},
+		workbench: newWorkbenchRuntime(),
 		limiter: newRequestLimiter(),
 		chatSlots: make(chan struct{}, 4),
 	}
@@ -56,6 +58,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/v1/history", s.history)
 	mux.HandleFunc("/v1/touched", s.touched)
 	mux.HandleFunc("/v1/telemetry", s.telemetry)
+	mux.HandleFunc("/v1/terminal", s.terminal)
+	mux.HandleFunc("/v1/lsp", s.lsp)
+	mux.HandleFunc("/v1/debug", s.debug)
 	return s.securityHeaders(s.origin(s.auth(requestContext(s.rateLimit(mux)))))
 }
 
@@ -483,4 +488,33 @@ func writeJSON(w http.ResponseWriter, status int, value any) {
 
 func writeError(w http.ResponseWriter, status int, message string) {
 	writeJSON(w, status, map[string]string{"error": message})
+}
+
+func (s *Server) terminal(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet { writeError(w, http.StatusMethodNotAllowed, "method not allowed"); return }
+	if s.workbench == nil { writeError(w, http.StatusServiceUnavailable, "workbench runtime unavailable"); return }
+	if !isLoopbackRequest(r) && s.token == "" { writeError(w, http.StatusForbidden, "terminal is local-only"); return }
+	conn, err := s.workbench.upgrader.Upgrade(w, r, nil)
+	if err != nil { return }
+	s.workbench.terminal.handleWS(conn, s.service.Root())
+}
+
+func (s *Server) lsp(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet { writeError(w, http.StatusMethodNotAllowed, "method not allowed"); return }
+	if s.workbench == nil { writeError(w, http.StatusServiceUnavailable, "workbench runtime unavailable"); return }
+	language := strings.TrimSpace(r.URL.Query().Get("language"))
+	if _, ok := lspForLanguage(language); !ok { writeError(w, http.StatusBadRequest, "unsupported language server: "+language); return }
+	conn, err := s.workbench.upgrader.Upgrade(w, r, nil)
+	if err != nil { return }
+	if err := bridgeLSP(conn, s.service.Root(), language); err != nil { _ = conn.WriteJSON(map[string]any{"type":"error","message":err.Error()}) }
+	_ = conn.Close()
+}
+
+func (s *Server) debug(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet { writeError(w, http.StatusMethodNotAllowed, "method not allowed"); return }
+	if s.workbench == nil { writeError(w, http.StatusServiceUnavailable, "workbench runtime unavailable"); return }
+	conn, err := s.workbench.upgrader.Upgrade(w, r, nil)
+	if err != nil { return }
+	if err := bridgeDAP(conn, s.service.Root()); err != nil { _ = conn.WriteJSON(map[string]any{"type":"error","message":err.Error()}) }
+	_ = conn.Close()
 }
