@@ -40,6 +40,7 @@ type StreamChunk struct {
 	Delta string
 	Done  bool
 	Error error
+	Usage Usage
 }
 
 type Provider interface {
