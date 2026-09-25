@@ -17,7 +17,8 @@ import (
 	"github.com/Enoch7768/fuzecli/internal/provider"
 )
 
-const MaxAttachmentBytes = 65536
+const MaxAttachmentBytes = 2 << 20
+const MaxAttachmentTotalBytes = 8 << 20
 
 type Attachment struct {
 	Path string `json:"path"`
@@ -192,7 +193,7 @@ func (s *Service) ReadFile(rel string) (string, error) {
 		return "", fmt.Errorf("%s is a directory", rel)
 	}
 	if info.Size() > MaxAttachmentBytes {
-		return "", fmt.Errorf("file %s is larger than 64 KiB", rel)
+		return "", fmt.Errorf("file %s is larger than 2 MiB", rel)
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -206,15 +207,23 @@ func (s *Service) ReadFile(rel string) (string, error) {
 
 func (s *Service) ReadAttachments(paths []string) ([]Attachment, error) {
 	files := make([]Attachment, 0, len(paths))
+	var total int64
+	seen := make(map[string]struct{}, len(paths))
 	for _, rel := range paths {
 		rel = filepath.ToSlash(strings.TrimSpace(rel))
 		if rel == "" { continue }
+		if _, ok := seen[rel]; ok { continue }
+		seen[rel] = struct{}{}
 		content, err := s.ReadFile(rel)
 		if err != nil { return nil, err }
 		path, err := generation.Resolve(s.App.Store.Root, rel)
 		if err != nil { return nil, err }
 		info, err := os.Stat(path)
 		if err != nil { return nil, err }
+		total += info.Size()
+		if total > MaxAttachmentTotalBytes {
+			return nil, fmt.Errorf("selected attachments exceed the 8 MiB total limit")
+		}
 		files = append(files, Attachment{Path: rel, Content: content, MIMEType: mime.TypeByExtension(filepath.Ext(rel)), SizeBytes: info.Size()})
 	}
 	return files, nil
