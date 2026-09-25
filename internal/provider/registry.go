@@ -297,7 +297,9 @@ func (r *Registry) streamWithRetry(ctx context.Context, name string, messages []
 			}
 		}
 		r.observe(name, err)
-		r.telemetry.RecordWithRequestID(opts.RequestID, name, err, Usage{}, time.Since(started), true, opts.Model)
+		if err != nil {
+			r.telemetry.RecordWithRequestID(opts.RequestID, name, err, Usage{}, time.Since(started), true, opts.Model)
+		}
 		if err == nil {
 			return stream, nil
 		}
@@ -781,6 +783,10 @@ func continuationRequest(name string, original []Message, combined, instruction 
 	out = append(out, Message{Role: "assistant", Content: combined})
 	out = append(out, Message{Role: "user", Content: instruction})
 	request := opts
+	if request.JSONMode {
+		request.JSONSchema = nil
+		request.JSONSchemaStrict = false
+	}
 	policy := ProviderPolicy(name)
 	request.RequestTokenLimit = estimateMessageTokens(out) + 256
 	if request.MaxTokens <= 0 || request.MaxTokens > policy.MaxOutputTokens {
@@ -801,14 +807,19 @@ func (r *Registry) continueStream(ctx context.Context, name string, messages []M
 		continuations := 0
 		for {
 			finished := false
+			var usage Usage
 			for chunk := range current {
 				if chunk.Error != nil {
+					r.telemetry.RecordWithRequestID(opts.RequestID, name, chunk.Error, usage, 0, true, opts.Model)
 					out <- chunk
 					return
 				}
+				usage.PromptTokens += chunk.Usage.PromptTokens
+				usage.CompletionTokens += chunk.Usage.CompletionTokens
+				usage.TotalTokens += chunk.Usage.TotalTokens
 				if chunk.Delta != "" {
 					combined.WriteString(chunk.Delta)
-					out <- StreamChunk{Delta: chunk.Delta}
+					out <- StreamChunk{Delta: chunk.Delta, Usage: chunk.Usage}
 				}
 				if chunk.Done {
 					finished = true
@@ -816,7 +827,8 @@ func (r *Registry) continueStream(ctx context.Context, name string, messages []M
 			}
 			partial := strings.TrimSpace(combined.String())
 			if !finished || continuations >= 8 || !responseNeedsContinuation(partial) {
-				out <- StreamChunk{Done: true}
+				r.telemetry.RecordWithRequestID(opts.RequestID, name, nil, usage, 0, true, opts.Model)
+				out <- StreamChunk{Done: true, Usage: usage}
 				return
 			}
 			continuationMessages, continuationOptions := continuationRequest(name, messages, combined.String(), "Continue the previous response exactly where it stopped. Do not repeat any content already given. Finish the requested answer completely.", opts)
