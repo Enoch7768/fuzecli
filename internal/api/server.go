@@ -221,8 +221,8 @@ func (s *Server) upload(w http.ResponseWriter, r *http.Request) {
 	}
 	written := make([]string, 0, len(files))
 	for _, header := range files {
-		if header.Size < 0 || header.Size > 10<<20 {
-			writeError(w, http.StatusRequestEntityTooLarge, "each uploaded file must be 10 MiB or smaller")
+		if header.Size < 0 || header.Size > MaxAttachmentBytes {
+			writeError(w, http.StatusRequestEntityTooLarge, "each uploaded file must be 2 MiB or smaller")
 			return
 		}
 		name := filepath.ToSlash(strings.TrimSpace(header.Filename))
@@ -232,10 +232,10 @@ func (s *Server) upload(w http.ResponseWriter, r *http.Request) {
 		}
 		src, err := header.Open()
 		if err != nil { writeError(w, http.StatusBadRequest, "open uploaded file failed"); return }
-		data, err := io.ReadAll(io.LimitReader(src, 10<<20+1))
+		data, err := io.ReadAll(io.LimitReader(src, MaxAttachmentBytes+1))
 		_ = src.Close()
 		if err != nil { writeError(w, http.StatusBadRequest, "read uploaded file failed"); return }
-		if len(data) > 10<<20 { writeError(w, http.StatusRequestEntityTooLarge, "uploaded file is too large"); return }
+		if len(data) > MaxAttachmentBytes { writeError(w, http.StatusRequestEntityTooLarge, "uploaded file is too large for AI attachment context"); return }
 		if err := s.service.WriteUploadedFile(name, data); err != nil {
 			writeError(w, classifyServiceError(err), err.Error())
 			return
