@@ -75,7 +75,7 @@ func (r *Registry) Send(ctx context.Context, name string, messages []Message, op
 		if err == nil {
 			return r.continueResponse(ctx, name, requestMessages, request, response)
 		}
-		if errors.Is(err, ErrRateLimited) || errors.Is(err, ErrProviderUnavailable) || errors.Is(err, ErrRequestTooLarge) {
+		if errors.Is(err, ErrRateLimited) || errors.Is(err, ErrProviderUnavailable) || errors.Is(err, ErrRequestTooLarge) || errors.Is(err, ErrModelNotFound) {
 			for _, candidate := range r.fallback {
 				if candidate == name {
 					continue
