@@ -47,3 +47,10 @@ Streaming providers emit a terminal completion signal through the provider inter
 ## Threat model limitations
 
 FuzeCLI cannot guarantee that arbitrary user code, dependencies, provider output, or a workspace is malware-free. FuzeCLI limits what it executes automatically and restricts generated writes to the workspace boundary, but users should still use normal operating-system, dependency, source-control, and endpoint-security practices.
+
+
+## API abuse resistance
+
+The local HTTP API applies per-client, per-endpoint fixed-window rate limits. Chat requests are capped at 12 per minute, uploads at 20 per minute, file writes at 60 per minute, and model discovery at 30 per minute. Other endpoints default to 120 requests per minute. Chat execution is additionally bounded to four concurrent requests. Rejected requests return HTTP 429 or 503 with a retry hint.
+
+Each authorized request receives an X-Request-ID response header to make local troubleshooting and telemetry correlation easier. Request IDs contain no credentials or user content.

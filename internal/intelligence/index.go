@@ -138,8 +138,29 @@ func containsSearchTerm(line, term string) bool {
 	if term == "" {
 		return true
 	}
-	pattern := `(?i)(^|[^[:alnum:]_$])` + regexp.QuoteMeta(term) + `([^[:alnum:]_$]|$)`
-	return regexp.MustCompile(pattern).MatchString(line)
+	start := 0
+	for start <= len(line) {
+		offset := strings.Index(line[start:], term)
+		if offset < 0 {
+			return false
+		}
+		matchStart := start + offset
+		matchEnd := matchStart + len(term)
+		beforeOK := matchStart == 0 || !searchWordRune(line[matchStart-1])
+		afterOK := matchEnd == len(line) || !searchWordRune(line[matchEnd])
+		if beforeOK && afterOK {
+			return true
+		}
+		start = matchEnd
+	}
+	return false
+}
+
+func searchWordRune(b byte) bool {
+	return (b >= 'a' && b <= 'z') ||
+		(b >= '0' && b <= '9') ||
+		(b >= 'A' && b <= 'Z') ||
+		b == '_' || b == '$'
 }
 
 func (i *Index) FindSymbols(query string, limit int) []Symbol {

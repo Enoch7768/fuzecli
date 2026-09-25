@@ -21,12 +21,21 @@ type Server struct {
 	token          string
 	uiSession      string
 	runtimePreview *runtimePreviewManager
+	limiter        *requestLimiter
+	chatSlots      chan struct{}
 }
 
 func NewServer(service *Service, token string) *Server {
 	session := make([]byte, 24)
 	_, _ = rand.Read(session)
-	return &Server{service: service, token: strings.TrimSpace(token), uiSession: hex.EncodeToString(session), runtimePreview: &runtimePreviewManager{}}
+	return &Server{
+		service: service,
+		token: strings.TrimSpace(token),
+		uiSession: hex.EncodeToString(session),
+		runtimePreview: &runtimePreviewManager{},
+		limiter: newRequestLimiter(),
+		chatSlots: make(chan struct{}, 4),
+	}
 }
 
 func (s *Server) Handler() http.Handler {
@@ -38,7 +47,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/v1/config", s.config)
 	mux.HandleFunc("/v1/models", s.models)
 	mux.HandleFunc("/v1/memory/refresh", s.memoryRefresh)
-	mux.HandleFunc("/v1/chat", s.chat)
+	mux.Handle("/v1/chat", s.withChatSlot(http.HandlerFunc(s.chat)))
 	mux.HandleFunc("/v1/file", s.file)
 	mux.HandleFunc("/v1/upload", s.upload)
 	mux.HandleFunc("/preview/", s.preview)
@@ -47,7 +56,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/v1/history", s.history)
 	mux.HandleFunc("/v1/touched", s.touched)
 	mux.HandleFunc("/v1/telemetry", s.telemetry)
-	return s.securityHeaders(s.origin(s.auth(mux)))
+	return s.securityHeaders(s.origin(s.auth(requestContext(s.rateLimit(mux)))))
 }
 
 func (s *Server) ListenAndServe(addr string) error {
