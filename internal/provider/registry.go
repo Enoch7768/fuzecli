@@ -7,9 +7,12 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"unicode/utf8"
 	"time"
 )
+
+var requestSequence atomic.Uint64
 
 type Registry struct {
 	providers  map[string]Provider
@@ -136,6 +139,9 @@ func (r *Registry) Send(ctx context.Context, name string, messages []Message, op
 }
 
 func (r *Registry) sendWithRetry(ctx context.Context, name string, messages []Message, opts RequestOptions) (*Response, error) {
+	if strings.TrimSpace(opts.RequestID) == "" {
+		opts.RequestID = fmt.Sprintf("%s-%d-%d", name, time.Now().UnixNano(), requestSequence.Add(1))
+	}
 	lock := r.providerLock(name)
 	lock.Lock()
 	defer lock.Unlock()
@@ -264,6 +270,9 @@ func (r *Registry) Stream(ctx context.Context, name string, messages []Message, 
 }
 
 func (r *Registry) streamWithRetry(ctx context.Context, name string, messages []Message, opts RequestOptions) (<-chan StreamChunk, error) {
+	if strings.TrimSpace(opts.RequestID) == "" {
+		opts.RequestID = fmt.Sprintf("%s-%d-%d", name, time.Now().UnixNano(), requestSequence.Add(1))
+	}
 	lock := r.providerLock(name)
 	lock.Lock()
 	defer lock.Unlock()
