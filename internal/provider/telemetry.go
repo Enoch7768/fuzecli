@@ -30,6 +30,7 @@ type ProviderTelemetry struct {
 }
 
 type TelemetryEvent struct {
+	RequestID  string    `json:"request_id"`
 	Time       time.Time `json:"time"`
 	Provider   string    `json:"provider"`
 	Model      string    `json:"model"`
@@ -58,7 +59,7 @@ func NewTelemetry() *Telemetry {
 	return &Telemetry{entries: make(map[string]ProviderTelemetry), events: make([]TelemetryEvent, 0, 500)}
 }
 
-func (t *Telemetry) Record(provider string, err error, usage Usage, latency time.Duration, streaming bool, model ...string) {
+func (t *Telemetry) Record(provider string, err error, usage Usage, latency time.Duration, streaming bool, requestID string, model ...string) {
 	if t == nil {
 		return
 	}
@@ -78,7 +79,7 @@ func (t *Telemetry) Record(provider string, err error, usage Usage, latency time
 	entry.TotalTokens += uint64(nonNegativeInt(usage.TotalTokens))
 	entry.TotalLatency += latency
 	entry.LastLatency = latency
-	event := TelemetryEvent{Time: time.Now(), Provider: provider, Model: modelName, PromptTokens: uint64(nonNegativeInt(usage.PromptTokens)), CompletionTokens: uint64(nonNegativeInt(usage.CompletionTokens)), TotalTokens: uint64(nonNegativeInt(usage.TotalTokens)), LatencyMs: latency.Milliseconds(), Streaming: streaming, Success: err == nil}
+	event := TelemetryEvent{RequestID: requestID, Time: time.Now(), Provider: provider, Model: modelName, PromptTokens: uint64(nonNegativeInt(usage.PromptTokens)), CompletionTokens: uint64(nonNegativeInt(usage.CompletionTokens)), TotalTokens: uint64(nonNegativeInt(usage.TotalTokens)), LatencyMs: latency.Milliseconds(), Streaming: streaming, Success: err == nil}
 	if err != nil {
 		event.Error = err.Error()
 		var providerErr *ProviderError
