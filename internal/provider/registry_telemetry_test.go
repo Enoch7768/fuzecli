@@ -51,3 +51,26 @@ func TestRegistryTelemetryReset(t *testing.T) {
 		t.Fatal("telemetry was not reset")
 	}
 }
+
+
+func TestRegistryTelemetrySinkReceivesExactEvent(t *testing.T) {
+	p := conformanceProvider{name: "test"}
+	registry := NewRegistry([]string{"test"}, map[string]string{"test": "test-model"}, p)
+	var events []TelemetryEvent
+	registry.SetTelemetrySink(func(event TelemetryEvent) {
+		events = append(events, event)
+	})
+
+	if _, err := registry.Send(context.Background(), "test", []Message{{Role: "user", Content: "hello"}}, RequestOptions{RequestID: "req-exact"}); err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("events = %d, want 1", len(events))
+	}
+	if events[0].RequestID != "req-exact" || events[0].Provider != "test" || events[0].Model != "test-model" {
+		t.Fatalf("unexpected event: %#v", events[0])
+	}
+	if events[0].TotalTokens != 2 || !events[0].Success {
+		t.Fatalf("unexpected usage/success: %#v", events[0])
+	}
+}
