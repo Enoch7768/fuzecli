@@ -4,7 +4,7 @@ FuzeCLI (`aicli.exe`) is a Windows-native Go CLI for chatting with multiple AI p
 
 ## What FuzeCLI does
 
-- Unified provider interface for OpenAI, Gemini, Groq, Anthropic, and a running llama.cpp server.
+- Unified provider interface with native providers plus 40+ OpenAI-compatible and local inference backends, including OpenAI, Gemini, Groq, Anthropic, OpenRouter, DeepSeek, Mistral, Together, Fireworks, Cerebras, xAI, Ollama, vLLM, LM Studio, LiteLLM, and custom OpenAI-compatible endpoints.
 - Configurable provider API keys and models from the local web Settings screen or CLI configuration.
 - `--provider auto` fallback across configured providers on rate limits and provider outages.
 - Structured JSON code generation with automatic application in interactive chat.
@@ -12,19 +12,19 @@ FuzeCLI (`aicli.exe`) is a Windows-native Go CLI for chatting with multiple AI p
 - Workspace-bound path validation that rejects traversal, absolute paths, and symlink escapes.
 - Interactive Windows file picker for chat attachments with multi-select support.
 - UTF-8 text attachment validation with a 64 KiB per-file limit and 256 KiB total web-message limit.
-- Automatic verification for Go, TypeScript, PHP, and Python projects.
+- Automatic verification for Go, TypeScript/JavaScript, PHP, and Python projects, with bounded command authorization and structured diagnostics.
 - Verification-driven self-correction with configurable attempts.
 - SQLite conversation history and touched-file context in `.aicli/`.
 - Global developer profile in `%APPDATA%\\aicli\\profile.json`.
 - Streaming chat output with an explicit response-end event for the web interface and immediate next-message availability.
 - Local HTTP API for applications and integrations.
 - MCP server over stdio for MCP-compatible AI clients.
-- Repository code-indexing and symbol-search foundations for focused project understanding.
+- Repository intelligence with Go AST analysis, source indexing, symbol search, relevance-ranked context, and secret-aware file exclusion.
 - Structured diagnostics for verification failures.
 - Workspace snapshots and restoration for recoverable changes.
 - Git status and diff inspection without modifying the repository.
-- Model-provided shell commands are informational only and are never executed automatically.
-- No API keys are printed or returned by the web settings API.
+- Model-provided shell commands are informational only and are never executed automatically; verification commands pass through an explicit security policy.
+- No API keys are printed or returned by the web settings API; local API requests are rate-limited and protected by loopback/origin/authentication boundaries.
 
 ## Build
 
@@ -188,7 +188,7 @@ Generated file paths are resolved inside the active workspace with traversal and
 
 These controls reduce the execution surface but cannot make arbitrary user workspaces, third-party dependencies, or provider-generated source code mathematically or operationally guaranteed to be malware-free. Normal endpoint security, source control, dependency review, and safe execution practices still apply.
 
-See [docs/SECURITY.md](docs/SECURITY.md).
+See [docs/SECURITY.md](docs/SECURITY.md) and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## CI and releases
 
@@ -196,7 +196,7 @@ Every supported development build is validated with formatting checks, module co
 
 Tagged Windows releases are built from a clean checkout and publish both `aicli.exe` and a SHA-256 checksum. GitHub release notes are generated automatically.
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the project quality bar and [CHANGELOG.md](CHANGELOG.md) for release history.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the project quality bar, [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the system boundaries and roadmap, and [evals/README.md](evals/README.md) for the coding-agent evaluation harness.
 
 ## Project documentation
 
@@ -209,5 +209,7 @@ docs/MCP.md
 docs/WEB.md
 docs/TERMINAL.md
 docs/SECURITY.md
+docs/ARCHITECTURE.md
+evals/README.md
 .aicliignore.example
 ```
