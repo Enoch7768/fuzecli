@@ -160,7 +160,8 @@ func searchWordRune(b byte) bool {
 	return (b >= 'a' && b <= 'z') ||
 		(b >= '0' && b <= '9') ||
 		(b >= 'A' && b <= 'Z') ||
-		b == '_' || b == '
+		b == '_' || b == '$'
+}
 
 func (i *Index) FindSymbols(query string, limit int) []Symbol {
 	q := strings.ToLower(strings.TrimSpace(query))
