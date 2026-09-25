@@ -225,7 +225,7 @@ func readSetupLine(reader *bufio.Reader) (string, error) {
 
 func askCommand(args []string) error {
 	var providerName, model string
-	var yes bool
+	var yes, safe bool
 	var promptParts []string
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
@@ -243,8 +243,10 @@ func askCommand(args []string) error {
 			i++
 		case "--yes":
 			yes = true
+		case "--safe":
+			safe = true
 		case "--help", "-h":
-			fmt.Println("Usage: aicli ask \"prompt\" [--provider name|auto] [--model name] [--yes]")
+			fmt.Println("Usage: aicli ask \"prompt\" [--provider name|auto] [--model name] [--yes] [--safe]")
 			return nil
 		default:
 			promptParts = append(promptParts, args[i])
@@ -265,6 +267,7 @@ func askCommand(args []string) error {
 	if err := a.AttachWorkspace("."); err != nil {
 		return err
 	}
+	a.SetSafeMode(safe)
 	defer func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
@@ -275,13 +278,15 @@ func askCommand(args []string) error {
 }
 
 func chatCommand(args []string) error {
-	var yes bool
+	var yes, safe bool
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
 		case "--yes":
 			yes = true
+		case "--safe":
+			safe = true
 		case "--help", "-h":
-			fmt.Println("Usage: aicli chat [--yes]")
+			fmt.Println("Usage: aicli chat [--yes] [--safe]")
 			fmt.Println("Inside chat: /file, /provider, /model, /status, /clear, /help, /exit")
 			return nil
 		default:
@@ -296,6 +301,7 @@ func chatCommand(args []string) error {
 	if err := a.AttachWorkspace("."); err != nil {
 		return err
 	}
+	a.SetSafeMode(safe)
 	return a.TerminalChat(context.Background(), yes)
 }
 
