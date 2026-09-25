@@ -30,6 +30,8 @@ type terminalSession struct {
 	id string
 	cmd *exec.Cmd
 	stdin io.WriteCloser
+	stdout io.ReadCloser
+	stderr io.ReadCloser
 	cancel context.CancelFunc
 }
 
@@ -49,9 +51,13 @@ func (m *terminalManager) start(root string) (*terminalSession, error) {
 	cmd.Env = os.Environ()
 	in, err := cmd.StdinPipe()
 	if err != nil { cancel(); return nil, err }
+	stdout, err := cmd.StdoutPipe()
+	if err != nil { cancel(); return nil, err }
+	stderr, err := cmd.StderrPipe()
+	if err != nil { cancel(); return nil, err }
 	if err := cmd.Start(); err != nil { cancel(); return nil, err }
 	id := fmt.Sprintf("%d-%d", time.Now().UnixNano(), os.Getpid())
-	s := &terminalSession{id: id, cmd: cmd, stdin: in, cancel: cancel}
+	s := &terminalSession{id: id, cmd: cmd, stdin: in, stdout: stdout, stderr: stderr, cancel: cancel}
 	m.mu.Lock()
 	m.sessions[id] = s
 	m.mu.Unlock()
@@ -110,8 +116,7 @@ func startLanguageServer(root, language string) (*exec.Cmd, io.WriteCloser, io.R
 	return cmd, in, out, nil
 }
 
-func readLSPMessage(r io.Reader) ([]byte, error) {
-	br := bufio.NewReader(r)
+func readLSPMessage(br *bufio.Reader) ([]byte, error) {
 	length := 0
 	for {
 		line, err := br.ReadString('\n')
@@ -139,8 +144,9 @@ func bridgeLSP(ws *websocket.Conn, root, language string) error {
 	if err != nil { return err }
 	defer cmd.Process.Kill()
 	go func() {
+		br := bufio.NewReader(out)
 		for {
-			msg, err := readLSPMessage(out)
+			msg, err := readLSPMessage(br)
 			if err != nil { return }
 			_ = ws.WriteMessage(websocket.TextMessage, msg)
 		}
@@ -181,8 +187,9 @@ func bridgeDAP(ws *websocket.Conn, root string) error {
 	defer cmd.Process.Kill()
 	defer conn.Close()
 	go func() {
+		br := bufio.NewReader(conn)
 		for {
-			msg, err := readLSPMessage(conn)
+			msg, err := readLSPMessage(br)
 			if err != nil { return }
 			_ = ws.WriteMessage(websocket.TextMessage, msg)
 		}
