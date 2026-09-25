@@ -41,7 +41,7 @@ func Init(root string) (*Store, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open session database: %w", err)
 	}
-	schema := `CREATE TABLE IF NOT EXISTS messages(id INTEGER PRIMARY KEY AUTOINCREMENT, role TEXT NOT NULL, content TEXT NOT NULL, created_at TEXT NOT NULL);CREATE TABLE IF NOT EXISTS sessions(id INTEGER PRIMARY KEY AUTOINCREMENT, started_at TEXT NOT NULL, ended_at TEXT);CREATE TABLE IF NOT EXISTS touched_files(path TEXT PRIMARY KEY);`
+	schema := `CREATE TABLE IF NOT EXISTS messages(id INTEGER PRIMARY KEY AUTOINCREMENT, role TEXT NOT NULL, content TEXT NOT NULL, created_at TEXT NOT NULL);CREATE TABLE IF NOT EXISTS sessions(id INTEGER PRIMARY KEY AUTOINCREMENT, started_at TEXT NOT NULL, ended_at TEXT);CREATE TABLE IF NOT EXISTS touched_files(path TEXT PRIMARY KEY);CREATE TABLE IF NOT EXISTS telemetry_events(id INTEGER PRIMARY KEY AUTOINCREMENT,request_id TEXT NOT NULL,time TEXT NOT NULL,provider TEXT NOT NULL,model TEXT, prompt_tokens INTEGER NOT NULL DEFAULT 0,completion_tokens INTEGER NOT NULL DEFAULT 0,total_tokens INTEGER NOT NULL DEFAULT 0,latency_ms INTEGER NOT NULL DEFAULT 0,streaming INTEGER NOT NULL DEFAULT 0,success INTEGER NOT NULL DEFAULT 0,error TEXT,error_kind TEXT);`
 	if _, err := db.Exec(schema); err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("initialize session database: %w", err)
@@ -56,6 +56,37 @@ func Open(root string) (*Store, error) {
 func (s *Store) Close() error {
 	return s.DB.Close()
 }
+
+func (s *Store) SaveTelemetryEvent(event provider.TelemetryEvent) error {
+	if s == nil || s.DB == nil {
+		return fmt.Errorf("workspace database is not initialized")
+	}
+	_, err := s.DB.Exec(`INSERT INTO telemetry_events(request_id,time,provider,model,prompt_tokens,completion_tokens,total_tokens,latency_ms,streaming,success,error,error_kind) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`,
+		event.RequestID, event.Time.UTC().Format(time.RFC3339Nano), event.Provider, event.Model, event.PromptTokens, event.CompletionTokens, event.TotalTokens, event.LatencyMs, boolInt(event.Streaming), boolInt(event.Success), event.Error, event.ErrorKind)
+	return err
+}
+
+func (s *Store) TelemetryEvents(limit int) ([]provider.TelemetryEvent, error) {
+	if limit <= 0 { limit = 500 }
+	rows, err := s.DB.Query(`SELECT request_id,time,provider,model,prompt_tokens,completion_tokens,total_tokens,latency_ms,streaming,success,error,error_kind FROM telemetry_events ORDER BY id DESC LIMIT ?`, limit)
+	if err != nil { return nil, err }
+	defer rows.Close()
+	out := make([]provider.TelemetryEvent, 0, limit)
+	for rows.Next() {
+		var e provider.TelemetryEvent
+		var ts string
+		var streaming, success int
+		if err := rows.Scan(&e.RequestID,&ts,&e.Provider,&e.Model,&e.PromptTokens,&e.CompletionTokens,&e.TotalTokens,&e.LatencyMs,&streaming,&success,&e.Error,&e.ErrorKind); err != nil { return nil, err }
+		e.Time, err = time.Parse(time.RFC3339Nano, ts)
+		if err != nil { return nil, err }
+		e.Streaming = streaming != 0
+		e.Success = success != 0
+		out = append(out, e)
+	}
+	return out, rows.Err()
+}
+
+func boolInt(v bool) int { if v { return 1 }; return 0 }
 
 func (s *Store) AddMessage(m provider.Message) error {
 	_, err := s.DB.Exec(`INSERT INTO messages(role,content,created_at) VALUES(?,?,?)`, m.Role, m.Content, time.Now().UTC().Format(time.RFC3339Nano))
