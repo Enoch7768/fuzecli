@@ -1,3 +1,13 @@
+## Unreleased
+
+### Production hardening
+
+- Documented the current multi-provider and local-provider architecture.
+- Added API rate limiting, bounded chat concurrency, and request IDs.
+- Added generation-plan fuzz coverage for malformed and adversarial JSON input.
+- Added focused API regression tests and a coding-agent evaluation harness specification.
+- Improved source-search token matching without recompiling regular expressions for every scanned line.
+
 # Changelog
 
 All notable FuzeCLI changes are documented here.
