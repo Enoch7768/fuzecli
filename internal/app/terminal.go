@@ -34,7 +34,7 @@ func (a *App) TerminalChat(ctx context.Context, _ bool) error {
 		return err
 	}
 	attachments := make(map[string]string)
-	printTerminalHeader(providerName, model, a.Store.Root)
+	printTerminalWorkspace(providerName, model, a.Store.Root)
 	for {
 		fmt.Print("\n\x1b[38;5;111m❯\x1b[0m ")
 		if !scanner.Scan() {
@@ -75,7 +75,7 @@ func (a *App) TerminalChat(ctx context.Context, _ bool) error {
 				printTerminalStatus(providerName, model, a.Store.Root)
 			case "/clear":
 				fmt.Print("\x1b[2J\x1b[H")
-				printTerminalHeader(providerName, model, a.Store.Root)
+				printTerminalWorkspace(providerName, model, a.Store.Root)
 			case "/file":
 				if value == "" {
 					paths, err := pickTerminalFiles(a.Store.Root)
