@@ -218,3 +218,16 @@ func newWorkbenchRuntime() *workbenchRuntime {
 		},
 	}
 }
+
+func (m *terminalManager) handleWS(ws *websocket.Conn, root string) {
+ defer ws.Close()
+ s, err := m.start(root)
+ if err != nil { _ = ws.WriteJSON(map[string]any{"type":"error","message":err.Error()}); return }
+ defer m.stop(s.id)
+ var writeMu sync.Mutex
+ send := func(v any) { writeMu.Lock(); defer writeMu.Unlock(); _ = ws.WriteJSON(v) }
+ send(map[string]any{"type":"ready","session":s.id,"cwd":root,"shell":runtime.GOOS})
+ go func() { br := bufio.NewReader(s.stdout); for { line,e:=br.ReadString('\n'); if line!="" { send(map[string]any{"type":"output","stream":"stdout","data":line}) }; if e!=nil{return} } }()
+ go func() { br := bufio.NewReader(s.stderr); for { line,e:=br.ReadString('\n'); if line!="" { send(map[string]any{"type":"output","stream":"stderr","data":line}) }; if e!=nil{return} } }()
+ for { var msg struct{ Type string ` + "`json:"type"`" + `; Data string ` + "`json:"data"`" + ` }; if err:=ws.ReadJSON(&msg); err!=nil{return}; if msg.Type=="input" { if _,err:=io.WriteString(s.stdin,msg.Data); err!=nil{return} } }
+}
