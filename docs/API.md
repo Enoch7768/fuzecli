@@ -146,3 +146,8 @@ aicli apikey clear gemini
 Keys are never returned through the web configuration endpoint.
 
 See [SECURITY.md](SECURITY.md) for the security model.
+
+
+## Request limits
+
+The local API applies endpoint-aware per-client limits to prevent accidental request storms. POST /v1/chat allows 12 requests per minute, POST /v1/upload allows 20 requests per minute, POST /v1/file allows 60 requests per minute, and GET /v1/models allows 30 requests per minute. Other endpoints default to 120 requests per minute. Chat execution is capped at four concurrent requests. A rejected request returns HTTP 429 or 503 and includes Retry-After. Successful authorized requests include an X-Request-ID header for troubleshooting.
