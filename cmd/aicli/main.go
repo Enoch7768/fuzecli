@@ -652,8 +652,8 @@ func usage() error {
 Getting started:
   aicli init                         Initialize this project and run setup
   aicli setup                        Reconfigure provider/model
-  aicli chat                         Start an interactive coding session
-  aicli ask "prompt"                 Run a one-shot AI request
+  aicli chat                         Start an interactive coding session (--safe for destructive-change blocking)
+  aicli ask "prompt"                 Run a one-shot AI request (--safe for destructive-change blocking)
 
 Developer tools:
   aicli debug                        Safe diagnostic report for troubleshooting
