@@ -1,6 +1,6 @@
 package catalogruntime
 
-import("bufio";"context";"encoding/json";"fmt";"io";"net/http";"os";"strings";"time"
+import("bufio";"context";"encoding/json";"fmt";"io";"net/http";"os";"strconv";"strings";"time"
 "github.com/Enoch7768/fuzecli/internal/provider")
 
 type Provider struct{name,apiKey,baseURL,env string;maxInput,maxOutput,jsonOutput int;client *http.Client}
@@ -9,7 +9,7 @@ func(p *Provider)Name()string{return p.name}
 func(p *Provider)Capabilities()provider.Capabilities{return provider.Capabilities{Streaming:true,StructuredJSON:true,ListModels:true,MaxInputChars:p.maxInput,MaxOutputTokens:p.maxOutput,JSONOutputTokens:p.jsonOutput}}
 func(p *Provider)headers()map[string]string{h:=map[string]string{};if p.apiKey!=""{h["Authorization"]="Bearer "+p.apiKey};return h}
 func(p *Provider)call(ctx context.Context,b any)([]byte,int,http.Header,error){if p.baseURL==""{return nil,0,nil,fmt.Errorf("%s: base URL is not configured",p.name)};d,e:=json.Marshal(b);if e!=nil{return nil,0,nil,e};r,e:=http.NewRequestWithContext(ctx,http.MethodPost,p.baseURL+"/chat/completions",strings.NewReader(string(d)));if e!=nil{return nil,0,nil,e};r.Header.Set("Content-Type","application/json");for k,v:=range p.headers(){r.Header.Set(k,v)};resp,e:=p.client.Do(r);if e!=nil{return nil,0,nil,e};defer resp.Body.Close();var out struct{Choices []struct{Message struct{Content string `json:"content"`} `json:"message"`} `json:"choices"`};_ = out;body:=make([]byte,0);buf:=make([]byte,8192);for{n,er:=resp.Body.Read(buf);if n>0{body=append(body,buf[:n]...)};if er!=nil{break}};return body,resp.StatusCode,resp.Header.Clone(),nil}
-func(p *Provider)Send(ctx context.Context,m []provider.Message,o provider.RequestOptions)(*provider.Response,error){model:=strings.TrimSpace(o.Model);if model==""||strings.EqualFold(model,"auto")||strings.EqualFold(model,"default"){return nil,&provider.ProviderError{Kind:provider.ErrorModelNotFound,Provider:p.name,Message:"a concrete model is required"}};b:=map[string]any{"model":model,"messages":m,"temperature":o.Temperature,"max_tokens":o.MaxTokens};if o.JSONMode{b["response_format"]=map[string]any{"type":"json_schema","json_schema":map[string]any{"name":"fuzecli_response","strict":o.JSONSchemaStrict,"schema":o.JSONSchema}}};body,status,_,e:=p.call(ctx,b);if e!=nil{return nil,&provider.ProviderError{Kind:provider.ErrorProviderUnavailable,Provider:p.name,Message:"request failed",Err:e}};if status<200||status>=300{return nil,&provider.ProviderError{Kind:provider.ErrorBadRequest,Provider:p.name,StatusCode:status,Message:strings.TrimSpace(string(body)),RetryAfter:0}};var out struct{Model string `json:"model"`;Choices []struct{Message struct{Content string `json:"content"`} `json:"message"`} `json:"choices"`;Usage provider.Usage `json:"usage"`};if e=json.Unmarshal(body,&out);e!=nil{return nil,e};if len(out.Choices)==0{return nil,fmt.Errorf("%s: response contained no choices",p.name)};return &provider.Response{Content:out.Choices[0].Message.Content,Model:out.Model,ProviderName:p.name,Usage:out.Usage},nil}
+func(p *Provider)Send(ctx context.Context,m []provider.Message,o provider.RequestOptions)(*provider.Response,error){model:=strings.TrimSpace(o.Model);if model==""||strings.EqualFold(model,"auto")||strings.EqualFold(model,"default"){return nil,&provider.ProviderError{Kind:provider.ErrorModelNotFound,Provider:p.name,Message:"a concrete model is required"}};b:=map[string]any{"model":model,"messages":m,"temperature":o.Temperature,"max_tokens":o.MaxTokens};if o.JSONMode{b["response_format"]=map[string]any{"type":"json_schema","json_schema":map[string]any{"name":"fuzecli_response","strict":o.JSONSchemaStrict,"schema":o.JSONSchema}}};body,status,headers,e:=p.call(ctx,b);if e!=nil{return nil,&provider.ProviderError{Kind:provider.ErrorProviderUnavailable,Provider:p.name,Message:"request failed",Err:e}};if status<200||status>=300{return nil,classifyHTTPError(p.name,status,headers,body)};var out struct{Model string `json:"model"`;Choices []struct{Message struct{Content string `json:"content"`} `json:"message"`} `json:"choices"`;Usage provider.Usage `json:"usage"`};if e=json.Unmarshal(body,&out);e!=nil{return nil,e};if len(out.Choices)==0{return nil,fmt.Errorf("%s: response contained no choices",p.name)};return &provider.Response{Content:out.Choices[0].Message.Content,Model:out.Model,ProviderName:p.name,Usage:out.Usage},nil}
 func(p *Provider)Stream(ctx context.Context,m []provider.Message,o provider.RequestOptions)(<-chan provider.StreamChunk,error){
 if p.baseURL==""{return nil,fmt.Errorf("%s: base URL is not configured",p.name)}
 model:=strings.TrimSpace(o.Model);if model==""||strings.EqualFold(model,"auto")||strings.EqualFold(model,"default"){return nil,&provider.ProviderError{Kind:provider.ErrorModelNotFound,Provider:p.name,Message:"a concrete model is required"}}
@@ -19,7 +19,7 @@ d,e:=json.Marshal(b);if e!=nil{return nil,e}
 req,e:=http.NewRequestWithContext(ctx,http.MethodPost,p.baseURL+"/chat/completions",strings.NewReader(string(d)));if e!=nil{return nil,e}
 req.Header.Set("Content-Type","application/json");req.Header.Set("Accept","text/event-stream");for k,v:=range p.headers(){req.Header.Set(k,v)}
 resp,e:=p.client.Do(req);if e!=nil{return nil,&provider.ProviderError{Kind:provider.ErrorProviderUnavailable,Provider:p.name,Message:"stream request failed",Err:e}}
-if resp.StatusCode<200||resp.StatusCode>=300{defer resp.Body.Close();body,_:=io.ReadAll(resp.Body);return nil,&provider.ProviderError{Kind:provider.ErrorBadRequest,Provider:p.name,StatusCode:resp.StatusCode,Message:strings.TrimSpace(string(body))}}
+if resp.StatusCode<200||resp.StatusCode>=300{defer resp.Body.Close();body,_:=io.ReadAll(io.LimitReader(resp.Body,1<<20));return nil,classifyHTTPError(p.name,resp.StatusCode,resp.Header,body)}
 out:=make(chan provider.StreamChunk)
 go func(){defer close(out);defer resp.Body.Close();scanner:=bufio.NewScanner(resp.Body);scanner.Buffer(make([]byte,4096),1024*1024)
 for scanner.Scan(){line:=strings.TrimSpace(scanner.Text());if line==""||strings.HasPrefix(line,":"){continue};if !strings.HasPrefix(line,"data:"){continue};payload:=strings.TrimSpace(strings.TrimPrefix(line,"data:"));if payload=="[DONE]"{sendStreamChunk(ctx,out,provider.StreamChunk{Done:true});return}
@@ -28,4 +28,40 @@ if e:=json.Unmarshal([]byte(payload),&event);e!=nil{sendStreamChunk(ctx,out,prov
 for _,choice:=range event.Choices{if choice.Delta.Content!=""{if !sendStreamChunk(ctx,out,provider.StreamChunk{Delta:choice.Delta.Content}){return}}}}
 if e:=scanner.Err();e!=nil{sendStreamChunk(ctx,out,provider.StreamChunk{Error:fmt.Errorf("%s: stream read failed: %w",p.name,e)});return};sendStreamChunk(ctx,out,provider.StreamChunk{Done:true})}();return out,nil}
 func sendStreamChunk(ctx context.Context,out chan<- provider.StreamChunk,chunk provider.StreamChunk)bool{select{case out<-chunk:return true;case <-ctx.Done():return false}}
-func(p *Provider)ListModels(ctx context.Context)([]string,error){if p.baseURL==""{return nil,fmt.Errorf("%s: base URL is not configured",p.name)};req,e:=http.NewRequestWithContext(ctx,http.MethodGet,p.baseURL+"/models",nil);if e!=nil{return nil,e};for k,v:=range p.headers(){req.Header.Set(k,v)};resp,e:=p.client.Do(req);if e!=nil{return nil,e};defer resp.Body.Close();var out struct{Data []struct{ID string `json:"id"`} `json:"data"`};if e=json.NewDecoder(resp.Body).Decode(&out);e!=nil{return nil,e};models:=make([]string,0,len(out.Data));for _,x:=range out.Data{if x.ID!=""{models=append(models,x.ID)}};return models,nil}
+func(p *Provider)ListModels(ctx context.Context)([]string,error){if p.baseURL==""{return nil,fmt.Errorf("%s: base URL is not configured",p.name)};req,e:=http.NewRequestWithContext(ctx,http.MethodGet,p.baseURL+"/models",nil);if e!=nil{return nil,e};for k,v:=range p.headers(){req.Header.Set(k,v)};resp,e:=p.client.Do(req);if e!=nil{return nil,&provider.ProviderError{Kind:provider.ErrorProviderUnavailable,Provider:p.name,Message:"model discovery request failed",Err:e}};defer resp.Body.Close();if resp.StatusCode<200||resp.StatusCode>=300{body,_:=io.ReadAll(io.LimitReader(resp.Body,1<<20));return nil,classifyHTTPError(p.name,resp.StatusCode,resp.Header,body)};var out struct{Data []struct{ID string `json:"id"`} `json:"data"`};if e=json.NewDecoder(resp.Body).Decode(&out);e!=nil{return nil,fmt.Errorf("%s: invalid model discovery response: %w",p.name,e)};models:=make([]string,0,len(out.Data));seen:=map[string]bool{};for _,x:=range out.Data{model:=strings.TrimSpace(x.ID);if model==""||strings.EqualFold(model,"default")||strings.EqualFold(model,"auto")||seen[model]{continue};seen[model]=true;models=append(models,model)};return models,nil}
+
+func classifyHTTPError(name string, status int, headers http.Header, body []byte) *provider.ProviderError {
+	message := strings.TrimSpace(string(body))
+	if message == "" {
+		message = http.StatusText(status)
+	}
+	if len(message) > 4096 {
+		message = message[:4096]
+	}
+	kind := provider.ErrorBadRequest
+	switch status {
+	case http.StatusUnauthorized, http.StatusForbidden:
+		kind = provider.ErrorUnauthorized
+	case http.StatusNotFound:
+		kind = provider.ErrorModelNotFound
+	case http.StatusRequestTimeout, http.StatusTooManyRequests:
+		kind = provider.ErrorRateLimited
+	case http.StatusConflict:
+		kind = provider.ErrorOverloaded
+	case http.StatusUnprocessableEntity:
+		kind = provider.ErrorBadRequest
+	default:
+		if status >= 500 {
+			kind = provider.ErrorProviderUnavailable
+		} else if status >= 400 {
+			kind = provider.ErrorBadRequest
+		}
+	}
+	retryAfter := 0
+	if value := strings.TrimSpace(headers.Get("Retry-After")); value != "" {
+		if seconds, err := strconv.Atoi(value); err == nil && seconds > 0 {
+			retryAfter = seconds
+		}
+	}
+	return &provider.ProviderError{Kind: kind, Provider: name, StatusCode: status, Message: message, RetryAfter: retryAfter}
+}
