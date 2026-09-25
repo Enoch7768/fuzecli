@@ -307,6 +307,12 @@ func (r *Registry) streamWithRetry(ctx context.Context, name string, messages []
 			return stream, nil
 		}
 		last = err
+		if isModelAvailabilityError(err) {
+			if model := r.resolveModel(ctx, name, opts.Model); model != "" && model != opts.Model {
+				opts.Model = model
+				continue
+			}
+		}
 		if !isRetryableProviderError(err) {
 			return nil, err
 		}
