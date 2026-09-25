@@ -25,6 +25,7 @@ type Registry struct {
 	retryUntil map[string]time.Time
 	attempts   map[string]int
 	telemetry  *Telemetry
+	telemetrySink func(TelemetryEvent)
 }
 
 func NewRegistry(fallback []string, defaults map[string]string, providers ...Provider) *Registry {
@@ -36,6 +37,8 @@ func NewRegistry(fallback []string, defaults map[string]string, providers ...Pro
 	}
 	return &Registry{providers: registered, fallback: append([]string(nil), fallback...), models: defaults, requestMu: requestMu, lastCall: map[string]time.Time{}, retryUntil: map[string]time.Time{}, attempts: map[string]int{}, telemetry: NewTelemetry()}
 }
+func (r *Registry) SetTelemetrySink(sink func(TelemetryEvent)) { r.telemetrySink = sink }
+
 func (r *Registry) Get(name string) (Provider, error) {
 	p, ok := r.providers[name]
 	if !ok {
@@ -174,6 +177,7 @@ func (r *Registry) sendWithRetry(ctx context.Context, name string, messages []Me
 			usage = response.Usage
 		}
 		r.telemetry.RecordWithRequestID(opts.RequestID, name, err, usage, time.Since(started), false, opts.Model)
+	if r.telemetrySink != nil { snap := r.telemetry.Snapshot(); if len(snap.Events) > 0 { r.telemetrySink(snap.Events[len(snap.Events)-1]) } }
 		if err == nil {
 			return response, nil
 		}
@@ -299,6 +303,7 @@ func (r *Registry) streamWithRetry(ctx context.Context, name string, messages []
 		r.observe(name, err)
 		if err != nil {
 			r.telemetry.RecordWithRequestID(opts.RequestID, name, err, Usage{}, time.Since(started), true, opts.Model)
+	if r.telemetrySink != nil { snap := r.telemetry.Snapshot(); if len(snap.Events) > 0 { r.telemetrySink(snap.Events[len(snap.Events)-1]) } }
 		}
 		if err == nil {
 			return stream, nil
@@ -811,6 +816,7 @@ func (r *Registry) continueStream(ctx context.Context, name string, messages []M
 			for chunk := range current {
 				if chunk.Error != nil {
 					r.telemetry.RecordWithRequestID(opts.RequestID, name, chunk.Error, usage, 0, true, opts.Model)
+					if r.telemetrySink != nil { snap := r.telemetry.Snapshot(); if len(snap.Events) > 0 { r.telemetrySink(snap.Events[len(snap.Events)-1]) } }
 					out <- chunk
 					return
 				}
@@ -828,6 +834,7 @@ func (r *Registry) continueStream(ctx context.Context, name string, messages []M
 			partial := strings.TrimSpace(combined.String())
 			if !finished || continuations >= 8 || !responseNeedsContinuation(partial) {
 				r.telemetry.RecordWithRequestID(opts.RequestID, name, nil, usage, 0, true, opts.Model)
+				if r.telemetrySink != nil { snap := r.telemetry.Snapshot(); if len(snap.Events) > 0 { r.telemetrySink(snap.Events[len(snap.Events)-1]) } }
 				out <- StreamChunk{Done: true, Usage: usage}
 				return
 			}
