@@ -79,9 +79,9 @@ func (s *Service) Chat(ctx context.Context, req ChatRequest) (ChatResponse, erro
 		system += "\nRelevant workspace files read from disk:\n" + workspaceContext
 	}
 	if len(attachments) > 0 {
-		system += "\nThe user attached the following workspace files for this request. These attachments are authoritative input and must be treated as available context; do not ask the user to re-upload or paste them. The provider receives their text content directly in the request:\n"
+		system += "\nThe user attached the following workspace files for this request. These attachments are authoritative input. The provider receives their extracted UTF-8 text directly in the request. MIME type and size are included so you know exactly what is available. Binary or unsupported formats are rejected instead of silently omitted:\n"
 		for _, file := range attachments {
-			system += "\nATTACHMENT: " + file.Path + "\nBEGIN_ATTACHMENT\n" + file.Content + "\nEND_ATTACHMENT\n"
+			system += "\n" + attachmentSummary(file) + "\n"
 		}
 	}
 	engine := generation.Engine{Registry: s.App.Registry, Profile: &s.App.Profile, MaxContextChars: 120000}
