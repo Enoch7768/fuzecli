@@ -290,7 +290,13 @@ func (s *Service) Telemetry() (provider.TelemetrySnapshot, error) {
 	if s == nil || s.App == nil || s.App.Registry == nil {
 		return provider.TelemetrySnapshot{}, errors.New("application not initialized")
 	}
-	return s.App.Registry.Telemetry(), nil
+	snapshot := s.App.Registry.Telemetry()
+	if s.App.Store != nil {
+		events, err := s.App.Store.TelemetryEvents(500)
+		if err != nil { return provider.TelemetrySnapshot{}, err }
+		if len(events) > 0 { snapshot.Events = events }
+	}
+	return snapshot, nil
 }
 
 func (s *Service) Root() string {
