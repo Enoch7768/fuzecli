@@ -12,6 +12,7 @@ type Message struct {
 }
 
 type RequestOptions struct {
+	RequestID          string
 	Model             string
 	Temperature       float64
 	MaxTokens         int
