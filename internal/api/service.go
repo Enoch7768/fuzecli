@@ -283,7 +283,9 @@ func (s *Service) Models(ctx context.Context, name string) (map[string]any, erro
 		clean = append(clean, model)
 	}
 	sort.Strings(clean)
-	return map[string]any{"provider": name, "models": clean, "default_model": s.App.Registry.DefaultModel(name)}, nil
+	capabilities, capErr := s.App.Registry.Capabilities(name)
+	if capErr != nil { return nil, capErr }
+	return map[string]any{"provider": name, "models": clean, "default_model": s.App.Registry.DefaultModel(name), "capabilities": capabilities}, nil
 }
 
 func (s *Service) Telemetry() (provider.TelemetrySnapshot, error) {
