@@ -108,12 +108,9 @@ func (r *Registry) Send(ctx context.Context, name string, messages []Message, op
 	var last error
 	for _, candidate := range candidates {
 		requestMessages, request := adaptRequest(candidate, messages, opts)
-		request.Model = r.model(candidate, request.Model)
-		if request.Model == "" || strings.EqualFold(strings.TrimSpace(request.Model), "default") || strings.EqualFold(strings.TrimSpace(request.Model), "auto") {
-			request.Model = r.resolveModel(ctx, candidate, request.Model)
-		}
+		request.Model = r.resolveRequestModel(ctx, candidate, request.Model)
 		if request.Model == "" {
-			last = fmt.Errorf("no default model configured for provider %s", candidate)
+			last = fmt.Errorf("no usable model is available for provider %s", candidate)
 			continue
 		}
 		if err := validateRequestBudget(candidate, requestMessages, request); err != nil {
