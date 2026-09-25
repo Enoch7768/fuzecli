@@ -173,7 +173,7 @@ func (r *Registry) sendWithRetry(ctx context.Context, name string, messages []Me
 		if response != nil {
 			usage = response.Usage
 		}
-		r.telemetry.Record(name, err, usage, time.Since(started), false, opts.RequestID, opts.Model)
+		r.telemetry.Record(name, err, usage, time.Since(started), false, opts.Model)
 		if err == nil {
 			return response, nil
 		}
@@ -297,7 +297,7 @@ func (r *Registry) streamWithRetry(ctx context.Context, name string, messages []
 			}
 		}
 		r.observe(name, err)
-		r.telemetry.Record(name, err, Usage{}, time.Since(started), true, opts.RequestID, opts.Model)
+		r.telemetry.Record(name, err, Usage{}, time.Since(started), true, opts.Model)
 		if err == nil {
 			return stream, nil
 		}
