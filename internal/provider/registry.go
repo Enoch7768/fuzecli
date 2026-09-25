@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sort"
@@ -923,7 +924,14 @@ func jsonDocumentComplete(text string) bool {
 			stack = stack[:len(stack)-1]
 		}
 	}
-	return !inString && len(stack) == 0
+	if inString || len(stack) != 0 {
+		return false
+	}
+	var value any
+	if err := json.Unmarshal([]byte(text[start:]), &value); err != nil {
+		return false
+	}
+	return true
 }
 
 func needsContinuation(text string) bool {
