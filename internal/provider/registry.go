@@ -78,7 +78,7 @@ func (r *Registry) Send(ctx context.Context, name string, messages []Message, op
 		if err == nil {
 			return r.continueResponse(ctx, name, requestMessages, request, response)
 		}
-		if errors.Is(err, ErrRateLimited) || errors.Is(err, ErrProviderUnavailable) || errors.Is(err, ErrRequestTooLarge) || errors.Is(err, ErrModelNotFound) {
+		if shouldFallbackProviderError(err) {
 			for _, candidate := range r.fallback {
 				if candidate == name {
 					continue
@@ -127,7 +127,7 @@ func (r *Registry) Send(ctx context.Context, name string, messages []Message, op
 		if err == nil {
 			return r.continueResponse(ctx, candidate, requestMessages, request, response)
 		}
-		if errors.Is(err, ErrRateLimited) || errors.Is(err, ErrProviderUnavailable) || errors.Is(err, ErrRequestTooLarge) || errors.Is(err, ErrModelNotFound) {
+		if shouldFallbackProviderError(err) {
 			last = err
 			continue
 		}
@@ -209,7 +209,7 @@ func (r *Registry) Stream(ctx context.Context, name string, messages []Message, 
 		if err == nil {
 			return r.continueStream(ctx, name, streamMessages, streamOptions, stream), nil
 		}
-		if errors.Is(err, ErrRateLimited) || errors.Is(err, ErrProviderUnavailable) || errors.Is(err, ErrRequestTooLarge) || errors.Is(err, ErrModelNotFound) {
+		if shouldFallbackProviderError(err) {
 			for _, candidate := range r.fallback {
 				if candidate == name {
 					continue
@@ -347,6 +347,17 @@ func isStructuredJSONCompatibilityError(err error) bool {
 
 func isRetryableProviderError(err error) bool {
 	return errors.Is(err, ErrRateLimited) || errors.Is(err, ErrProviderUnavailable)
+}
+
+func shouldFallbackProviderError(err error) bool {
+	if err == nil {
+		return false
+	}
+	return errors.Is(err, ErrRateLimited) ||
+		errors.Is(err, ErrProviderUnavailable) ||
+		errors.Is(err, ErrRequestTooLarge) ||
+		errors.Is(err, ErrModelNotFound) ||
+		isModelAvailabilityError(err)
 }
 
 func isModelAvailabilityError(err error) bool {
