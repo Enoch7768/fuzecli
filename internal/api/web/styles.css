@@ -712,3 +712,11 @@ select option{background:#15181a;color:#fbfaf5}
   overflow:auto;
 }
 .ide-fallback-editor:focus{outline:none;box-shadow:none}
+
+
+.ide-debug-frames{display:flex;flex-direction:column;gap:4px;margin:8px 8px 0}
+.ide-debug-frame small{font:9px var(--mono);color:#858a82;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ide-debug-vars{margin:8px;border-top:1px solid #343a3f}
+.ide-debug-var{display:grid;grid-template-columns:minmax(80px,.7fr) minmax(0,1.3fr);gap:10px;padding:5px 9px;border-bottom:1px solid #292e33;font:10px var(--mono)}
+.ide-debug-var b{color:#dfe2dc}
+.ide-debug-var span{color:#aeb2aa;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
