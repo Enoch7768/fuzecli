@@ -479,6 +479,3 @@ func (a *App) terminalStream(ctx context.Context, prompt, providerName, model, b
 	return a.Store.AddMessage(provider.Message{Role: "assistant", Content: parsed.Explanation})
 }
 
-func uiTextLabel(_ string) string {
-	return ""
-}
