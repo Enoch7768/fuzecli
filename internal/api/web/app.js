@@ -10,22 +10,37 @@ function renderProviders(){const p=cfg.providers;const options=p.map(x=>'<option
 async function models(provider){const name=provider||$("#providerSelect").value;const p=cfg.providers.find(x=>x.name===name)||cfg.providers[0];try{const d=await api("/v1/models?provider="+encodeURIComponent(name),{timeoutMs:120000});const list=d.models||[];const fallback=d.default_model||p.default_model||"";const cap=d.capabilities||{};$("#modelSelect").title="Streaming: "+!!cap.streaming+" · Structured JSON: "+!!cap.structured_json+" · Vision: "+!!cap.vision+" · Tools: "+!!cap.tool_calling;$("#modelSelect").innerHTML=(list.length?list:[fallback]).filter(Boolean).map(x=>'<option value="'+esc(x)+'">'+esc(x)+'</option>').join("")||'<option value="">Auto select available model</option>';if(fallback&&list.includes(fallback))$("#modelSelect").value=fallback;const sp=cfg.providers.find(x=>x.name===$("#settingsProvider").value)||p;$("#settingsModel").innerHTML=(list.length?list:[fallback]).filter(Boolean).map(x=>'<option value="'+esc(x)+'">'+esc(x)+'</option>').join("")||'<option value="">Auto select available model</option>';if(fallback)$("#settingsModel").value=fallback}catch(e){const fallback=p.default_model&&p.default_model!=="auto"&&p.default_model!=="default"?p.default_model:"";$("#modelSelect").innerHTML=fallback?'<option value="'+esc(fallback)+'">'+esc(fallback)+' (configured)</option>':'<option value="">Automatic model discovery</option>';$("#settingsModel").innerHTML=$("#modelSelect").innerHTML}}
 function keys(){$("#keyRows").innerHTML=cfg.providers.map(p=>'<div class="key-row"><span>'+esc(p.name)+'</span><span class="configured">'+(p.configured?"Configured":"Not configured")+"</span></div>").join("")}
 async function loadConfig(){cfg=await api("/v1/config");renderProviders();keys();$("#workspacePath").textContent=cfg.workspace;$("#statusText").textContent="Ready"}
-let studioEvents=null,studioRequestID="";
+let studioEvents=null,studioEventsReady=null,studioRequestID="",studioStreamChunks=0,studioStreamBytes=0;
 function startStudioEvents(){
-  if(studioEvents)return;
-  studioEvents=new EventSource("/v1/events");
-  studioEvents.onmessage=e=>{try{handleStudioEvent(JSON.parse(e.data))}catch(_){}};
-  studioEvents.addEventListener("generation.chunk",e=>{try{handleStudioEvent(JSON.parse(e.data))}catch(_){}});
-  ["session.started","provider.selected","generation.started","generation.completed","generation.streaming_unavailable","validation.failed","validation.completed","apply.started","apply.failed","generation.file_applied","session.completed","generation.failed"].forEach(type=>studioEvents.addEventListener(type,e=>{try{handleStudioEvent(JSON.parse(e.data))}catch(_){}}));
-  studioEvents.onerror=()=>{if(studioEvents){$("#chatState").textContent=chatAbort?"Reconnecting to agent…":"Ready"}};
+  if(studioEvents?.readyState===EventSource.OPEN)return Promise.resolve();
+  if(studioEventsReady)return studioEventsReady;
+  studioEventsReady=new Promise((resolve,reject)=>{
+    const es=new EventSource("/v1/events");
+    let settled=false;
+    const settle=(fn,v)=>{if(settled)return;settled=true;fn(v)};
+    const timer=setTimeout(()=>{try{es.close()}catch(_){};studioEvents=null;studioEventsReady=null;settle(reject,Error("Agent event stream connection timed out"))},8000);
+    const consume=e=>{try{handleStudioEvent(JSON.parse(e.data))}catch(_){}};
+    es.onopen=()=>{clearTimeout(timer);studioEvents=es;settle(resolve)};
+    es.onmessage=consume;
+    ["session.started","provider.selected","generation.started","generation.completed","generation.streaming_unavailable","validation.failed","validation.completed","apply.started","apply.failed","generation.file_applied","session.completed","generation.failed"].forEach(type=>es.addEventListener(type,consume));
+    es.addEventListener("generation.chunk",e=>{try{const d=JSON.parse(e.data);studioStreamChunks++;studioStreamBytes+=String(d.message||"").length;handleStudioEvent(d)}catch(_){}});
+    es.onerror=()=>{if(!settled){clearTimeout(timer);try{es.close()}catch(_){};studioEvents=null;studioEventsReady=null;settle(reject,Error("Agent event stream connection failed"))}else if(studioRequestID)$("#chatState").textContent="Reconnecting to agent…"};
+  });
+  return studioEventsReady;
 }
 function handleStudioEvent(e){
   if(studioRequestID&&e.request_id!==studioRequestID)return;
-  const pct=Number(e.percent||0);
+  let pct=Number(e.percent||0);
+  if(e.type==="generation.chunk"){
+    const estimated=Math.min(58,16+Math.max(1,studioStreamChunks)*0.35+Math.min(18,studioStreamBytes/2400));
+    pct=Math.max(pct,estimated);
+  }
   if(pct>0)setProgress(pct,eventLabel(e));
   if(e.type==="provider.selected")$("#chatState").textContent="Using "+(e.provider||"provider")+(e.model?" · "+e.model:"");
   else if(e.type==="generation.started")$("#chatState").textContent="Generating…";
-  else if(e.type==="validation.completed")$("#chatState").textContent="Validating changes…";
+  else if(e.type==="generation.chunk")$("#chatState").textContent="Generating…";
+  else if(e.type==="generation.completed")$("#chatState").textContent="Validating structured response…";
+  else if(e.type==="validation.completed")$("#chatState").textContent="Validated response";
   else if(e.type==="apply.started")$("#chatState").textContent="Applying files…";
   else if(e.type==="generation.file_applied")$("#chatState").textContent="Applied "+(e.path||"file");
   else if(e.type==="session.completed")$("#chatState").textContent="Complete";
@@ -36,13 +51,14 @@ function eventLabel(e){
     case "session.started":return e.message||"Preparing workspace";
     case "provider.selected":return "Provider selected";
     case "generation.started":return "Generating response";
+    case "generation.chunk":return studioStreamChunks>1?"Generating response":"Receiving provider response";
     case "generation.completed":return "Validating structured response";
-    case "generation.streaming_unavailable":return "Using non-streaming provider path";
+    case "generation.streaming_unavailable":return "Using standard provider response";
     case "validation.completed":return "Validated response";
     case "apply.started":return "Applying workspace changes";
     case "generation.file_applied":return "Applied "+(e.path||"file");
     case "session.completed":return "Complete";
-    default:return e.message||"Working…";
+    default:return e.type==="generation.failed"||e.type==="validation.failed"||e.type==="apply.failed"?"Agent stopped":"Working…";
   }
 }
 function setProgress(percent,label){$("#generationProgress").hidden=false;$("#progressFill").style.width=Math.max(0,Math.min(100,percent))+"%";$("#progressPercent").textContent=Math.round(percent)+"%";$("#progressLabel").textContent=label}
@@ -50,15 +66,15 @@ function finishProgress(){setProgress(100,"Complete");setTimeout(()=>$("#generat
 async function send(){
   const b=$("#prompt"),p=b.value.trim();if(!p||chatAbort)return;
   b.value="";b.style.height="auto";msg("user",p);$("#sendBtn").disabled=true;$("#stopBtn").disabled=false;$("#chatState").textContent="Starting agent…";chatAbort=new AbortController();
-  studioRequestID="studio-"+Date.now()+"-"+Math.random().toString(36).slice(2);
-  startStudioEvents();
+  studioRequestID="studio-"+Date.now()+"-"+Math.random().toString(36).slice(2);studioStreamChunks=0;studioStreamBytes=0;
   try{
+    await startStudioEvents();
     setProgress(2,"Starting agent");
     const d=await api("/v1/chat",{method:"POST",signal:chatAbort.signal,body:JSON.stringify({request_id:studioRequestID,prompt:p,provider:$("#providerSelect").value,model:$("#modelSelect").value,files:attachedFiles,apply:true,billing_mode:$("#billingMode").value})});
-    setProgress(94,"Finalizing workspace");
+    setProgress(96,"Finalizing workspace");
     msg("assistant",d.content+(d.written_files?.length?"\n\nChanged:\n"+d.written_files.join("\n"):""));
     attachedFiles=[];renderAttachments();finishProgress();
-    if(d.written_files?.some(x=>/\.(html?|css|js)$/i.test(x)))loadBuilder(currentPreview);
+    if(d.written_files?.some(x=>/\\.(html?|css|js)$/i.test(x)))loadBuilder(currentPreview);
   }catch(e){
     if(e.name==="AbortError"){setProgress(100,"Stopped");msg("assistant","Request stopped.");setTimeout(()=>$("#generationProgress").hidden=true,900)}
     else{setProgress(100,"Failed");msg("assistant","Request failed: "+e.message);setTimeout(()=>$("#generationProgress").hidden=true,1200)}
