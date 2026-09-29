@@ -107,7 +107,7 @@ async function send(){
   try{
     await startStudioEvents();
     setProgress(2,applyChanges?"Starting agent":"Analyzing workspace");
-    const d=await api("/v1/chat",{method:"POST",signal:chatAbort.signal,body:JSON.stringify({request_id:studioRequestID,prompt:agentPrompt,provider:$("#providerSelect").value,model:$("#modelSelect").value,files:attachedFiles,apply:applyChanges,billing_mode:$("#billingMode").value})});
+    const d=await api("/v1/chat",{method:"POST",timeoutMs:30*60*1000,signal:chatAbort.signal,body:JSON.stringify({request_id:studioRequestID,prompt:agentPrompt,provider:$("#providerSelect").value,model:$("#modelSelect").value,files:attachedFiles,apply:applyChanges,billing_mode:$("#billingMode").value})});
     setProgress(96,"Finalizing workspace");
     msg("assistant",d.content+(d.written_files?.length?"\n\nChanged:\n"+d.written_files.join("\n"):""));
     attachedFiles=[];renderAttachments();finishProgress();
