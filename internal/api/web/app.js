@@ -286,6 +286,17 @@ function ideRenderOutline(){
   });
   el.innerHTML=items.slice(0,150).map(x=>'<button class="ide-outline-row" data-outline-line="'+x.line+'"><span>'+String(x.line).padStart(4," ")+'</span><b>'+esc(x.name)+'</b></button>').join("")||'<div class="ide-panel-empty">No symbols detected in this file.</div>';
 }
+const ideCommands=[
+  {label:"Open file",key:"Ctrl+P",run:()=>ideCommandOpen("quick")},
+  {label:"Command palette",key:"Ctrl+Shift+P",run:()=>ideCommandOpen("command")},
+  {label:"Focus terminal",key:"Ctrl+`",run:()=>{ideBottom("terminal");ideTerminalConnect().catch(()=>{})}},
+  {label:"Start debugger",key:"F5",run:()=>ideDebugStart()},
+  {label:"Save current file",key:"Ctrl+S",run:()=>ideSaveFile()}
+];
+function ideCommandOpen(mode="quick"){const overlay=$("#ideCommandOverlay"),input=$("#ideCommandInput"),label=$("#ideCommandLabel");if(!overlay||!input)return;overlay.hidden=false;overlay.dataset.mode=mode;label.textContent=mode==="command"?"COMMAND PALETTE":"QUICK OPEN";input.placeholder=mode==="command"?"Type a command…":"Search workspace files…";input.value="";ideRenderCommandResults();requestAnimationFrame(()=>input.focus())}
+function ideCommandClose(){const overlay=$("#ideCommandOverlay");if(overlay)overlay.hidden=true}
+function ideRenderCommandResults(){const overlay=$("#ideCommandOverlay"),input=$("#ideCommandInput"),out=$("#ideCommandResults");if(!overlay||!input||!out)return;const q=input.value.trim().toLowerCase(),mode=overlay.dataset.mode||"quick";const items=mode==="command"?ideCommands.filter(x=>!q||x.label.toLowerCase().includes(q)):ideFiles.filter(x=>!q||x.toLowerCase().includes(q)).slice(0,80).map(path=>({label:path,key:"",run:()=>{ideCommandClose();ideOpenFile(path)}}));out.innerHTML=items.map((x,i)=>'<button class="ide-command-row '+(i===0?"active":"")' data-command-index="'+i+'"><span>'+esc(x.label)+'</span><kbd>'+esc(x.key||"")+"</kbd></button>").join("")||'<div class="ide-panel-empty">No matches.</div>';out.__items=items}
+function ideRunCommandIndex(index){const out=$("#ideCommandResults"),item=out?.__items?.[index];if(item){ideCommandClose();item.run()}}
 function initIDEEvents(){
 document.querySelectorAll("[data-ide-panel]").forEach(b=>b.onclick=async()=>{
   document.querySelectorAll(".ide-rail-btn").forEach(x=>x.classList.toggle("active",x===b));
@@ -297,6 +308,18 @@ document.querySelectorAll("[data-ide-panel]").forEach(b=>b.onclick=async()=>{
   if(source)await ideRenderSourcePanel();
   if(outline)ideRenderOutline();
 });
+document.addEventListener("keydown",e=>{
+  const mod=e.ctrlKey||e.metaKey;
+  if(e.key==="Escape"&&$("#ideCommandOverlay")&&!$("#ideCommandOverlay").hidden){e.preventDefault();ideCommandClose();return}
+  if(mod&&e.shiftKey&&e.key.toLowerCase()==="p"){e.preventDefault();ideCommandOpen("command");return}
+  if(mod&&!e.shiftKey&&e.key.toLowerCase()==="p"){e.preventDefault();ideCommandOpen("quick");return}
+  if(e.key==="F5"&&document.querySelector("#view-ide.active")){e.preventDefault();ideDebugStart();return}
+  if(mod&&e.key.toLowerCase()==="s"&&document.querySelector("#view-ide.active")){e.preventDefault();ideSaveFile();return}
+  if(mod&&e.key==="`"&&document.querySelector("#view-ide.active")){e.preventDefault();ideBottom("terminal");ideTerminalConnect().catch(()=>{});return}
+});
+$("#ideCommandInput")?.addEventListener("input",ideRenderCommandResults);
+$("#ideCommandInput")?.addEventListener("keydown",e=>{const rows=[...document.querySelectorAll(".ide-command-row")],active=Math.max(0,rows.findIndex(x=>x.classList.contains("active")));if(e.key==="ArrowDown"){e.preventDefault();rows.forEach(x=>x.classList.remove("active"));rows[Math.min(rows.length-1,active+1)]?.classList.add("active")}else if(e.key==="ArrowUp"){e.preventDefault();rows.forEach(x=>x.classList.remove("active"));rows[Math.max(0,active-1)]?.classList.add("active")}else if(e.key==="Enter"){e.preventDefault();ideRunCommandIndex(Math.max(0,rows.findIndex(x=>x.classList.contains("active"))))}});
+$("#ideCommandResults")?.addEventListener("click",e=>{const row=e.target.closest("[data-command-index]");if(row)ideRunCommandIndex(Number(row.dataset.commandIndex))});
 $("#ideRefresh").onclick=loadIDE;
 $("#ideCollapse").onclick=()=>$(".ide-explorer").classList.toggle("collapsed");
 $("#ideExplorerTree").onclick=e=>{const f=e.target.closest("[data-ide-file]");if(f)ideOpenFile(decodeURIComponent(f.dataset.ideFile));const folder=e.target.closest("[data-folder]");if(folder){folder.classList.toggle("open");folder.nextElementSibling?.classList.toggle("open")}};
