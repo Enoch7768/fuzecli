@@ -720,3 +720,5 @@ select option{background:#15181a;color:#fbfaf5}
 .ide-debug-var{display:grid;grid-template-columns:minmax(80px,.7fr) minmax(0,1.3fr);gap:10px;padding:5px 9px;border-bottom:1px solid #292e33;font:10px var(--mono)}
 .ide-debug-var b{color:#dfe2dc}
 .ide-debug-var span{color:#aeb2aa;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+.live-metrics{display:flex;align-items:center;gap:10px;height:32px;padding:0 10px;border:1px solid var(--line);background:var(--panel);font:10px var(--mono);color:var(--muted);white-space:nowrap}.live-metrics span{display:flex;gap:4px;align-items:center}.live-metrics b{color:var(--text);font-weight:600}.live-metrics b#liveCost{color:var(--accent)}
