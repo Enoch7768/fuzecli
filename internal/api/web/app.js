@@ -173,7 +173,6 @@ function ideDebugConnect(){
   const proto=location.protocol==="https:"?"wss":"ws";
   const ws=new WebSocket(proto+"://"+location.host+"/v1/debug");
   ideDebugSocket=ws;ideDebugInitialized=false;
-  ideDebugUpdatePending=false;
   ideUpdateDebugStatus("Connecting to Delve…");
   ideDebugConnectTimer=new Promise((resolve,reject)=>{
     let settled=false,initializedEvent=false;
@@ -228,11 +227,11 @@ function ideDebugConnect(){
   });
   return ideDebugConnectTimer;
 }
-async function ideSendBreakpoints(){if(!ideDebugSocket||ideDebugSocket.readyState!==WebSocket.OPEN||!ideActive)return;const bp=window.__fuzeBreakpoints||new Map();const lines=[];for(const [key,value] of bp){if(key.startsWith(ideActive+":"))lines.push({line:Number(value.line),column:1})}await ideDebugRequest("setBreakpoints",{source:{path:ideActive,name:ideActive,sourceReference:0},breakpoints:lines});}
+async function ideSendBreakpoints(){if(!ideDebugSocket||ideDebugSocket.readyState!==WebSocket.OPEN||!ideActive)return;const bp=window.__fuzeBreakpoints||new Map();const lines=[];for(const [key,value] of bp){if(key.startsWith(ideActive+":"))lines.push({line:Number(value.line),column:1})}const workspace=String(cfg?.workspace||"").replace(/[\\/]+$/,"");const absoluteSource=workspace?workspace+"/"+ideActive.replace(/^[/\\]+/,""):ideActive;await ideDebugRequest("setBreakpoints",{source:{path:absoluteSource,name:ideActive,sourceReference:0},breakpoints:lines});}
 async function ideDebugStart(){
   try{
     if(!ideActive)throw Error("Open a Go file before starting the debugger");
-    if(!/\\.go$/i.test(ideActive))throw Error("Studio debugger targets Go files with Delve");
+    if(!/\.go$/i.test(ideActive))throw Error("Studio debugger targets Go files with Delve");
     if(ideEditor?.getValue()!==undefined){
       const dirty=$(".ide-tab.active")?.classList.contains("dirty");
       if(dirty)await ideSaveFile();
