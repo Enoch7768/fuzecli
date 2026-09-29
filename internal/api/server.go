@@ -77,7 +77,7 @@ func (s *Server) ListenAndServe(addr string) error {
 	if err := RequireExternalToken(addr, s.token); err != nil {
 		return err
 	}
-	server := &http.Server{Addr: addr, Handler: s.Handler(), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 30 * time.Second, WriteTimeout: 5 * time.Minute, IdleTimeout: 60 * time.Second}
+	server := &http.Server{Addr: addr, Handler: s.Handler(), ReadHeaderTimeout: 10 * time.Second, ReadTimeout: 10 * time.Minute, WriteTimeout: 30 * time.Minute, IdleTimeout: 5 * time.Minute}
 	return server.ListenAndServe()
 }
 
