@@ -21,8 +21,8 @@ import (
 type Server struct {
 	service        *Service
 	token          string
-	workspaceRootsMu sync.RWMutex
-	workspaceRoots []string
+	rootsMu sync.RWMutex
+	roots []string
 	uiSession      string
 	runtimePreview *runtimePreviewManager
 	workbench *workbenchRuntime
@@ -39,7 +39,7 @@ func NewServer(service *Service, token string) *Server {
 		uiSession: hex.EncodeToString(session),
 		runtimePreview: &runtimePreviewManager{},
 		workbench: newWorkbenchRuntime(),
-		workspaceRoots: []string{service.Root()},
+		roots: []string{service.Root()},
 		limiter: newRequestLimiter(),
 		chatSlots: make(chan struct{}, 4),
 	}
@@ -61,7 +61,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/preview/", s.preview)
 	mux.HandleFunc("/v1/preview/runtime", s.runtimePreviewHandler)
 	mux.HandleFunc("/v1/files", s.files)
-	mux.HandleFunc("/v1/workspace/roots", s.workspaceRoots)
+	mux.HandleFunc("/v1/workspace/roots", s.roots)
 	mux.HandleFunc("/v1/history", s.history)
 	mux.HandleFunc("/v1/touched", s.touched)
 	mux.HandleFunc("/v1/telemetry", s.telemetry)
@@ -459,9 +459,9 @@ func (s *Server) files(w http.ResponseWriter, r *http.Request) {
 func (s *Server) workspaceRoots(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
-		s.workspaceRootsMu.RLock()
-		roots := append([]string(nil), s.workspaceRoots...)
-		s.workspaceRootsMu.RUnlock()
+		s.rootsMu.RLock()
+		roots := append([]string(nil), s.roots...)
+		s.rootsMu.RUnlock()
 		writeJSON(w, http.StatusOK, map[string]any{"roots": roots})
 	case http.MethodPost:
 		r.Body = http.MaxBytesReader(w, r.Body, 16<<10)
@@ -474,24 +474,24 @@ func (s *Server) workspaceRoots(w http.ResponseWriter, r *http.Request) {
 		if err != nil { writeError(w, http.StatusBadRequest, "invalid workspace root"); return }
 		info, err := os.Stat(root)
 		if err != nil || !info.IsDir() { writeError(w, http.StatusBadRequest, "workspace root must be an existing directory"); return }
-		s.workspaceRootsMu.Lock()
+		s.rootsMu.Lock()
 		found := false
-		for _, existing := range s.workspaceRoots { if samePath(existing, root) { found = true; break } }
-		if !found { s.workspaceRoots = append(s.workspaceRoots, root) }
-		roots := append([]string(nil), s.workspaceRoots...)
-		s.workspaceRootsMu.Unlock()
+		for _, existing := range s.roots { if samePath(existing, root) { found = true; break } }
+		if !found { s.roots = append(s.roots, root) }
+		roots := append([]string(nil), s.roots...)
+		s.rootsMu.Unlock()
 		writeJSON(w, http.StatusOK, map[string]any{"roots": roots})
 	case http.MethodDelete:
 		root := strings.TrimSpace(r.URL.Query().Get("path"))
-		s.workspaceRootsMu.Lock()
-		filtered := s.workspaceRoots[:0]
-		for _, existing := range s.workspaceRoots {
+		s.rootsMu.Lock()
+		filtered := s.roots[:0]
+		for _, existing := range s.roots {
 			if samePath(existing, root) && !samePath(existing, s.service.Root()) { continue }
 			filtered = append(filtered, existing)
 		}
-		s.workspaceRoots = filtered
-		roots := append([]string(nil), s.workspaceRoots...)
-		s.workspaceRootsMu.Unlock()
+		s.roots = filtered
+		roots := append([]string(nil), s.roots...)
+		s.rootsMu.Unlock()
 		writeJSON(w, http.StatusOK, map[string]any{"roots": roots})
 	default:
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
@@ -503,9 +503,9 @@ func (s *Server) resolveWorkspaceRootPath(path string) (string, bool) {
 	if candidate == "" { return "", false }
 	abs, err := filepath.Abs(candidate)
 	if err != nil { return "", false }
-	s.workspaceRootsMu.RLock()
-	defer s.workspaceRootsMu.RUnlock()
-	for _, root := range s.workspaceRoots {
+	s.rootsMu.RLock()
+	defer s.rootsMu.RUnlock()
+	for _, root := range s.roots {
 		rel, err := filepath.Rel(root, abs)
 		if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) { continue }
 		return abs, true
