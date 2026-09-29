@@ -59,6 +59,10 @@ type StudioEvent struct {
 	Model string `json:"model,omitempty"`
 	Path string `json:"path,omitempty"`
 	Percent int `json:"percent,omitempty"`
+	PromptTokens int `json:"prompt_tokens,omitempty"`
+	CompletionTokens int `json:"completion_tokens,omitempty"`
+	TotalTokens int `json:"total_tokens,omitempty"`
+	CostUSD float64 `json:"cost_usd,omitempty"`
 	Timestamp time.Time `json:"timestamp"`
 }
 
