@@ -63,14 +63,16 @@ function eventLabel(e){
 }
 function setProgress(percent,label){$("#generationProgress").hidden=false;$("#progressFill").style.width=Math.max(0,Math.min(100,percent))+"%";$("#progressPercent").textContent=Math.round(percent)+"%";$("#progressLabel").textContent=label}
 function finishProgress(){setProgress(100,"Complete");setTimeout(()=>$("#generationProgress").hidden=true,800)}
+function promptNeedsApproval(p){const s=String(p||"").toLowerCase();const analysisOnly=/(analy[sz]e|audit|review|inspect|assess|identify|suggest|recommend|improvement|improvements|before changing|before making changes)/.test(s);const explicitChange=/(fix|change|edit|update|implement|apply|build|create|add|remove|refactor|rewrite|replace|do so|make those changes|go ahead)/.test(s);return analysisOnly&&!explicitChange}
 async function send(){
   const b=$("#prompt"),p=b.value.trim();if(!p||chatAbort)return;
   b.value="";b.style.height="auto";msg("user",p);$("#sendBtn").disabled=true;$("#stopBtn").disabled=false;$("#chatState").textContent="Starting agent…";chatAbort=new AbortController();
   studioRequestID="studio-"+Date.now()+"-"+Math.random().toString(36).slice(2);studioStreamChunks=0;studioStreamBytes=0;
+  const applyChanges=!promptNeedsApproval(p);
   try{
     await startStudioEvents();
-    setProgress(2,"Starting agent");
-    const d=await api("/v1/chat",{method:"POST",signal:chatAbort.signal,body:JSON.stringify({request_id:studioRequestID,prompt:p,provider:$("#providerSelect").value,model:$("#modelSelect").value,files:attachedFiles,apply:true,billing_mode:$("#billingMode").value})});
+    setProgress(2,applyChanges?"Starting agent":"Analyzing workspace");
+    const d=await api("/v1/chat",{method:"POST",signal:chatAbort.signal,body:JSON.stringify({request_id:studioRequestID,prompt:p,provider:$("#providerSelect").value,model:$("#modelSelect").value,files:attachedFiles,apply:applyChanges,billing_mode:$("#billingMode").value})});
     setProgress(96,"Finalizing workspace");
     msg("assistant",d.content+(d.written_files?.length?"\n\nChanged:\n"+d.written_files.join("\n"):""));
     attachedFiles=[];renderAttachments();finishProgress();
@@ -135,10 +137,11 @@ ideLSPSocket.onclose=()=>{for(const p of ideLSPPending.values())p.reject(Error("
 
 async function ideOpenFile(path){try{const d=await api("/v1/file?path="+encodeURIComponent(path));if(ideActive&&ideActive!==path)ideLSPClose(ideActive);if(!ideOpen.includes(path))ideOpen.push(path);ideActive=path;renderIdeTabs();renderIdeEditor(d.content,path);$("#ideAIContext").textContent=path;$("#ideBreadcrumbs").textContent="Workspace / "+path;ideTree(ideFiles)}catch(e){toast(e.message)}}
 function renderIdeTabs(){const el=$("#ideTabs");el.innerHTML=ideOpen.map(p=>'<button class="ide-tab '+(p===ideActive?"active":"")+'" data-ide-tab="'+encodeURIComponent(p)+'"><span class="file-dot '+ideLang(p)+'"></span>'+esc(p.split("/").pop())+'<i data-ide-close="'+encodeURIComponent(p)+'">×</i></button>').join("")}
-function renderIdeEditor(content,path){if(!window.monaco){toast("Editor engine is loading");return}if(ideEditor)ideEditor.dispose();$("#ideEditor").innerHTML="";registerLSPProviders();const model=monaco.editor.createModel(content,ideLang(path),monaco.Uri.parse(ideURI(path)));ideEditor=monaco.editor.create($("#ideEditor"),{model,theme:"vs-dark",automaticLayout:true,minimap:{enabled:true},fontFamily:"Cascadia Code, Consolas, monospace",fontSize:13,lineHeight:21,wordWrap:"off",smoothScrolling:true,scrollBeyondLastLine:false,bracketPairColorization:{enabled:true},padding:{top:14,bottom:18},stickyScroll:{enabled:true},quickSuggestions:true,glyphMargin:true});ideEditor.addCommand(monaco.KeyMod.CtrlCmd|monaco.KeyCode.KeyS,ideSaveFile);ideEditor.onDidChangeModelContent(()=>{ideLSPChange(path,ideEditor.getValue());clearTimeout(ideSaveTimer);ideSaveTimer=setTimeout(()=>$(".ide-tab.active")?.classList.add("dirty"),500)});ideEditor.onMouseDown(e=>{if(e.target.type===monaco.editor.MouseTargetType.GUTTER_GLYPH_MARGIN)ideToggleBreakpoint(e.target.position.lineNumber)});if(ideLSPSocket?.readyState===WebSocket.OPEN&&ideLSPPath===path)ideLSPOpen(path);else ideLSPConnect(path)}
-async function ideSaveFile(){if(!ideEditor||!ideActive)return;try{await api("/v1/file",{method:"POST",body:JSON.stringify({path:ideActive,content:ideEditor.getValue()})});$(".ide-tab.active")?.classList.remove("dirty");toast("Saved "+ideActive);workspace()}catch(e){toast("Save failed: "+e.message)}}
+function renderIdeEditor(content,path){const host=$("#ideEditor");if(!host)return;if(ideEditor){ideEditor.dispose();ideEditor=null}host.innerHTML="";if(!window.monaco){const ta=document.createElement("textarea");ta.id="ideFallbackEditor";ta.className="ide-fallback-editor";ta.value=content;ta.spellcheck=false;ta.addEventListener("input",()=>{$(".ide-tab.active")?.classList.add("dirty")});ta.addEventListener("keydown",e=>{if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==="s"){e.preventDefault();ideSaveFallback(path)}});host.appendChild(ta);$("#ideBreadcrumbs").textContent="Workspace / "+path+" · text editor";return}registerLSPProviders();const model=monaco.editor.createModel(content,ideLang(path),monaco.Uri.parse(ideURI(path)));ideEditor=monaco.editor.create(host,{model,theme:"vs-dark",automaticLayout:true,minimap:{enabled:true},fontFamily:"Cascadia Code, Consolas, monospace",fontSize:13,lineHeight:21,wordWrap:"off",smoothScrolling:true,scrollBeyondLastLine:false,bracketPairColorization:{enabled:true},padding:{top:14,bottom:18},stickyScroll:{enabled:true},quickSuggestions:true,glyphMargin:true});ideEditor.addCommand(monaco.KeyMod.CtrlCmd|monaco.KeyCode.KeyS,ideSaveFile);ideEditor.onDidChangeModelContent(()=>{ideLSPChange(path,ideEditor.getValue());clearTimeout(ideSaveTimer);ideSaveTimer=setTimeout(()=>$(".ide-tab.active")?.classList.add("dirty"),500);ideRenderOutline()});ideEditor.onMouseDown(e=>{if(e.target.type===monaco.editor.MouseTargetType.GUTTER_GLYPH_MARGIN)ideToggleBreakpoint(e.target.position.lineNumber)});if(ideLSPSocket?.readyState===WebSocket.OPEN&&ideLSPPath===path)ideLSPOpen(path);else ideLSPConnect(path)}
+async function ideSaveFallback(path){const ta=$("#ideFallbackEditor");if(!ta)return;try{await api("/v1/file",{method:"POST",body:JSON.stringify({path,content:ta.value})});$(".ide-tab.active")?.classList.remove("dirty");toast("Saved "+path);await loadIDE()}catch(e){toast("Save failed: "+e.message)}}
+async function ideSaveFile(){if(!ideActive)return;const content=ideEditor?ideEditor.getValue():$("#ideFallbackEditor")?.value;if(content===undefined)return;try{await api("/v1/file",{method:"POST",body:JSON.stringify({path:ideActive,content})});$(".ide-tab.active")?.classList.remove("dirty");toast("Saved "+ideActive);await workspace()}catch(e){toast("Save failed: "+e.message)}}
 async function loadIDE(){try{ideFiles=await files();ideTree(ideFiles);$("#ideWorkspaceName").textContent=(cfg?.workspace||"WORKSPACE").split(/[\\/]/).pop().toUpperCase();if(window.monaco){registerLSPProviders();if(ideActive)ideOpenFile(ideActive)}else if(window.require){window.require.config({paths:{vs:"https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs"}});window.require(["vs/editor/editor.main"],()=>{registerLSPProviders();if(ideActive)ideOpenFile(ideActive)})}}catch(e){toast(e.message)}}
-async function askIDE(extra){const p=(extra||$("#idePrompt").value).trim();if(!p)return;const context=ideActive&&ideEditor?"\n\nCURRENT FILE: "+ideActive+"\n\n"+ideEditor.getValue():"";$("#ideAIMessages").innerHTML+='<div class="ide-ai-msg user">'+esc(p)+'</div>';$("#idePrompt").value="";try{const d=await api("/v1/chat",{method:"POST",body:JSON.stringify({prompt:p+context,provider:$("#providerSelect").value,model:$("#modelSelect").value,files:ideActive?[ideActive]:[],apply:false,billing_mode:$("#billingMode").value})});$("#ideAIMessages").innerHTML+='<div class="ide-ai-msg assistant">'+esc(d.content||"No response.")+'</div>'}catch(e){$("#ideAIMessages").innerHTML+='<div class="ide-ai-msg error">'+esc(e.message)+'</div>'}$("#ideAIMessages").scrollTop=$("#ideAIMessages").scrollHeight}
+async function askIDE(extra){const p=(extra||$("#idePrompt").value).trim();if(!p)return;const context=ideActive&&ideEditor?"\n\nCURRENT FILE: "+ideActive+"\n\n"+ideEditor.getValue():"";const applyChanges=!promptNeedsApproval(p);$("#ideAIMessages").innerHTML+='<div class="ide-ai-msg user">'+esc(p)+'</div>';$("#idePrompt").value="";try{const d=await api("/v1/chat",{method:"POST",body:JSON.stringify({prompt:p+context,provider:$("#providerSelect").value,model:$("#modelSelect").value,files:ideActive?[ideActive]:[],apply:applyChanges,billing_mode:$("#billingMode").value})});$("#ideAIMessages").innerHTML+='<div class="ide-ai-msg assistant">'+esc(d.content||"No response.")+'</div>';if(applyChanges&&d.written_files?.length){for(const path of d.written_files){if(path===ideActive)await ideOpenFile(path)}await loadIDE()}}catch(e){$("#ideAIMessages").innerHTML+='<div class="ide-ai-msg error">'+esc(e.message)+'</div>'}$("#ideAIMessages").scrollTop=$("#ideAIMessages").scrollHeight}
 
 function ideBottom(kind){
   const b=$("#ideBottomBody");
@@ -185,8 +188,8 @@ function ideDebugConnect(){
       try{
         await ideDebugRequest("initialize",{clientID:"fuzecli-studio",clientName:"FuzeCLI Studio",adapterID:"delve",linesStartAt1:true,columnsStartAt1:true,supportsVariableType:true,supportsRunInTerminalRequest:true});
         ideDebugInitialized=true;
-        ideUpdateDebugStatus("Waiting for debugger initialization…");
-        if(initializedEvent)finish(true);
+        ideUpdateDebugStatus("DAP initialized · waiting for launch");
+        finish(true);
       }catch(err){ideUpdateDebugStatus("Debugger initialization failed");finish(false,err)}
     };
     ws.onmessage=e=>{
@@ -228,26 +231,29 @@ function ideDebugConnect(){
   return ideDebugConnectTimer;
 }
 async function ideSendBreakpoints(){if(!ideDebugSocket||ideDebugSocket.readyState!==WebSocket.OPEN||!ideActive)return;const bp=window.__fuzeBreakpoints||new Map();const lines=[];for(const [key,value] of bp){if(key.startsWith(ideActive+":"))lines.push({line:Number(value.line),column:1})}const workspace=String(cfg?.workspace||"").replace(/[\\/]+$/,"");const absoluteSource=workspace?workspace+"/"+ideActive.replace(/^[/\\]+/,""):ideActive;await ideDebugRequest("setBreakpoints",{source:{path:absoluteSource,name:ideActive,sourceReference:0},breakpoints:lines});}
+async function ideWaitForInitialized(timeoutMs=10000){if(ideDebugInitialized)return;return new Promise((resolve,reject)=>{const started=Date.now();const poll=()=>{if(ideDebugInitialized){resolve();return}if(Date.now()-started>timeoutMs){reject(Error("Debugger did not send initialized event"))}else setTimeout(poll,50)};poll()})}
 async function ideDebugStart(){
   try{
     if(!ideActive)throw Error("Open a Go file before starting the debugger");
     if(!/\.go$/i.test(ideActive))throw Error("Studio debugger targets Go files with Delve");
-    if(ideEditor?.getValue()!==undefined){
-      const dirty=$(".ide-tab.active")?.classList.contains("dirty");
-      if(dirty)await ideSaveFile();
-    }
+    const dirty=$(".ide-tab.active")?.classList.contains("dirty");
+    if(dirty)await ideSaveFile();
     await ideDebugConnect();
     const workspace=String(cfg?.workspace||"").replace(/[\\/]+$/,"");
     if(!workspace)throw Error("Workspace root is unavailable");
     const program=workspace+"/"+ideActive.replace(/^[/\\]+/,"");
+    ideUpdateDebugStatus("Launching · "+ideActive);
+    await ideDebugRequest("launch",{mode:"debug",program,cwd:workspace,stopOnEntry:false});
+    await ideWaitForInitialized();
     await ideSendBreakpoints();
     try{await ideDebugRequest("setExceptionBreakpoints",{filters:[]})}catch(_){}
     await ideDebugRequest("configurationDone",{});
-    await ideDebugRequest("launch",{mode:"debug",program,cwd:workspace,stopOnEntry:false});
     ideDebugRunning=true;
     ideUpdateDebugStatus("Running · "+ideActive);
+    ideBottom("output");
+    $("#ideBottomBody").insertAdjacentText("beforeend","\nStarted "+ideActive+"\n");
   }catch(e){
-    ideDebugRunning=false;ideUpdateDebugStatus("Debugger error");toast("Debugger: "+e.message);
+    ideDebugRunning=false;ideUpdateDebugStatus("Debugger error");ideBottom("output");$("#ideBottomBody").insertAdjacentText("beforeend","\nDebugger error: "+e.message+"\n");toast("Debugger: "+e.message);
   }
 }
 async function ideDebugCommand(command,args={}){try{if(!ideDebugSocket||ideDebugSocket.readyState!==WebSocket.OPEN)await ideDebugConnect();await ideDebugRequest(command,args)}catch(e){ideUpdateDebugStatus("Debugger unavailable");toast("Debugger: "+e.message)}}
