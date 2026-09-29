@@ -695,6 +695,7 @@ func configCommand(args []string) error {
 		}
 		names := []string{"openai", "gemini", "groq", "anthropic", "llamacpp"}
 		fmt.Println("Default provider:", c.DefaultProvider)
+		if token, err := config.GitHubToken(); err == nil { if token != "" { fmt.Println("GitHub token: <configured>") } else { fmt.Println("GitHub token: <not set>") } }
 		for _, name := range names {
 			if p, ok := c.Providers[name]; ok {
 				key := "<not set>"
