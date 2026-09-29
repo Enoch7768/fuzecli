@@ -674,3 +674,41 @@ select option{background:#15181a;color:#fbfaf5}
 .ide-command-row{width:100%;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:11px 14px;border:0;border-bottom:1px solid #2b3034;background:transparent;color:#e1e2dc;text-align:left;cursor:pointer}
 .ide-command-row:hover,.ide-command-row.active{background:#292e33;color:#fff}
 .ide-command-row.active{box-shadow:inset 2px 0 #d9ff63}
+
+
+/* Visual Builder and editor reliability */
+.builder-toolbar{
+  margin:0 26px 8px;
+  padding:8px 10px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  background:#15181a;
+  border:1px solid #3a3f43;
+}
+.builder-tool-group{display:flex;align-items:center;gap:5px;flex-wrap:wrap}
+.builder-tool-label{font:800 8px var(--mono);letter-spacing:.13em;color:#858a82;margin-right:3px}
+.builder-toolbar .ghost{min-height:28px;padding:0 9px;font-size:9px}
+.builder-toolbar .danger{color:#ffaaa4;border-color:#624541}
+.builder-toolbar .danger:hover{background:#321d1b;border-color:#8b4f49}
+.builder-hint{padding:10px 12px;color:#858a82;font-size:9px;line-height:1.45;border-top:1px solid #292e33}
+.builder-save-state{color:#78d6a0;font:700 9px var(--mono);margin-left:auto}
+.builder-inspector-section{margin-top:13px;padding-top:12px;border-top:1px solid #30363a}
+.builder-inspector-section .builder-tool-label{display:block;margin-bottom:8px}
+.ide-fallback-editor{
+  width:100%;
+  height:100%;
+  min-height:0;
+  resize:none;
+  border:0;
+  outline:0;
+  padding:16px 18px 24px;
+  background:#0d0f10;
+  color:#eef0e9;
+  font:13px/1.65 var(--mono);
+  tab-size:4;
+  white-space:pre;
+  overflow:auto;
+}
+.ide-fallback-editor:focus{outline:none;box-shadow:none}
