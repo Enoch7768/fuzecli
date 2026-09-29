@@ -648,3 +648,13 @@ select option{background:#15181a;color:#fbfaf5}
   *,*::before,*::after{scroll-behavior:auto!important;transition-duration:0.001ms!important;animation-duration:0.001ms!important;animation-iteration-count:1!important}
 }
 
+
+.ide-panel-subhead{padding:14px 14px 8px;color:#858a82;font-size:10px;font-weight:800;letter-spacing:.14em}
+.ide-panel-list{padding:4px 8px 14px;overflow:auto}
+.ide-panel-empty{padding:18px 10px;color:#a6aaa1;font-size:12px;line-height:1.55}
+.ide-source-row,.ide-outline-row{width:100%;display:flex;align-items:center;gap:8px;padding:8px 9px;border:1px solid transparent;background:transparent;color:#e6e8e2;text-align:left;border-radius:5px;cursor:pointer}
+.ide-source-row:hover,.ide-outline-row:hover{background:#24282c;border-color:#3d4449;color:#fff}
+.ide-outline-row span{min-width:32px;color:#727871;font:11px var(--mono);text-align:right}
+.ide-outline-row b{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ide-debug-frame{display:flex;width:100%;justify-content:space-between;gap:10px;padding:7px 9px;background:#1c2023;border:1px solid #363d42;color:#e5e8e2;text-align:left;border-radius:5px;cursor:pointer}
+.ide-debug-frame:hover{background:#272c30;border-color:#566067}
