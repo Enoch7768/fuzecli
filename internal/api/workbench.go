@@ -167,18 +167,46 @@ func startDAP(root string) (net.Conn, *exec.Cmd, error) {
 	stderr, err := cmd.StderrPipe()
 	if err != nil { return nil, nil, err }
 	if err := cmd.Start(); err != nil { return nil, nil, fmt.Errorf("start delve: %w", err) }
-	sc := bufio.NewScanner(stderr)
-	for sc.Scan() {
-		line := sc.Text()
-		i := strings.Index(line, "127.0.0.1:")
-		if i >= 0 {
-			addr := strings.Fields(strings.TrimSpace(line[i:]))[0]
-			conn, dialErr := net.DialTimeout("tcp", addr, 3*time.Second)
-			if dialErr == nil { return conn, cmd, nil }
+	ready := make(chan struct{})
+	var once sync.Once
+	var listenerAddr string
+	go func() {
+		sc := bufio.NewScanner(stderr)
+		for sc.Scan() {
+			line := sc.Text()
+			fields := strings.Fields(line)
+			for i, field := range fields {
+				candidate := strings.Trim(strings.TrimSpace(field), ",")
+				if strings.HasPrefix(candidate, "127.0.0.1:") || strings.HasPrefix(candidate, "[::1]:") {
+					listenerAddr = candidate
+					once.Do(func(){ close(ready) })
+					return
+				}
+				if i+1 < len(fields) && (field == "127.0.0.1:" || field == "[::1]:") {
+					listenerAddr = strings.Trim(fields[i+1], ",")
+					once.Do(func(){ close(ready) })
+					return
+				}
+			}
 		}
+		once.Do(func(){ close(ready) })
+	}()
+	select {
+	case <-ready:
+	case <-time.After(5 * time.Second):
+		_ = cmd.Process.Kill()
+		return nil, nil, errors.New("Delve did not expose a DAP listener within 5 seconds; install Delve and ensure dlv is on PATH")
 	}
-	_ = cmd.Process.Kill()
-	return nil, nil, errors.New("Delve did not expose a DAP listener; install Delve and ensure dlv is on PATH")
+	if listenerAddr == "" {
+		_ = cmd.Process.Kill()
+		return nil, nil, errors.New("Delve exited without exposing a DAP listener; install Delve and ensure dlv is on PATH")
+	}
+	conn, err := net.DialTimeout("tcp", listenerAddr, 5*time.Second)
+	if err != nil {
+		_ = cmd.Process.Kill()
+		return nil, nil, fmt.Errorf("connect to Delve DAP listener %s: %w", listenerAddr, err)
+	}
+	return conn, cmd, nil
 }
 
 func bridgeDAP(ws *websocket.Conn, root string) error {
