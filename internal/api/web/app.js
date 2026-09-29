@@ -377,3 +377,5 @@ $("#ideDebugContinue").onclick=()=>ideDebugCommand("continue");$("#ideDebugPause
 }
 window.addEventListener("error",e=>{const message=e.error?.message||e.message||"Unexpected browser error";toast("Studio error: "+message);});
 window.addEventListener("unhandledrejection",e=>{const message=e.reason?.message||String(e.reason||"Unhandled promise rejection");toast("Studio error: "+message);});
+
+initIDEEvents();
