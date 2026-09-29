@@ -85,7 +85,7 @@ func (s *Service) emitEvent(event StudioEvent) {
 }
 
 func (s *Service) SubscribeStudioEvents() (<-chan StudioEvent, func()) {
-	sub := &studioSubscriber{ch: make(chan StudioEvent, 64)}
+	sub := &studioSubscriber{ch: make(chan StudioEvent, 1024)}
 	s.eventMu.Lock()
 	if s.eventSubscribers == nil { s.eventSubscribers = make(map[*studioSubscriber]struct{}) }
 	s.eventSubscribers[sub] = struct{}{}
@@ -119,7 +119,7 @@ func (s *Service) Chat(ctx context.Context, req ChatRequest) (ChatResponse, erro
 		system += "\nThe user attached the following workspace files for this request. These attachments are authoritative input. The provider receives their extracted UTF-8 text directly in the request. MIME type and size are included so you know exactly what is available. Binary or unsupported formats are rejected instead of silently omitted:\n"
 		for _, file := range attachments { system += "\n" + attachmentSummary(file) + "\n" }
 	}
-	engine := generation.Engine{Registry:s.App.Registry, Profile:&s.App.Profile, MaxContextChars:120000}
+	engine := generation.Engine{Registry:s.App.Registry, Profile:&s.App.Profile, MaxContextChars:240000}
 	msgs := engine.Messages(s.App.Profile.Condensed(), workspaceContext, history, req.Prompt)
 	msgs[0].Content = system
 	if err := s.App.Store.AddMessage(provider.Message{Role:"user", Content:req.Prompt}); err != nil { return ChatResponse{}, err }
