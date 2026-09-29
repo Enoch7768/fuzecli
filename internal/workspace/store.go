@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Enoch7768/fuzecli/internal/provider"
@@ -24,8 +25,9 @@ type State struct {
 }
 
 type Store struct {
-	Root string
-	DB   *sql.DB
+	Root   string
+	DB     *sql.DB
+	writeMu sync.Mutex
 }
 
 func Init(root string) (*Store, error) {
@@ -40,6 +42,12 @@ func Init(root string) (*Store, error) {
 	db, err := sql.Open("sqlite", filepath.Join(dir, "session.db"))
 	if err != nil {
 		return nil, fmt.Errorf("open session database: %w", err)
+	}
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
+	if _, err := db.Exec("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA busy_timeout=15000; PRAGMA foreign_keys=ON;"); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("configure session database: %w", err)
 	}
 	schema := `CREATE TABLE IF NOT EXISTS messages(id INTEGER PRIMARY KEY AUTOINCREMENT, role TEXT NOT NULL, content TEXT NOT NULL, created_at TEXT NOT NULL);CREATE TABLE IF NOT EXISTS sessions(id INTEGER PRIMARY KEY AUTOINCREMENT, started_at TEXT NOT NULL, ended_at TEXT);CREATE TABLE IF NOT EXISTS touched_files(path TEXT PRIMARY KEY);CREATE TABLE IF NOT EXISTS telemetry_events(id INTEGER PRIMARY KEY AUTOINCREMENT,request_id TEXT NOT NULL,time TEXT NOT NULL,provider TEXT NOT NULL,model TEXT, prompt_tokens INTEGER NOT NULL DEFAULT 0,completion_tokens INTEGER NOT NULL DEFAULT 0,total_tokens INTEGER NOT NULL DEFAULT 0,latency_ms INTEGER NOT NULL DEFAULT 0,streaming INTEGER NOT NULL DEFAULT 0,success INTEGER NOT NULL DEFAULT 0,error TEXT,error_kind TEXT);`
 	if _, err := db.Exec(schema); err != nil {
@@ -57,12 +65,46 @@ func (s *Store) Close() error {
 	return s.DB.Close()
 }
 
+func (s *Store) write(fn func() error) error {
+	if s == nil || s.DB == nil {
+		return fmt.Errorf("workspace database is not initialized")
+	}
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+	var last error
+	for attempt := 0; attempt < 8; attempt++ {
+		err := fn()
+		if err == nil {
+			return nil
+		}
+		last = err
+		if !isSQLiteBusy(err) {
+			return err
+		}
+		time.Sleep(time.Duration(attempt+1) * 150 * time.Millisecond)
+	}
+	return last
+}
+
+func isSQLiteBusy(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "database is locked") ||
+		strings.Contains(message, "database table is locked") ||
+		strings.Contains(message, "sqlite_busy")
+}
+
 func (s *Store) SaveTelemetryEvent(event provider.TelemetryEvent) error {
 	if s == nil || s.DB == nil {
 		return fmt.Errorf("workspace database is not initialized")
 	}
-	_, err := s.DB.Exec(`INSERT INTO telemetry_events(request_id,time,provider,model,prompt_tokens,completion_tokens,total_tokens,latency_ms,streaming,success,error,error_kind) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`,
-		event.RequestID, event.Time.UTC().Format(time.RFC3339Nano), event.Provider, event.Model, event.PromptTokens, event.CompletionTokens, event.TotalTokens, event.LatencyMs, boolInt(event.Streaming), boolInt(event.Success), event.Error, event.ErrorKind)
+	err := s.write(func() error {
+		_, err := s.DB.Exec(`INSERT INTO telemetry_events(request_id,time,provider,model,prompt_tokens,completion_tokens,total_tokens,latency_ms,streaming,success,error,error_kind) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`,
+			event.RequestID, event.Time.UTC().Format(time.RFC3339Nano), event.Provider, event.Model, event.PromptTokens, event.CompletionTokens, event.TotalTokens, event.LatencyMs, boolInt(event.Streaming), boolInt(event.Success), event.Error, event.ErrorKind)
+		return err
+	})
 	return err
 }
 
@@ -89,7 +131,10 @@ func (s *Store) TelemetryEvents(limit int) ([]provider.TelemetryEvent, error) {
 func boolInt(v bool) int { if v { return 1 }; return 0 }
 
 func (s *Store) AddMessage(m provider.Message) error {
-	_, err := s.DB.Exec(`INSERT INTO messages(role,content,created_at) VALUES(?,?,?)`, m.Role, m.Content, time.Now().UTC().Format(time.RFC3339Nano))
+	err := s.write(func() error {
+		_, err := s.DB.Exec(`INSERT INTO messages(role,content,created_at) VALUES(?,?,?)`, m.Role, m.Content, time.Now().UTC().Format(time.RFC3339Nano))
+		return err
+	})
 	if err != nil {
 		return fmt.Errorf("save conversation message: %w", err)
 	}
@@ -97,7 +142,10 @@ func (s *Store) AddMessage(m provider.Message) error {
 }
 
 func (s *Store) ClearMemory() error {
-	if _, err := s.DB.Exec(`DELETE FROM messages`); err != nil {
+	if err := s.write(func() error {
+		_, err := s.DB.Exec(`DELETE FROM messages`)
+		return err
+	}); err != nil {
 		return fmt.Errorf("clear conversation memory: %w", err)
 	}
 	return nil
@@ -128,12 +176,14 @@ func (s *Store) History(limit int) ([]provider.Message, error) {
 }
 
 func (s *Store) MarkTouched(paths []string) error {
-	for _, p := range paths {
-		if _, err := s.DB.Exec(`INSERT OR IGNORE INTO touched_files(path) VALUES(?)`, p); err != nil {
-			return err
+	return s.write(func() error {
+		for _, p := range paths {
+			if _, err := s.DB.Exec(`INSERT OR IGNORE INTO touched_files(path) VALUES(?)`, p); err != nil {
+				return err
+			}
 		}
-	}
-	return nil
+		return nil
+	})
 }
 
 func (s *Store) Touched() ([]string, error) {
