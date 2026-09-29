@@ -85,8 +85,60 @@ function ideToggleBreakpoint(line){if(!ideEditor||!ideActive)return;const key=id
 let ideTerminalSocket=null,ideTerminalConnectPromise=null;
 function ideTerminalConnect(){if(ideTerminalSocket?.readyState===WebSocket.OPEN)return Promise.resolve();if(ideTerminalConnectPromise)return ideTerminalConnectPromise;ideBottom("terminal");const proto=location.protocol==="https:"?"wss":"ws";const ws=new WebSocket(proto+"://"+location.host+"/v1/terminal");ideTerminalSocket=ws;const box=$("#ideBottomBody");ideTerminalConnectPromise=new Promise((resolve,reject)=>{let settled=false;const timer=setTimeout(()=>{if(!settled){settled=true;try{ws.close()}catch(e){}ideTerminalConnectPromise=null;reject(Error("Terminal connection timed out"))}},8000);ws.onopen=()=>{if(settled)return;settled=true;clearTimeout(timer);ideTerminalConnectPromise=null;box.insertAdjacentHTML("beforeend",'<div class="ide-terminal-line"><span class="terminal-prompt">F</span><span>Terminal connected · '+esc(cfg?.workspace||"workspace")+'</span></div>');$("#ideTerminalInput")?.focus();resolve()};ws.onmessage=e=>{try{const d=JSON.parse(e.data);if(d.type==="output"){box.insertAdjacentText("beforeend",d.data||"");box.scrollTop=box.scrollHeight}else if(d.type==="ready"){box.insertAdjacentHTML("beforeend",'<div class="ide-terminal-line"><span class="terminal-prompt">F</span><span>Shell ready</span></div>')}else if(d.type==="error")toast(d.message||"Terminal error")}catch(err){toast("Terminal message error: "+err.message)}};ws.onerror=()=>{if(!settled){settled=true;clearTimeout(timer);ideTerminalConnectPromise=null;reject(Error("Terminal connection failed"))}toast("Terminal connection failed")};ws.onclose=()=>{if(ideTerminalSocket===ws)ideTerminalSocket=null;ideTerminalConnectPromise=null;const input=$("#ideTerminalInput");if(input)input.disabled=true}});return ideTerminalConnectPromise}
 async function ideTerminalInput(value){if(!value)return;try{await ideTerminalConnect();if(ideTerminalSocket?.readyState===WebSocket.OPEN)ideTerminalSocket.send(JSON.stringify({type:"input",data:value}))}catch(e){toast(e.message)}}
-function initIDEEvents(){document.querySelectorAll("[data-ide-panel]").forEach(b=>b.onclick=()=>{document.querySelectorAll(".ide-rail-btn").forEach(x=>x.classList.toggle("active",x===b));const search=b.dataset.idePanel==="search";$("#ideSearchPanel").hidden=!search;$("#ideExplorerTree").hidden=search;$("#idePanelTitle").textContent=search?"SEARCH":"EXPLORER"});$("#ideRefresh").onclick=loadIDE;$("#ideCollapse").onclick=()=>$(".ide-explorer").classList.toggle("collapsed");$("#ideExplorerTree").onclick=e=>{const f=e.target.closest("[data-ide-file]");if(f)ideOpenFile(decodeURIComponent(f.dataset.ideFile));const folder=e.target.closest("[data-folder]");if(folder){folder.classList.toggle("open");folder.nextElementSibling?.classList.toggle("open")}};$("#ideTabs").onclick=e=>{const c=e.target.closest("[data-ide-close]");if(c){const p=decodeURIComponent(c.dataset.ideClose);if(ideActive===p)ideLSPClose(p);ideOpen=ideOpen.filter(x=>x!==p);ideActive=ideOpen.at(-1)||"";renderIdeTabs();if(ideActive)ideOpenFile(ideActive);else $("#ideEditor").innerHTML='<div class="ide-editor-empty"><div class="ide-logo">F</div><h3>FuzeCLI Studio</h3><p>Open a file to start editing.</p></div>';return}const t=e.target.closest("[data-ide-tab]");if(t)ideOpenFile(decodeURIComponent(t.dataset.ideTab))};$("#ideSearch").oninput=()=>{const q=$("#ideSearch").value.toLowerCase();$("#ideSearchResults").innerHTML=ideFiles.filter(f=>f.toLowerCase().includes(q)).slice(0,80).map(f=>'<button class="ide-search-row" data-ide-file="'+encodeURIComponent(f)+'">'+esc(f)+"</button>").join("")};$("#ideSearchPanel").onclick=e=>{const f=e.target.closest("[data-ide-file]");if(f)ideOpenFile(decodeURIComponent(f.dataset.ideFile))};document.querySelectorAll("[data-bottom]").forEach(b=>b.onclick=()=>{document.querySelectorAll("[data-bottom]").forEach(x=>x.classList.toggle("active",x===b));ideBottom(b.dataset.bottom);if(b.dataset.bottom==="terminal")ideTerminalConnect()});document.querySelectorAll("[data-ide-action]").forEach(b=>b.onclick=()=>askIDE({explain:"Explain this file and point out risky code.",fix:"Find correctness bugs and propose a minimal safe fix.",refactor:"Refactor this file for clarity without changing behavior.",tests:"Design focused tests for this file."}[b.dataset.ideAction]));$("#ideAsk").onclick=()=>askIDE();$("#idePrompt").onkeydown=e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();askIDE()}};$("#ideDebugStart").onclick=ideDebugStart;$("#ideDebugStop").onclick=async()=>{try{if(ideDebugSocket?.readyState===WebSocket.OPEN)await ideDebugRequest("disconnect",{restart:false,terminateDebuggee:true})}catch(e){}ideDebugRunning=false;ideUpdateDebugStatus("Debugger stopped");};$("#ideDebugContinue").onclick=()=>ideDebugCommand("continue");$("#ideDebugPause").onclick=()=>ideDebugCommand("pause");$("#ideDebugStepOver").onclick=()=>ideDebugCommand("next");$("#ideDebugStepInto").onclick=()=>ideDebugCommand("stepIn");$("#ideDebugStepOut").onclick=()=>ideDebugCommand("stepOut")}
 
-
+async function ideRenderSourcePanel(){
+  try{
+    const d=await api("/v1/touched");
+    const items=d.files||[];
+    $("#ideSourceResults").innerHTML=items.length?items.map(path=>'<button class="ide-source-row" data-source-file="'+encodeURIComponent(path)+'"><span class="file-dot '+ideLang(path)+'"></span><span>'+esc(path)+'</span></button>').join(""):'<div class="ide-panel-empty">No changed files yet.</div>';
+  }catch(e){$("#ideSourceResults").innerHTML='<div class="ide-panel-empty">Source control unavailable.</div>';toast(e.message)}
+}
+function ideRenderOutline(){
+  const el=$("#ideOutlineResults");
+  if(!ideEditor){el.innerHTML='<div class="ide-panel-empty">Open a file to inspect its structure.</div>';return}
+  const lang=ideLang(ideActive), lines=ideEditor.getValue().split("\n"), items=[];
+  const patterns={
+    go:[/^\s*func\s+(?:\([^)]*\)\s*)?([A-Za-z_][\w]*)/,/^\s*type\s+([A-Za-z_][\w]*)\s+struct\b/],
+    javascript:[/^\s*(?:export\s+)?(?:async\s+)?function\s+([A-Za-z_$][\w$]*)/,/^\s*(?:export\s+)?class\s+([A-Za-z_$][\w$]*)/,/^\s*(?:export\s+)?(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s*)?\(/],
+    typescript:[/^\s*(?:export\s+)?(?:async\s+)?function\s+([A-Za-z_$][\w$]*)/,/^\s*(?:export\s+)?class\s+([A-Za-z_$][\w$]*)/,/^\s*(?:export\s+)?(?:interface|type)\s+([A-Za-z_$][\w$]*)/],
+    python:[/^\s*(?:async\s+)?def\s+([A-Za-z_]\w*)/,/^\s*class\s+([A-Za-z_]\w*)/],
+    php:[/^\s*(?:public|private|protected|static|final|abstract|\s)*function\s+([A-Za-z_]\w*)/,/^\s*class\s+([A-Za-z_]\w*)/],
+    rust:[/^\s*(?:pub\s+)?fn\s+([A-Za-z_]\w*)/,/^\s*(?:pub\s+)?struct\s+([A-Za-z_]\w*)/,/^\s*(?:pub\s+)?enum\s+([A-Za-z_]\w*)/]
+  }[lang]||[];
+  const heading=/^\s*#{1,6}\s+(.+)$/;
+  lines.forEach((line,i)=>{
+    let name="";
+    for(const re of patterns){const m=line.match(re);if(m){name=m[1]||"";break}}
+    if(!name){const h=line.match(heading);if(h)name=h[1].trim()}
+    if(name)items.push({name,line:i+1});
+  });
+  el.innerHTML=items.slice(0,150).map(x=>'<button class="ide-outline-row" data-outline-line="'+x.line+'"><span>'+String(x.line).padStart(4," ")+'</span><b>'+esc(x.name)+'</b></button>').join("")||'<div class="ide-panel-empty">No symbols detected in this file.</div>';
+}
+function initIDEEvents(){
+document.querySelectorAll("[data-ide-panel]").forEach(b=>b.onclick=async()=>{
+  document.querySelectorAll(".ide-rail-btn").forEach(x=>x.classList.toggle("active",x===b));
+  const panel=b.dataset.idePanel;
+  const search=panel==="search", source=panel==="source", outline=panel==="outline";
+  $("#ideSearchPanel").hidden=!search; $("#ideSourcePanel").hidden=!source; $("#ideOutlinePanel").hidden=!outline;
+  $("#ideExplorerTree").hidden=search||source||outline;
+  $("#idePanelTitle").textContent=search?"SEARCH":source?"SOURCE CONTROL":outline?"OUTLINE":"EXPLORER";
+  if(source)await ideRenderSourcePanel();
+  if(outline)ideRenderOutline();
+});
+$("#ideRefresh").onclick=loadIDE;
+$("#ideCollapse").onclick=()=>$(".ide-explorer").classList.toggle("collapsed");
+$("#ideExplorerTree").onclick=e=>{const f=e.target.closest("[data-ide-file]");if(f)ideOpenFile(decodeURIComponent(f.dataset.ideFile));const folder=e.target.closest("[data-folder]");if(folder){folder.classList.toggle("open");folder.nextElementSibling?.classList.toggle("open")}};
+$("#ideTabs").onclick=e=>{const c=e.target.closest("[data-ide-close]");if(c){const p=decodeURIComponent(c.dataset.ideClose);if(ideActive===p)ideLSPClose(ideActive);ideOpen=ideOpen.filter(x=>x!==p);ideActive=ideOpen.at(-1)||"";renderIdeTabs();if(ideActive)ideOpenFile(ideActive);else $("#ideEditor").innerHTML='<div class="ide-editor-empty"><div class="ide-logo">F</div><h3>FuzeCLI Studio</h3><p>Open a file to start editing.</p>';ideRenderOutline();return}const t=e.target.closest("[data-ide-tab]");if(t)ideOpenFile(decodeURIComponent(t.dataset.ideTab))};
+$("#ideSearch").oninput=()=>{const q=$("#ideSearch").value.toLowerCase();$("#ideSearchResults").innerHTML=ideFiles.filter(f=>f.toLowerCase().includes(q)).slice(0,80).map(f=>'<button class="ide-search-row" data-ide-file="'+encodeURIComponent(f)+'">'+esc(f)+"</button>").join("")};
+$("#ideSearchPanel").onclick=e=>{const f=e.target.closest("[data-ide-file]");if(f)ideOpenFile(decodeURIComponent(f.dataset.ideFile))};
+$("#ideSourceResults").onclick=e=>{const f=e.target.closest("[data-source-file]");if(f)ideOpenFile(decodeURIComponent(f.dataset.sourceFile))};
+$("#ideOutlineResults").onclick=e=>{const b=e.target.closest("[data-outline-line]");if(b&&ideEditor){ideEditor.revealLineInCenter(Number(b.dataset.outlineLine));ideEditor.setPosition({lineNumber:Number(b.dataset.outline-line),column:1});ideEditor.focus()}};
+document.querySelectorAll("[data-bottom]").forEach(b=>b.onclick=()=>{document.querySelectorAll("[data-bottom]").forEach(x=>x.classList.toggle("active",x===b));ideBottom(b.dataset.bottom);if(b.dataset.bottom==="terminal")ideTerminalConnect()});
+document.querySelectorAll("[data-ide-action]").forEach(b=>b.onclick=()=>askIDE({explain:"Explain this file and point out risky code.",fix:"Find correctness bugs and propose a minimal safe fix.",refactor:"Refactor this file for clarity without changing behavior.",tests:"Design focused tests for this file."}[b.dataset.ideAction]));
+$("#ideAsk").onclick=()=>askIDE();$("#idePrompt").onkeydown=e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();askIDE()}};
+$("#ideDebugStart").onclick=ideDebugStart;
+$("#ideDebugStop").onclick=async()=>{try{if(ideDebugSocket?.readyState===WebSocket.OPEN)await ideDebugRequest("disconnect",{restart:false,terminateDebuggee:true})}catch(e){}ideDebugRunning=false;ideUpdateDebugStatus("Debugger stopped")};
+$("#ideDebugContinue").onclick=()=>ideDebugCommand("continue");$("#ideDebugPause").onclick=()=>ideDebugCommand("pause");$("#ideDebugStepOver").onclick=()=>ideDebugCommand("next");$("#ideDebugStepInto").onclick=()=>ideDebugCommand("stepIn");$("#ideDebugStepOut").onclick=()=>ideDebugCommand("stepOut");
+}
 window.addEventListener("error",e=>{const message=e.error?.message||e.message||"Unexpected browser error";toast("Studio error: "+message);});
 window.addEventListener("unhandledrejection",e=>{const message=e.reason?.message||String(e.reason||"Unhandled promise rejection");toast("Studio error: "+message);});
