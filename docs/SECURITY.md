@@ -54,3 +54,9 @@ FuzeCLI cannot guarantee that arbitrary user code, dependencies, provider output
 The local HTTP API applies per-client, per-endpoint fixed-window rate limits. Chat requests are capped at 12 per minute, uploads at 20 per minute, file writes at 60 per minute, and model discovery at 30 per minute. Other endpoints default to 120 requests per minute. Chat execution is additionally bounded to four concurrent requests. Rejected requests return HTTP 429 or 503 with a retry hint.
 
 Each authorized request receives an X-Request-ID response header to make local troubleshooting and telemetry correlation easier. Request IDs contain no credentials or user content.
+
+## Vulnerability reporting
+
+Do not publish suspected vulnerabilities in a public issue. See the repository-level [SECURITY.md](../SECURITY.md) for reporting guidance and the preferred private reporting path.
+
+Security reports should never contain API keys, passwords, private keys, or other secrets.
