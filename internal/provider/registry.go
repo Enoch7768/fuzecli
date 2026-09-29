@@ -176,7 +176,7 @@ func (r *Registry) sendWithRetry(ctx context.Context, name string, messages []Me
 		if response != nil {
 			usage = response.Usage
 		}
-		r.recordTelemetry(TelemetryEvent{RequestID: opts.RequestID, Time: time.Now(), Provider: name, Model: opts.Model, PromptTokens: uint64(nonNegativeInt(usage.PromptTokens)), CompletionTokens: uint64(nonNegativeInt(usage.CompletionTokens)), TotalTokens: uint64(nonNegativeInt(usage.TotalTokens)), LatencyMs: time.Since(started).Milliseconds(), Streaming: false, Success: err == nil, Error: errorString(err), ErrorKind: errorKind(err)}, err)
+		r.recordTelemetry(TelemetryEvent{RequestID: opts.RequestID, Time: time.Now(), Provider: name, Model: opts.Model, PromptTokens: uint64(nonNegativeInt(usage.PromptTokens)), CompletionTokens: uint64(nonNegativeInt(usage.CompletionTokens)), TotalTokens: uint64(nonNegativeInt(usage.TotalTokens)), CostUSD: maxNonNegativeFloat(usage.CostUSD), LatencyMs: time.Since(started).Milliseconds(), Streaming: false, Success: err == nil, Error: errorString(err), ErrorKind: errorKind(err)}, err)
 		if err == nil {
 			return response, nil
 		}
@@ -435,7 +435,7 @@ func (r *Registry) wait(ctx context.Context, name string) error {
 }
 
 func (r *Registry) recordTelemetry(event TelemetryEvent, err error) {
-	usage := Usage{PromptTokens: int(event.PromptTokens), CompletionTokens: int(event.CompletionTokens), TotalTokens: int(event.TotalTokens)}
+	usage := Usage{PromptTokens: int(event.PromptTokens), CompletionTokens: int(event.CompletionTokens), TotalTokens: int(event.TotalTokens), CostUSD: event.CostUSD}
 	latency := time.Duration(event.LatencyMs) * time.Millisecond
 	r.telemetry.RecordWithRequestID(event.RequestID, event.Provider, err, usage, latency, event.Streaming, event.Model)
 	if r.telemetrySink != nil {
