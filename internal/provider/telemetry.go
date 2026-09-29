@@ -22,6 +22,7 @@ type ProviderTelemetry struct {
 	PromptTokens        uint64
 	CompletionTokens    uint64
 	TotalTokens         uint64
+	TotalCostUSD        float64
 	TotalLatency        time.Duration
 	LastLatency         time.Duration
 	LastSuccess         time.Time
@@ -37,6 +38,7 @@ type TelemetryEvent struct {
 	PromptTokens uint64  `json:"prompt_tokens"`
 	CompletionTokens uint64 `json:"completion_tokens"`
 	TotalTokens uint64 `json:"total_tokens"`
+	CostUSD float64 `json:"cost_usd"`
 	LatencyMs  int64     `json:"latency_ms"`
 	Streaming  bool      `json:"streaming"`
 	Success    bool      `json:"success"`
@@ -81,9 +83,10 @@ func (t *Telemetry) RecordWithRequestID(requestID, provider string, err error, u
 	entry.PromptTokens += uint64(nonNegativeInt(usage.PromptTokens))
 	entry.CompletionTokens += uint64(nonNegativeInt(usage.CompletionTokens))
 	entry.TotalTokens += uint64(nonNegativeInt(usage.TotalTokens))
+	if usage.CostUSD > 0 { entry.TotalCostUSD += usage.CostUSD }
 	entry.TotalLatency += latency
 	entry.LastLatency = latency
-	event := TelemetryEvent{RequestID: requestID, Time: time.Now(), Provider: provider, Model: modelName, PromptTokens: uint64(nonNegativeInt(usage.PromptTokens)), CompletionTokens: uint64(nonNegativeInt(usage.CompletionTokens)), TotalTokens: uint64(nonNegativeInt(usage.TotalTokens)), LatencyMs: latency.Milliseconds(), Streaming: streaming, Success: err == nil}
+	event := TelemetryEvent{RequestID: requestID, Time: time.Now(), Provider: provider, Model: modelName, PromptTokens: uint64(nonNegativeInt(usage.PromptTokens)), CompletionTokens: uint64(nonNegativeInt(usage.CompletionTokens)), TotalTokens: uint64(nonNegativeInt(usage.TotalTokens)), CostUSD: maxNonNegativeFloat(usage.CostUSD), LatencyMs: latency.Milliseconds(), Streaming: streaming, Success: err == nil}
 	if err != nil {
 		event.Error = err.Error()
 		var providerErr *ProviderError
@@ -126,6 +129,8 @@ func (t *Telemetry) RecordWithRequestID(requestID, provider string, err error, u
 	}
 	t.entries[provider] = entry
 }
+
+func maxNonNegativeFloat(value float64) float64 { if value < 0 { return 0 }; return value }
 
 func nonNegativeInt(value int) int {
 	if value < 0 {
