@@ -150,6 +150,10 @@ func (s *Service) Chat(ctx context.Context, req ChatRequest) (ChatResponse, erro
 		resp, err := s.App.Registry.Send(ctx, name, msgs, provider.RequestOptions{Model:model, Temperature:0.3, MaxTokens:32768, JSONMode:true, JSONSchema:generation.ChatResponseSchema(), BillingMode:req.BillingMode, RequestID:requestID})
 		if err != nil { s.emitEvent(StudioEvent{RequestID:requestID, Type:"generation.failed", Phase:"generation", Message:err.Error(), Provider:name, Model:model}); return ChatResponse{}, err }
 		raw.WriteString(resp.Content)
+		usage = resp.Usage
+		if usage.PromptTokens > 0 || usage.CompletionTokens > 0 || usage.TotalTokens > 0 || usage.CostUSD > 0 {
+			s.emitEvent(StudioEvent{RequestID:requestID, Type:"generation.usage", Phase:"generation", Message:"Usage received", Provider:name, Model:model, PromptTokens:usage.PromptTokens, CompletionTokens:usage.CompletionTokens, TotalTokens:usage.TotalTokens, CostUSD:usage.CostUSD, Percent:58})
+		}
 	}
 	s.emitEvent(StudioEvent{RequestID:requestID, Type:"generation.completed", Phase:"validation", Message:"Response generated; validating structured output", Provider:name, Model:model, Percent:62})
 	parsed, parseErr := engine.ParseChatResponse(ctx, raw.String())
