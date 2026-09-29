@@ -24,10 +24,15 @@ type Config struct {
 	Providers       map[string]ProviderConfig `yaml:"providers"`
 	FallbackOrder   []string                  `yaml:"fallback_order"`
 	Verification    VerificationConfig        `yaml:"verification"`
+	GitHub          GitHubConfig              `yaml:"github"`
 }
 
 type VerificationConfig struct {
 	SelfCorrectionAttempts int `yaml:"self_correction_attempts"`
+}
+
+type GitHubConfig struct {
+	Token string `yaml:"token,omitempty"`
 }
 
 func Default() Config {
@@ -162,6 +167,33 @@ func Set(key, value string) error {
 	return Save(c)
 }
 
+func SetGitHubToken(token string) error {
+	c, err := Load()
+	if err != nil {
+		return err
+	}
+	c.GitHub.Token = strings.TrimSpace(token)
+	return Save(c)
+}
+
+func ClearGitHubToken() error {
+	return SetGitHubToken("")
+}
+
+func GitHubToken() (string, error) {
+	if token := strings.TrimSpace(os.Getenv("GITHUB_TOKEN")); token != "" {
+		return token, nil
+	}
+	if token := strings.TrimSpace(os.Getenv("GH_TOKEN")); token != "" {
+		return token, nil
+	}
+	c, err := Load()
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(c.GitHub.Token), nil
+}
+
 func MaskSecret(s string) string {
 	if s == "" {
 		return ""
@@ -222,6 +254,9 @@ func renderYAML(c Config) string {
 	}
 	fmt.Fprintf(&b, "fallback_order: [%s]\n", strings.Join(order, ", "))
 	fmt.Fprintf(&b, "verification:\n  self_correction_attempts: %d\n", c.Verification.SelfCorrectionAttempts)
+	if c.GitHub.Token != "" {
+		fmt.Fprintf(&b, "github:\n  token: %s\n", yamlScalar(c.GitHub.Token))
+	}
 	return b.String()
 }
 func yamlScalar(s string) string {
@@ -254,6 +289,8 @@ func parseYAML(text string, c *Config) error {
 				section, current = "", ""
 			case trimmed == "verification:":
 				section, current = "verification", ""
+			case trimmed == "github:":
+				section, current = "github", ""
 			default:
 				section, current = "", ""
 			}
@@ -278,6 +315,13 @@ func parseYAML(text string, c *Config) error {
 				p.BaseURL = unquote(value)
 			}
 			c.Providers[current] = p
+			continue
+		}
+		if section == "github" && indent >= 2 {
+			key, value := splitKV(trimmed)
+			if key == "token" {
+				c.GitHub.Token = unquote(value)
+			}
 			continue
 		}
 		if section == "verification" && indent >= 2 {
