@@ -136,6 +136,8 @@ func (p *compatibleProvider) Stream(ctx context.Context, messages []Message, opt
 						Content string `json:"content"`
 					} `json:"delta"`
 				} `json:"choices"`
+				Usage Usage `json:"usage"`
+				Cost float64 `json:"cost,omitempty"`
 			}
 			if err := json.Unmarshal([]byte(data), &chunk); err != nil {
 				return err
