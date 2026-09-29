@@ -10,9 +10,60 @@ function renderProviders(){const p=cfg.providers;const options=p.map(x=>'<option
 async function models(provider){const name=provider||$("#providerSelect").value;const p=cfg.providers.find(x=>x.name===name)||cfg.providers[0];try{const d=await api("/v1/models?provider="+encodeURIComponent(name),{timeoutMs:120000});const list=d.models||[];const fallback=d.default_model||p.default_model||"";const cap=d.capabilities||{};$("#modelSelect").title="Streaming: "+!!cap.streaming+" · Structured JSON: "+!!cap.structured_json+" · Vision: "+!!cap.vision+" · Tools: "+!!cap.tool_calling;$("#modelSelect").innerHTML=(list.length?list:[fallback]).filter(Boolean).map(x=>'<option value="'+esc(x)+'">'+esc(x)+'</option>').join("")||'<option value="">Auto select available model</option>';if(fallback&&list.includes(fallback))$("#modelSelect").value=fallback;const sp=cfg.providers.find(x=>x.name===$("#settingsProvider").value)||p;$("#settingsModel").innerHTML=(list.length?list:[fallback]).filter(Boolean).map(x=>'<option value="'+esc(x)+'">'+esc(x)+'</option>').join("")||'<option value="">Auto select available model</option>';if(fallback)$("#settingsModel").value=fallback}catch(e){const fallback=p.default_model&&p.default_model!=="auto"&&p.default_model!=="default"?p.default_model:"";$("#modelSelect").innerHTML=fallback?'<option value="'+esc(fallback)+'">'+esc(fallback)+' (configured)</option>':'<option value="">Automatic model discovery</option>';$("#settingsModel").innerHTML=$("#modelSelect").innerHTML}}
 function keys(){$("#keyRows").innerHTML=cfg.providers.map(p=>'<div class="key-row"><span>'+esc(p.name)+'</span><span class="configured">'+(p.configured?"Configured":"Not configured")+"</span></div>").join("")}
 async function loadConfig(){cfg=await api("/v1/config");renderProviders();keys();$("#workspacePath").textContent=cfg.workspace;$("#statusText").textContent="Ready"}
+let studioEvents=null,studioRequestID="";
+function startStudioEvents(){
+  if(studioEvents)return;
+  studioEvents=new EventSource("/v1/events");
+  studioEvents.onmessage=e=>{try{handleStudioEvent(JSON.parse(e.data))}catch(_){}};
+  studioEvents.addEventListener("generation.chunk",e=>{try{handleStudioEvent(JSON.parse(e.data))}catch(_){}});
+  ["session.started","provider.selected","generation.started","generation.completed","generation.streaming_unavailable","validation.failed","validation.completed","apply.started","apply.failed","generation.file_applied","session.completed","generation.failed"].forEach(type=>studioEvents.addEventListener(type,e=>{try{handleStudioEvent(JSON.parse(e.data))}catch(_){}}));
+  studioEvents.onerror=()=>{if(studioEvents){$("#chatState").textContent=chatAbort?"Reconnecting to agent…":"Ready"}};
+}
+function handleStudioEvent(e){
+  if(studioRequestID&&e.request_id!==studioRequestID)return;
+  const pct=Number(e.percent||0);
+  if(pct>0)setProgress(pct,eventLabel(e));
+  if(e.type==="provider.selected")$("#chatState").textContent="Using "+(e.provider||"provider")+(e.model?" · "+e.model:"");
+  else if(e.type==="generation.started")$("#chatState").textContent="Generating…";
+  else if(e.type==="validation.completed")$("#chatState").textContent="Validating changes…";
+  else if(e.type==="apply.started")$("#chatState").textContent="Applying files…";
+  else if(e.type==="generation.file_applied")$("#chatState").textContent="Applied "+(e.path||"file");
+  else if(e.type==="session.completed")$("#chatState").textContent="Complete";
+  else if(e.type==="generation.failed"||e.type==="validation.failed"||e.type==="apply.failed")$("#chatState").textContent="Agent stopped";
+}
+function eventLabel(e){
+  switch(e.type){
+    case "session.started":return e.message||"Preparing workspace";
+    case "provider.selected":return "Provider selected";
+    case "generation.started":return "Generating response";
+    case "generation.completed":return "Validating structured response";
+    case "generation.streaming_unavailable":return "Using non-streaming provider path";
+    case "validation.completed":return "Validated response";
+    case "apply.started":return "Applying workspace changes";
+    case "generation.file_applied":return "Applied "+(e.path||"file");
+    case "session.completed":return "Complete";
+    default:return e.message||"Working…";
+  }
+}
 function setProgress(percent,label){$("#generationProgress").hidden=false;$("#progressFill").style.width=Math.max(0,Math.min(100,percent))+"%";$("#progressPercent").textContent=Math.round(percent)+"%";$("#progressLabel").textContent=label}
 function finishProgress(){setProgress(100,"Complete");setTimeout(()=>$("#generationProgress").hidden=true,800)}
-async function send(){const b=$("#prompt"),p=b.value.trim();if(!p||chatAbort)return;b.value="";b.style.height="auto";msg("user",p);$("#sendBtn").disabled=true;$("#stopBtn").disabled=false;$("#chatState").textContent="Working…";chatAbort=new AbortController();let timer=null;try{setProgress(8,"Connecting to model");let progress=8;timer=setInterval(()=>{progress=Math.min(progress+Math.random()*4.5,88);const label=progress<25?"Preparing request":progress<55?"Generating implementation":progress<75?"Assembling response":"Validating complete response";setProgress(progress,label)},450);const d=await api("/v1/chat",{method:"POST",signal:chatAbort.signal,body:JSON.stringify({prompt:p,provider:$("#providerSelect").value,model:$("#modelSelect").value,files:attachedFiles,apply:true,billing_mode:$("#billingMode").value})});clearInterval(timer);setProgress(92,"Finalizing response");msg("assistant",d.content+(d.written_files?.length?"\n\nChanged:\n"+d.written_files.join("\n"):""));attachedFiles=[];renderAttachments();finishProgress();if(d.written_files?.some(x=>/\.(html?|css|js)$/i.test(x)))loadBuilder(currentPreview)}catch(e){if(timer)clearInterval(timer);if(e.name==="AbortError"){setProgress(100,"Stopped");msg("assistant","Request stopped.");setTimeout(()=>$("#generationProgress").hidden=true,900)}else{setProgress(100,"Failed");msg("assistant","Request failed: "+e.message);setTimeout(()=>$("#generationProgress").hidden=true,1200)}}finally{$("#sendBtn").disabled=false;$("#stopBtn").disabled=true;$("#chatState").textContent="Ready";chatAbort=null;b.focus()}}
+async function send(){
+  const b=$("#prompt"),p=b.value.trim();if(!p||chatAbort)return;
+  b.value="";b.style.height="auto";msg("user",p);$("#sendBtn").disabled=true;$("#stopBtn").disabled=false;$("#chatState").textContent="Starting agent…";chatAbort=new AbortController();
+  studioRequestID="studio-"+Date.now()+"-"+Math.random().toString(36).slice(2);
+  startStudioEvents();
+  try{
+    setProgress(2,"Starting agent");
+    const d=await api("/v1/chat",{method:"POST",signal:chatAbort.signal,body:JSON.stringify({request_id:studioRequestID,prompt:p,provider:$("#providerSelect").value,model:$("#modelSelect").value,files:attachedFiles,apply:true,billing_mode:$("#billingMode").value})});
+    setProgress(94,"Finalizing workspace");
+    msg("assistant",d.content+(d.written_files?.length?"\n\nChanged:\n"+d.written_files.join("\n"):""));
+    attachedFiles=[];renderAttachments();finishProgress();
+    if(d.written_files?.some(x=>/\.(html?|css|js)$/i.test(x)))loadBuilder(currentPreview);
+  }catch(e){
+    if(e.name==="AbortError"){setProgress(100,"Stopped");msg("assistant","Request stopped.");setTimeout(()=>$("#generationProgress").hidden=true,900)}
+    else{setProgress(100,"Failed");msg("assistant","Request failed: "+e.message);setTimeout(()=>$("#generationProgress").hidden=true,1200)}
+  }finally{$("#sendBtn").disabled=false;$("#stopBtn").disabled=true;$("#chatState").textContent="Ready";chatAbort=null;studioRequestID="";b.focus()}
+}
 async function files(){const d=await api("/v1/files");return d.files}
 function isSiteFile(f){return /\.(html?|css|js|mjs|json|svg|png|jpe?g|webp|gif|ico|woff2?|ttf|otf)$/i.test(f)}
 async function loadBuilder(preferred){const all=await files();const site=all.filter(isSiteFile);$("#fileCount").textContent=site.length;$("#builderFileList").innerHTML=site.map(f=>'<button class="file-row '+(f===currentPreview?"selected":"")+'" data-file="'+encodeURIComponent(f)+'">'+esc(f)+"</button>").join("");const htmls=site.filter(f=>/\.html?$/i.test(f));const target=htmls.includes(preferred)?preferred:(htmls[0]||"");$("#previewFile").innerHTML=htmls.length?htmls.map(f=>'<option value="'+esc(f)+'">'+esc(f)+"</option>").join(""):'<option value="">No HTML page</option>';if(target){$("#previewFile").value=target;currentPreview=target;openSite(target)}document.querySelectorAll(".builder-files .file-row").forEach(e=>e.onclick=()=>{const f=decodeURIComponent(e.dataset.file);if(/\.html?$/i.test(f))openSite(f);else editRawFile(f)})}
