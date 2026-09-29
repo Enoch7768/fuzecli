@@ -503,8 +503,6 @@ func (s *Server) resolveWorkspaceRootPath(path string) (string, bool) {
 	if candidate == "" { return "", false }
 	abs, err := filepath.Abs(candidate)
 	if err != nil { return "", false }
-	info, err := os.Stat(abs)
-	if err == nil && info.IsDir() { return abs, false }
 	s.workspaceRootsMu.RLock()
 	defer s.workspaceRootsMu.RUnlock()
 	for _, root := range s.workspaceRoots {
