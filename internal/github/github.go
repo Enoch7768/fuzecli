@@ -19,14 +19,14 @@ import (
 type Client struct{ Token, BaseURL string; HTTP *http.Client }
 type Repository struct{ ID int64 `json:"id"`; Name string `json:"name"`; FullName string `json:"full_name"`; Description string `json:"description"`; HTMLURL string `json:"html_url"`; CloneURL string `json:"clone_url"`; SSHURL string `json:"ssh_url"`; DefaultBranch string `json:"default_branch"`; Private bool `json:"private"`; Archived bool `json:"archived"` }
 type Branch struct{Name string `json:"name"`; SHA string `json:"sha"`}
-type PullRequest struct{ Number int `json:"number"`; Title, Body, State string `json:"title"`; Draft bool `json:"draft"`; HTMLURL string `json:"html_url"`; Head struct{Ref,SHA string `json:"ref"`} `json:"head"`; Base struct{Ref,SHA string `json:"ref"`} `json:"base"`; User struct{Login string `json:"login"`} `json:"user"` }
+type PullRequest struct{ Number int `json:"number"`; Title string `json:"title"`; Body string `json:"body"`; State string `json:"state"`; Draft bool `json:"draft"`; HTMLURL string `json:"html_url"`; Head struct{Ref,SHA string `json:"ref"`} `json:"head"`; Base struct{Ref,SHA string `json:"ref"`} `json:"base"`; User struct{Login string `json:"login"`} `json:"user"` }
 type Comment struct{ ID int64 `json:"id"`; Body string `json:"body"`; HTMLURL string `json:"html_url"`; User struct{Login string `json:"login"`} `json:"user"`; CreatedAt time.Time `json:"created_at"`; UpdatedAt time.Time `json:"updated_at"` }
-type WorkflowRun struct{ ID int64 `json:"id"`; Name,Status,Conclusion,HTMLURL,HeadBranch string `json:"name"`; RunNumber int `json:"run_number"`; CreatedAt,UpdatedAt time.Time `json:"created_at"` }
-type User struct{Login,Name,Email,HTMLURL string `json:"login"`}
-type Issue struct{Number int `json:"number"`; Title,Body,State,HTMLURL string `json:"title"`}
+type WorkflowRun struct{ ID int64 `json:"id"`; Name string `json:"name"`; Status string `json:"status"`; Conclusion string `json:"conclusion"`; HTMLURL string `json:"html_url"`; HeadBranch string `json:"head_branch"`; RunNumber int `json:"run_number"`; CreatedAt,UpdatedAt time.Time `json:"created_at"` }
+type User struct{Login string `json:"login"`; Name string `json:"name"`; Email string `json:"email"`; HTMLURL string `json:"html_url"`}
+type Issue struct{Number int `json:"number"`; Title string `json:"title"`; Body string `json:"body"`; State string `json:"state"`; HTMLURL string `json:"html_url"`}
 type CreateRepositoryRequest struct{Name,Description string `json:"name"`; Private,AutoInit bool `json:"private"`}
-type CreatePullRequestRequest struct{Title,Body,Head,Base string `json:"title"`; Draft bool `json:"draft"`}
-type ReviewRequest struct{Body,Event string `json:"body"`}
+type CreatePullRequestRequest struct{Title string `json:"title"`; Body string `json:"body,omitempty"`; Head string `json:"head"`; Base string `json:"base"`; Draft bool `json:"draft"`}
+type ReviewRequest struct{Body string `json:"body"`; Event string `json:"event"`}
 
 func New(token string)*Client{return &Client{Token:strings.TrimSpace(token),BaseURL:"https://api.github.com",HTTP:&http.Client{Timeout:30*time.Second}}}
 func(c *Client)Authenticated()bool{return c!=nil&&strings.TrimSpace(c.Token)!=""}
