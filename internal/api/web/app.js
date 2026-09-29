@@ -271,8 +271,8 @@ async function ideDebugStart(){
   try{
     if(!ideActive)throw Error("Open a source file before starting the debugger");
     const language=ideLang(ideActive);
-    const supported=["go","python","javascript","typescript","rust","c","cpp","ruby","php"];
-    if(!supported.includes(language))throw Error("No built-in DAP debugger is configured for "+language+"; configure a DAP adapter for this language");
+    const supported=["go","python","javascript","typescript","rust","c","cpp","ruby","php","java","kotlin"];
+    if(!supported.includes(language))throw Error("Studio cannot infer a debugger for "+language+"; configure FUZECLI_DEBUG_ADAPTER_"+language.toUpperCase().replace(/-/g,"_")+" for a DAP adapter");
     const dirty=$(".ide-tab.active")?.classList.contains("dirty");
     if(dirty)await ideSaveFile();
     await ideDebugConnect();
@@ -290,6 +290,8 @@ async function ideDebugStart(){
     else if(language==="javascript"||language==="typescript")launch.type="pwa-node";
     else if(language==="ruby")launch.type="rdbg";
     else if(language==="php")launch.type="php";
+    else if(language==="java")launch.type="java";
+    else if(language==="kotlin")launch.type="kotlin";
     else if(language==="go")launch.mode="debug";
     await ideDebugRequest("launch",launch);
     await ideWaitForInitialized();
