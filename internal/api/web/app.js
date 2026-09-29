@@ -10,7 +10,7 @@ function renderProviders(){const p=cfg.providers;const options=p.map(x=>'<option
 async function models(provider){const name=provider||$("#providerSelect").value;const p=cfg.providers.find(x=>x.name===name)||cfg.providers[0];try{const d=await api("/v1/models?provider="+encodeURIComponent(name),{timeoutMs:120000});const list=d.models||[];const fallback=d.default_model||p.default_model||"";const cap=d.capabilities||{};$("#modelSelect").title="Streaming: "+!!cap.streaming+" · Structured JSON: "+!!cap.structured_json+" · Vision: "+!!cap.vision+" · Tools: "+!!cap.tool_calling;$("#modelSelect").innerHTML=(list.length?list:[fallback]).filter(Boolean).map(x=>'<option value="'+esc(x)+'">'+esc(x)+'</option>').join("")||'<option value="">Auto select available model</option>';if(fallback&&list.includes(fallback))$("#modelSelect").value=fallback;const sp=cfg.providers.find(x=>x.name===$("#settingsProvider").value)||p;$("#settingsModel").innerHTML=(list.length?list:[fallback]).filter(Boolean).map(x=>'<option value="'+esc(x)+'">'+esc(x)+'</option>').join("")||'<option value="">Auto select available model</option>';if(fallback)$("#settingsModel").value=fallback}catch(e){const fallback=p.default_model&&p.default_model!=="auto"&&p.default_model!=="default"?p.default_model:"";$("#modelSelect").innerHTML=fallback?'<option value="'+esc(fallback)+'">'+esc(fallback)+' (configured)</option>':'<option value="">Automatic model discovery</option>';$("#settingsModel").innerHTML=$("#modelSelect").innerHTML}}
 function keys(){$("#keyRows").innerHTML=cfg.providers.map(p=>'<div class="key-row"><span>'+esc(p.name)+'</span><span class="configured">'+(p.configured?"Configured":"Not configured")+"</span></div>").join("")}
 async function loadConfig(){cfg=await api("/v1/config");renderProviders();keys();$("#workspacePath").textContent=cfg.workspace;$("#statusText").textContent="Ready"}
-let studioEvents=null,studioEventsReady=null,studioRequestID="",studioStreamChunks=0,studioStreamBytes=0;
+let studioEvents=null,studioEventsReady=null,studioRequestID="",studioStreamChunks=0,studioStreamBytes=0,liveTelemetryTimer=null;
 function startStudioEvents(){
   if(studioEvents?.readyState===EventSource.OPEN)return Promise.resolve();
   if(studioEventsReady)return studioEventsReady;
@@ -22,7 +22,7 @@ function startStudioEvents(){
     const consume=e=>{try{handleStudioEvent(JSON.parse(e.data))}catch(_){}};
     es.onopen=()=>{clearTimeout(timer);studioEvents=es;settle(resolve)};
     es.onmessage=consume;
-    ["session.started","provider.selected","generation.started","generation.completed","generation.streaming_unavailable","validation.failed","validation.completed","apply.started","apply.failed","generation.file_applied","session.completed","generation.failed"].forEach(type=>es.addEventListener(type,consume));
+    ["session.started","provider.selected","generation.started","generation.usage","generation.completed","generation.streaming_unavailable","validation.failed","validation.completed","apply.started","apply.failed","generation.file_applied","session.completed","generation.failed"].forEach(type=>es.addEventListener(type,consume));
     es.addEventListener("generation.chunk",e=>{try{const d=JSON.parse(e.data);studioStreamChunks++;studioStreamBytes+=String(d.message||"").length;handleStudioEvent(d)}catch(_){}});
     es.onerror=()=>{if(!settled){clearTimeout(timer);try{es.close()}catch(_){};studioEvents=null;studioEventsReady=null;settle(reject,Error("Agent event stream connection failed"))}else if(studioRequestID)$("#chatState").textContent="Reconnecting to agent…"};
   });
@@ -30,6 +30,7 @@ function startStudioEvents(){
 }
 function handleStudioEvent(e){
   if(studioRequestID&&e.request_id!==studioRequestID)return;
+  if(e.type==="generation.usage"){updateLiveUsage(e);return}
   let pct=Number(e.percent||0);
   if(e.type==="generation.chunk"){
     const estimated=Math.min(58,16+Math.max(1,studioStreamChunks)*0.35+Math.min(18,studioStreamBytes/2400));
@@ -45,6 +46,40 @@ function handleStudioEvent(e){
   else if(e.type==="generation.file_applied")$("#chatState").textContent="Applied "+(e.path||"file");
   else if(e.type==="session.completed")$("#chatState").textContent="Complete";
   else if(e.type==="generation.failed"||e.type==="validation.failed"||e.type==="apply.failed")$("#chatState").textContent="Agent stopped";
+}
+function updateLiveUsage(e){
+  const tokens=Number(e.total_tokens||0);
+  const cost=Number(e.cost_usd||0);
+  if($("#liveTokens"))$("#liveTokens").textContent=tokens.toLocaleString();
+  if($("#liveCost"))$("#liveCost").textContent=cost>0?"$"+cost.toFixed(4):"Cost pending";
+}
+async function refreshLiveTelemetry(){
+  try{
+    const d=await api("/v1/telemetry",{timeoutMs:10000});
+    const providers=Object.values(d.providers||{});
+    const requests=providers.reduce((n,p)=>n+Number(p.requests||0),0);
+    const tokens=providers.reduce((n,p)=>n+Number(p.total_tokens||0),0);
+    const cost=providers.reduce((n,p)=>n+Number(p.total_cost_usd||0),0);
+    if($("#liveRequests"))$("#liveRequests").textContent=requests.toLocaleString();
+    if($("#liveTokens"))$("#liveTokens").textContent=tokens.toLocaleString();
+    if($("#liveCost"))$("#liveCost").textContent=cost>0?"$"+cost.toFixed(4):"Cost pending";
+    if(document.querySelector("#view-telemetry.active"))renderTelemetrySnapshot(d);
+  }catch(e){}
+}
+function renderTelemetrySnapshot(d){
+  const rows=Object.values(d.providers||{});
+  rows.sort((a,b)=>(b.requests||0)-(a.requests||0));
+  $("#telemetryGrid").innerHTML=rows.length?rows.map(p=>{
+    const success=p.requests?Math.round((p.successes/p.requests)*100):0;
+    const avg=p.requests?Math.round((p.total_latency||0)/p.requests/1000000):0;
+    const cost=Number(p.total_cost_usd||0);
+    return '<div class="panel telemetry-card"><div class="telemetry-head"><div><b>'+esc(p.provider)+'</b><span>'+esc(p.last_error||"Healthy session")+'</span></div><strong>'+success+'%</strong></div><div class="telemetry-metrics"><div><small>Requests</small><b>'+Number(p.requests||0).toLocaleString()+'</b></div><div><small>Success</small><b>'+Number(p.successes||0).toLocaleString()+'</b></div><div><small>Failures</small><b>'+Number(p.failures||0).toLocaleString()+'</b></div><div><small>Avg latency</small><b>'+avg+' ms</b></div><div><small>Prompt tokens</small><b>'+Number(p.prompt_tokens||0).toLocaleString()+'</b></div><div><small>Output tokens</small><b>'+Number(p.completion_tokens||0).toLocaleString()+'</b></div><div><small>Total tokens</small><b>'+Number(p.total_tokens||0).toLocaleString()+'</b></div><div><small>Cost</small><b>'+(cost>0?"$"+cost.toFixed(4):"Pending")+'</b></div></div><div class="telemetry-bar"><i style="width:'+success+'%"></i></div></div>';
+  }).join(""):'<div class="panel telemetry-empty"><b>No provider traffic yet</b><span>Run a request and this dashboard will update automatically.</span></div>';
+  const events=d.events||[];
+  $("#telemetryEvents").innerHTML=events.slice().reverse().map(e=>{
+    const cost=Number(e.cost_usd||0);
+    return '<div class="telemetry-event"><div><b>'+esc(e.provider)+'</b><span>'+esc(e.model||"automatic")+'</span></div><div><b>'+Number(e.total_tokens||0).toLocaleString()+' tokens</b><span>'+(cost>0?"$"+cost.toFixed(4):"Cost pending")+'</span></div><div class="'+(e.success?"event-ok":"event-error")+'">'+esc(e.success?"OK":(e.error_kind||"error"))+'</div><div class="event-error-text">'+esc(e.error||"")+'</div></div>';
+  }).join("")||'<div class="telemetry-empty">No request events yet.</div>';
 }
 function eventLabel(e){
   switch(e.type){
@@ -94,14 +129,14 @@ async function savePreview(){if(!currentPreview)return;if(!previewHTML){postEdit
 function builderMessage(e){const d=e.data;if(!d||d.source!=="fuzecli-preview")return;if(d.type==="ready"){$("#previewStatus").textContent="Live · click an element to inspect";$("#builderSaveState").textContent="Saved"}if(d.type==="select"){selected=d;$("#applyInspector").textContent="Apply live";$("#requestSavePreview").style.display="block";$("#previewStatus").textContent=d.tag?"Selected "+d.tag:"Nothing selected";$("#selectedPath").textContent=d.path||"Nothing selected";$("#inspectorEmpty").hidden=!d.tag;$("#inspectorForm").hidden=!d.tag;$("#selectedTag").textContent=(d.tag||"ELEMENT").toUpperCase();$("#editText").value=d.text||"";$("#editColor").value=d.color||"";$("#editBackground").value=d.background||"";$("#editFontSize").value=d.fontSize||"";$("#editPadding").value=d.padding||"";$("#editRadius").value=d.radius||"";$("#imageInspector").hidden=d.tag!=="img";$("#linkInspector").hidden=d.tag!=="a";$("#editSrc").value=d.src||"";$("#editAlt").value=d.alt||"";$("#editHref").value=d.href||""}if(d.type==="changed"){previewHTML=d.html;$("#previewStatus").textContent="Unsaved changes";$("#builderSaveState").textContent="Unsaved";if(previewHTMLWaiter)previewHTMLWaiter.resolve()}}
 async function workspace(){const d=await api("/v1/files");$("#workspaceFileCount").textContent=d.files.length;$("#fileList").innerHTML=d.files.map(f=>'<button class="file-row" data-f="'+encodeURIComponent(f)+'">'+esc(f)+"</button>").join("");document.querySelectorAll(".file-panel .file-row").forEach(e=>e.onclick=async()=>{try{const d=await api("/v1/file?path="+e.dataset.f);$("#fileName").textContent=d.path;$("#fileContent").textContent=d.content}catch(x){toast(x.message)}})}
 async function activity(){const d=await api("/v1/history");$("#activityList").innerHTML=d.messages.length?d.messages.map(m=>'<div class="activity-row"><div class="activity-role">'+esc(m.role)+"</div><div>"+esc(m.content)+"</div></div>").join(""):'<div class="activity-row">No activity yet.</div>'}
-async function telemetry(){try{const d=await api("/v1/telemetry");const rows=Object.values(d.providers||{});if(!rows.length){$("#telemetryGrid").innerHTML='<div class="panel telemetry-empty"><b>No provider traffic yet</b><span>Run a request and return here to inspect reliability.</span></div>'}else{rows.sort((a,b)=>(b.requests||0)-(a.requests||0));$("#telemetryGrid").innerHTML=rows.map(p=>{const success=p.requests?Math.round((p.successes/p.requests)*100):0;const avg=p.requests?Math.round((p.total_latency||0)/p.requests/1000000):0;return '<div class="panel telemetry-card"><div class="telemetry-head"><div><b>'+esc(p.provider)+'</b><span>'+esc(p.last_error||'Healthy session')+'</span></div><strong>'+success+'%</strong></div><div class="telemetry-metrics"><div><small>Requests</small><b>'+p.requests+'</b></div><div><small>Success</small><b>'+p.successes+'</b></div><div><small>Failures</small><b>'+p.failures+'</b></div><div><small>Avg latency</small><b>'+avg+' ms</b></div><div><small>Prompt tokens</small><b>'+p.prompt_tokens+'</b></div><div><small>Output tokens</small><b>'+p.completion_tokens+'</b></div><div><small>Total tokens</small><b>'+p.total_tokens+'</b></div><div><small>Rate limits</small><b>'+p.rate_limited+'</b></div></div><div class="telemetry-bar"><i style="width:'+success+'%"></i></div></div>'}).join("")}const events=d.events||[];$("#telemetryEvents").innerHTML=events.slice().reverse().map(e=>'<div class="telemetry-event"><div><b>'+esc(e.provider)+'</b><span>'+esc(e.model||"automatic")+'</span></div><div><b>'+Number(e.total_tokens||0).toLocaleString()+' tokens</b><span>'+Number(e.latency_ms||0).toLocaleString()+' ms</span></div><div class="'+(e.success?"event-ok":"event-error")+'">'+esc(e.success?"OK":(e.error_kind||"error"))+'</div><div class="event-error-text">'+esc(e.error||"")+'</div></div>').join("")||'<div class="telemetry-empty">No request events yet.</div>'}catch(e){toast(e.message)}}
+async function telemetry(){try{const d=await api("/v1/telemetry");renderTelemetrySnapshot(d)}catch(e){toast(e.message)}}
 function view(v){document.querySelectorAll(".nav-item").forEach(b=>b.classList.toggle("active",b.dataset.view===v));document.querySelectorAll(".view").forEach(x=>x.classList.toggle("active",x.id==="view-"+v));$("#pageTitle").textContent=v==="builder"?"Live Builder":v[0].toUpperCase()+v.slice(1);if(v==="ide")loadIDE();if(v==="builder")loadBuilder(currentPreview);if(v==="workspace")workspace();if(v==="activity")activity();if(v==="telemetry")telemetry()}
 async function save(){try{await api("/v1/config",{method:"POST",body:JSON.stringify({provider:$("#settingsProvider").value,model:$("#settingsModel").value.trim()})});toast("Settings saved");await loadConfig()}catch(e){toast(e.message)}}
 document.querySelectorAll(".nav-item").forEach(b=>b.onclick=()=>view(b.dataset.view));initIDEEvents();
 document.querySelectorAll(".quick-actions button").forEach(b=>b.onclick=()=>{$("#prompt").value=b.dataset.prompt;$("#prompt").focus();$("#prompt").dispatchEvent(new Event("input"))});
 $("#attachBtn").onclick=()=>$("#fileUpload").click();$("#fileUpload").onchange=async e=>{try{await uploadFiles(e.target.files)}catch(x){toast(x.message)}e.target.value=""};$("#providerSelect").onchange=()=>models($("#providerSelect").value);$("#refreshMemoryBtn").onclick=async()=>{try{await api("/v1/memory/refresh",{method:"POST"});toast("Conversation memory refreshed")}catch(e){toast(e.message)}};$("#settingsProvider").onchange=()=>models($("#settingsProvider").value);$("#sendBtn").onclick=send;$("#saveProvider").onclick=save;$("#refreshBtn").onclick=()=>loadConfig().then(()=>toast("Runtime refreshed"));$("#workspaceRefresh").onclick=workspace;$("#activityRefresh").onclick=activity;$("#telemetryRefresh").onclick=telemetry;$("#previewFile").onchange=e=>openSite(e.target.value);$("#runRuntimePreview").onclick=runRuntimePreview;$("#openPreview").onclick=()=>window.open("/preview/"+encodeURI(currentPreview),"_blank","noopener");$("#savePreview").onclick=savePreview;$("#requestSavePreview").onclick=savePreview;$("#applyInspector").onclick=applyInspector;$("#deviceDesktop").onclick=()=>{$("#deviceFrame").className="device desktop"};$("#deviceMobile").onclick=()=>{$("#deviceFrame").className="device mobile"};document.querySelectorAll(".builder-add").forEach(b=>b.onclick=()=>{if(!currentPreview)return toast("Open an HTML page first");postEditor("add",{kind:b.dataset.builderAdd})});$("#builderMoveUp").onclick=()=>postEditor("move",{direction:"up"});$("#builderMoveDown").onclick=()=>postEditor("move",{direction:"down"});$("#builderDuplicate").onclick=()=>postEditor("duplicate");$("#builderDelete").onclick=()=>postEditor("delete");window.addEventListener("message",builderMessage);
 $("#prompt").onkeydown=e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send()}};$("#newSessionBtn").onclick=()=>{$("#messages").innerHTML='<div class="chat-empty" id="chatEmpty"><div class="chat-empty-mark">F</div><strong>What are we building?</strong><span>Ask FuzeCLI to inspect, create, fix, explain, or improve your project.</span></div>';$("#sessionTitle").textContent="New coding session";$("#prompt").focus()};$("#stopBtn").onclick=()=>chatAbort?.abort();$("#prompt").oninput=e=>{e.target.style.height="auto";e.target.style.height=Math.min(e.target.scrollHeight,180)+"px"};
-(async()=>{try{await loadConfig();await activity();const h=await api("/v1/history");(h.messages||[]).slice(-80).forEach(m=>msg(m.role,m.content))}catch(e){$("#statusText").textContent="Offline";toast(e.message)}})();
+(async()=>{try{await loadConfig();await activity();await refreshLiveTelemetry();liveTelemetryTimer=setInterval(refreshLiveTelemetry,1000);const h=await api("/v1/history");(h.messages||[]).slice(-80).forEach(m=>msg(m.role,m.content))}catch(e){$("#statusText").textContent="Offline";toast(e.message)}})();
 let ideEditor=null,ideFiles=[],ideOpen=[],ideActive="",ideSaveTimer=null;
 let ideLSPSocket=null,ideLSPSeq=100,ideLSPPending=new Map(),ideLSPVersion=0,ideLSPPath="",ideLSPProvidersRegistered=false;
 let ideDebugSocket=null,ideDebugSeq=1,ideDebugPending=new Map(),ideDebugInitialized=false,ideDebugRunning=false,ideDebugConnectTimer=null;
