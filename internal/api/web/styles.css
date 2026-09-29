@@ -658,3 +658,10 @@ select option{background:#15181a;color:#fbfaf5}
 .ide-outline-row b{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ide-debug-frame{display:flex;width:100%;justify-content:space-between;gap:10px;padding:7px 9px;background:#1c2023;border:1px solid #363d42;color:#e5e8e2;text-align:left;border-radius:5px;cursor:pointer}
 .ide-debug-frame:hover{background:#272c30;border-color:#566067}
+
+.ide-problem-row,.ide-change-row{width:100%;display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:9px;align-items:center;padding:8px 10px;background:transparent;border:1px solid transparent;color:#dfe2dc;text-align:left;border-radius:5px;cursor:pointer}
+.ide-problem-row:hover,.ide-change-row:hover{background:#24282c;border-color:#3d4449;color:#fff}
+.problem-severity{font-size:9px;font-weight:850;letter-spacing:.08em;color:#ff9a94}
+.problem-message{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.problem-location{font:10px var(--mono);color:#858a82}
+.change-mark{font:11px var(--mono);font-weight:800;color:var(--accent)}
