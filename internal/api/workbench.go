@@ -169,6 +169,11 @@ type debugAdapterSpec struct {
 
 func debugAdapterForLanguage(language string) (debugAdapterSpec, error) {
 	lang := strings.ToLower(strings.TrimSpace(language))
+	envName := "FUZECLI_DEBUG_ADAPTER_" + strings.ToUpper(strings.ReplaceAll(lang, "-", "_"))
+	if command := strings.TrimSpace(os.Getenv(envName)); command != "" {
+		args := strings.Fields(strings.TrimSpace(os.Getenv(envName + "_ARGS")))
+		return debugAdapterSpec{Command: command, Args: args, LaunchMode: "generic"}, nil
+	}
 	switch lang {
 	case "go":
 		return debugAdapterSpec{Command: "dlv", Args: []string{"dap", "--listen=127.0.0.1:0"}, LaunchMode: "go"}, nil
