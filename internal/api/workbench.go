@@ -321,14 +321,50 @@ func newWorkbenchRuntime() *workbenchRuntime {
 }
 
 func (m *terminalManager) handleWS(ws *websocket.Conn, root string) {
- defer ws.Close()
- s, err := m.start(root)
- if err != nil { _ = ws.WriteJSON(map[string]any{"type":"error","message":err.Error()}); return }
- defer m.stop(s.id)
- var writeMu sync.Mutex
- send := func(v any) { writeMu.Lock(); defer writeMu.Unlock(); _ = ws.WriteJSON(v) }
- send(map[string]any{"type":"ready","session":s.id,"cwd":root,"shell":runtime.GOOS})
- go func() { br := bufio.NewReader(s.stdout); for { line,e:=br.ReadString('\n'); if line!="" { send(map[string]any{"type":"output","stream":"stdout","data":line}) }; if e!=nil{return} } }()
- go func() { br := bufio.NewReader(s.stderr); for { line,e:=br.ReadString('\n'); if line!="" { send(map[string]any{"type":"output","stream":"stderr","data":line}) }; if e!=nil{return} } }()
- for { var msg struct{ Type string `json:"type"`; Data string `json:"data"` }; if err:=ws.ReadJSON(&msg); err!=nil{return}; if msg.Type=="input" { if _,err:=io.WriteString(s.stdin,msg.Data); err!=nil{return} } }
+	defer ws.Close()
+	s, err := m.start(root)
+	if err != nil {
+		_ = ws.WriteJSON(map[string]any{"type":"error","message":err.Error()})
+		return
+	}
+	defer m.stop(s.id)
+	var writeMu sync.Mutex
+	send := func(v any) {
+		writeMu.Lock()
+		defer writeMu.Unlock()
+		_ = ws.WriteJSON(v)
+	}
+	send(map[string]any{"type":"ready","session":s.id,"cwd":root,"shell":runtime.GOOS})
+	copyOutput := func(stream string, reader io.Reader) {
+		buf := make([]byte, 32<<10)
+		for {
+			n, readErr := reader.Read(buf)
+			if n > 0 {
+				send(map[string]any{"type":"output","stream":stream,"data":string(buf[:n])})
+			}
+			if readErr != nil {
+				return
+			}
+		}
+	}
+	go copyOutput("stdout", s.stdout)
+	go copyOutput("stderr", s.stderr)
+	for {
+		var msg struct {
+			Type string `json:"type"`
+			Data string `json:"data"`
+		}
+		if err := ws.ReadJSON(&msg); err != nil {
+			return
+		}
+		switch msg.Type {
+		case "input":
+			if _, err := io.WriteString(s.stdin, msg.Data); err != nil {
+				send(map[string]any{"type":"error","message":"terminal input failed: "+err.Error()})
+				return
+			}
+		case "ping":
+			send(map[string]any{"type":"pong"})
+		}
+	}
 }
