@@ -2,13 +2,16 @@
 
 Thank you for contributing to FuzeCLI. The project prioritizes correctness, safety, predictable behavior, and a friendly developer experience over feature count.
 
+Before contributing, read [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md). Participation in the project is expected to remain respectful, professional, and technically focused.
+
 ## Before opening a change
 
 1. Read `README.md` and the relevant documents under `docs/`.
-2. Keep changes focused and avoid unrelated refactors.
-3. Never commit API keys, credentials, private keys, `.env` files, local databases, or generated build artifacts.
-4. Preserve workspace-boundary and secret-exclusion guarantees.
-5. Add or update tests for behavior that changes.
+2. Read the [Code of Conduct](CODE_OF_CONDUCT.md).
+3. Keep changes focused and avoid unrelated refactors.
+4. Never commit API keys, credentials, private keys, `.env` files, local databases, or generated build artifacts.
+5. Preserve workspace-boundary and secret-exclusion guarantees.
+6. Add or update tests for behavior that changes.
 
 ## Local validation
 
@@ -21,11 +24,11 @@ go test ./...
 go vet ./...
 $env:CGO_ENABLED="0"
 go build -trimpath -o dist/aicli.exe ./cmd/aicli
-.\dist\aicli.exe version
-.\dist\aicli.exe --help
+.\\dist\\aicli.exe version
+.\\dist\\aicli.exe --help
 ```
 
-If you are changing security-sensitive behavior, also review `docs/SECURITY.md` and add regression coverage for the failure mode.
+If you are changing security-sensitive behavior, also review [SECURITY.md](SECURITY.md) and [docs/SECURITY.md](docs/SECURITY.md), and add regression coverage for the failure mode.
 
 ## Pull requests
 
