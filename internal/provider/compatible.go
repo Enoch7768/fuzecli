@@ -34,6 +34,7 @@ type compatibleRequest struct {
 	Temperature    float64   `json:"temperature,omitempty"`
 	MaxTokens      int       `json:"max_tokens,omitempty"`
 	Stream         bool      `json:"stream,omitempty"`
+	StreamOptions  any       `json:"stream_options,omitempty"`
 	ResponseFormat any       `json:"response_format,omitempty"`
 }
 
@@ -93,7 +94,7 @@ func (p *compatibleProvider) Stream(ctx context.Context, messages []Message, opt
 		model = models[0]
 	}
 
-	body := compatibleRequest{Model: model, Messages: messages, Temperature: opts.Temperature, MaxTokens: opts.MaxTokens, Stream: true}
+	body := compatibleRequest{Model: model, Messages: messages, Temperature: opts.Temperature, MaxTokens: opts.MaxTokens, Stream: true, StreamOptions: map[string]any{"include_usage": true}}
 	if opts.JSONMode {
 		if opts.JSONSchema != nil {
 			body.ResponseFormat = map[string]any{"type": "json_schema", "json_schema": map[string]any{"name": "fuzecli_response", "strict": true, "schema": opts.JSONSchema}}
@@ -138,6 +139,10 @@ func (p *compatibleProvider) Stream(ctx context.Context, messages []Message, opt
 			}
 			if err := json.Unmarshal([]byte(data), &chunk); err != nil {
 				return err
+			}
+			if chunk.Usage.TotalTokens > 0 || chunk.Usage.PromptTokens > 0 || chunk.Usage.CompletionTokens > 0 || chunk.Usage.CostUSD > 0 {
+				if chunk.Usage.CostUSD == 0 { chunk.Usage.CostUSD = chunk.Cost }
+				out <- StreamChunk{Usage: chunk.Usage}
 			}
 			if len(chunk.Choices) > 0 && chunk.Choices[0].Delta.Content != "" {
 				out <- StreamChunk{Delta: chunk.Choices[0].Delta.Content}
