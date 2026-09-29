@@ -24,7 +24,7 @@ type Comment struct{ ID int64 `json:"id"`; Body string `json:"body"`; HTMLURL st
 type WorkflowRun struct{ ID int64 `json:"id"`; Name string `json:"name"`; Status string `json:"status"`; Conclusion string `json:"conclusion"`; HTMLURL string `json:"html_url"`; HeadBranch string `json:"head_branch"`; RunNumber int `json:"run_number"`; CreatedAt,UpdatedAt time.Time `json:"created_at"` }
 type User struct{Login string `json:"login"`; Name string `json:"name"`; Email string `json:"email"`; HTMLURL string `json:"html_url"`}
 type Issue struct{Number int `json:"number"`; Title string `json:"title"`; Body string `json:"body"`; State string `json:"state"`; HTMLURL string `json:"html_url"`}
-type CreateRepositoryRequest struct{Name string `json:"name"`; Description string `json:"description,omitempty"`; Private,AutoInit bool `json:"private"`}
+type CreateRepositoryRequest struct{Name string `json:"name"`; Description string `json:"description,omitempty"`; Private bool `json:"private"`; AutoInit bool `json:"auto_init"`}
 type CreatePullRequestRequest struct{Title string `json:"title"`; Body string `json:"body,omitempty"`; Head string `json:"head"`; Base string `json:"base"`; Draft bool `json:"draft"`}
 type ReviewRequest struct{Body string `json:"body"`; Event string `json:"event"`}
 
