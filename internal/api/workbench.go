@@ -143,21 +143,32 @@ func writeLSPMessage(w io.Writer, msg []byte) error {
 func bridgeLSP(ws *websocket.Conn, root, language string) error {
 	cmd, in, out, err := startLanguageServer(root, language)
 	if err != nil { return err }
-	defer cmd.Process.Kill()
+	defer func() {
+		_ = cmd.Process.Signal(os.Interrupt)
+		_ = cmd.Process.Kill()
+	}()
+	readerDone := make(chan struct{})
 	go func() {
+		defer close(readerDone)
 		br := bufio.NewReader(out)
 		for {
 			msg, err := readLSPMessage(br)
 			if err != nil { return }
-			_ = ws.WriteMessage(websocket.TextMessage, msg)
+			if err := ws.WriteMessage(websocket.TextMessage, msg); err != nil { return }
 		}
 	}()
 	for {
 		_, msg, err := ws.ReadMessage()
-		if err != nil { return err }
-		if json.Valid(msg) {
-			if err := writeLSPMessage(in, msg); err != nil { return err }
+		if err != nil {
+			_ = cmd.Process.Signal(os.Interrupt)
+			select {
+			case <-readerDone:
+			case <-time.After(500 * time.Millisecond):
+			}
+			return err
 		}
+		if !json.Valid(msg) { continue }
+		if err := writeLSPMessage(in, msg); err != nil { return err }
 	}
 }
 
