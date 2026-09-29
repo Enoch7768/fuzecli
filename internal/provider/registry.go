@@ -875,7 +875,7 @@ func (r *Registry) continueStream(ctx context.Context, name string, messages []M
 				}
 			}
 			partial := strings.TrimSpace(combined.String())
-			if !finished || continuations >= 8 || !responseNeedsContinuation(partial) {
+			if !finished || continuations >= 16 || !responseNeedsContinuation(partial) {
 				event := TelemetryEvent{RequestID: opts.RequestID, Time: time.Now(), Provider: name, Model: opts.Model, PromptTokens: uint64(nonNegativeInt(usage.PromptTokens)), CompletionTokens: uint64(nonNegativeInt(usage.CompletionTokens)), TotalTokens: uint64(nonNegativeInt(usage.TotalTokens)), LatencyMs: time.Since(started).Milliseconds(), Streaming: true, Success: true}
 				r.recordTelemetry(event, nil)
 				out <- StreamChunk{Done: true, Usage: usage}
@@ -903,7 +903,7 @@ func (r *Registry) continueResponse(ctx context.Context, name string, messages [
 		return response, nil
 	}
 	combined := response.Content
-	for attempt := 0; attempt < 8; attempt++ {
+	for attempt := 0; attempt < 16; attempt++ {
 		continuationMessages, continuationOptions := continuationRequest(name, messages, combined, "Continue the previous response exactly where it stopped. Do not repeat any content already given. Return only the missing continuation and finish the response completely. If the response is structured JSON, continue until the JSON object is complete and valid.", opts)
 		next, err := r.sendWithRetry(ctx, name, continuationMessages, continuationOptions)
 		if err != nil {
