@@ -8,6 +8,13 @@
 - Added focused API regression tests and a coding-agent evaluation harness specification.
 - Improved source-search token matching without recompiling regular expressions for every scanned line.
 
+### Documentation and community
+
+- Added a project Code of Conduct.
+- Added security reporting guidance.
+- Added a support guide for troubleshooting, bug reports, and feature requests.
+- Added a central documentation index and cross-links between project policies and technical documentation.
+
 # Changelog
 
 All notable FuzeCLI changes are documented here.
