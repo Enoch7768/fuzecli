@@ -167,9 +167,90 @@ function ideBottom(kind){
 }
 function ideUpdateDebugStatus(text){$("#ideDebugStatus").textContent=text}
 function ideDebugRequest(command,args={}){if(!ideDebugSocket||ideDebugSocket.readyState!==WebSocket.OPEN)return Promise.reject(Error("Debugger is not connected"));const seq=ideDebugSeq++;ideDebugSocket.send(JSON.stringify({seq,type:"request",command,arguments:args}));return new Promise((resolve,reject)=>ideDebugPending.set(seq,{resolve,reject}))}
-function ideDebugConnect(){if(ideDebugSocket?.readyState===WebSocket.OPEN&&ideDebugInitialized)return Promise.resolve();if(ideDebugConnectTimer)return ideDebugConnectTimer;const proto=location.protocol==="https:"?"wss":"ws";const ws=new WebSocket(proto+"://"+location.host+"/v1/debug");ideDebugSocket=ws;ideDebugInitialized=false;ideUpdateDebugStatus("Connecting debugger…");ideDebugConnectTimer=new Promise((resolve,reject)=>{let settled=false;const timer=setTimeout(()=>{if(!settled){settled=true;ideDebugConnectTimer=null;try{ws.close()}catch(e){}reject(Error("Debugger connection timed out"))}},8000);ws.onopen=async()=>{try{await ideDebugRequest("initialize",{clientID:"fuzecli-studio",clientName:"FuzeCLI Studio",adapterID:"delve",linesStartAt1:true,columnsStartAt1:true,supportsVariableType:true});ideDebugInitialized=true;ideUpdateDebugStatus("Debugger ready");settled=true;clearTimeout(timer);ideDebugConnectTimer=null;resolve()}catch(e){ideUpdateDebugStatus("Debugger initialization failed");settled=true;clearTimeout(timer);ideDebugConnectTimer=null;reject(e)}};ws.onmessage=e=>{try{const d=JSON.parse(e.data);if(d.type==="response"&&d.request_seq!==undefined&&ideDebugPending.has(d.request_seq)){const p=ideDebugPending.get(d.request_seq);ideDebugPending.delete(d.request_seq);if(d.success===false)p.reject(Error(d.message||"Debugger request failed"));else p.resolve(d);return}if(d.type==="event"){if(d.event==="initialized")ideUpdateDebugStatus("Initialized");else if(d.event==="stopped"){ideDebugRunning=false;ideUpdateDebugStatus("Paused · "+(d.body?.reason||"breakpoint"));ideDebugStack(d.body?.threadId)}else if(d.event==="continued"){ideDebugRunning=true;ideUpdateDebugStatus("Running")}else if(d.event==="output"){ideBottom("output");$("#ideBottomBody").insertAdjacentText("beforeend",d.body?.output||"")}else if(d.event==="terminated"||d.event==="exited"){ideDebugRunning=false;ideUpdateDebugStatus("Stopped")}}}catch(e){toast("Debugger message error: "+e.message)}};ws.onclose=()=>{if(ideDebugSocket===ws)ideDebugSocket=null;ideDebugInitialized=false;ideDebugConnectTimer=null;ideUpdateDebugStatus("Debugger disconnected");for(const p of ideDebugPending.values())p.reject(Error("Debugger disconnected"));ideDebugPending.clear()};ws.onerror=()=>ideUpdateDebugStatus("Debugger connection error")});return ideDebugConnectTimer}
+function ideDebugConnect(){
+  if(ideDebugSocket?.readyState===WebSocket.OPEN&&ideDebugInitialized)return Promise.resolve();
+  if(ideDebugConnectTimer)return ideDebugConnectTimer;
+  const proto=location.protocol==="https:"?"wss":"ws";
+  const ws=new WebSocket(proto+"://"+location.host+"/v1/debug");
+  ideDebugSocket=ws;ideDebugInitialized=false;
+  ideDebugUpdatePending=false;
+  ideUpdateDebugStatus("Connecting to Delve…");
+  ideDebugConnectTimer=new Promise((resolve,reject)=>{
+    let settled=false,initializedEvent=false;
+    const finish=(ok,err)=>{
+      if(settled)return;settled=true;clearTimeout(timer);ideDebugConnectTimer=null;
+      if(ok)resolve();else reject(err||Error("Debugger connection failed"));
+    };
+    const timer=setTimeout(()=>{try{ws.close()}catch(_){};finish(false,Error("Debugger connection timed out"))},10000);
+    ws.onopen=async()=>{
+      try{
+        await ideDebugRequest("initialize",{clientID:"fuzecli-studio",clientName:"FuzeCLI Studio",adapterID:"delve",linesStartAt1:true,columnsStartAt1:true,supportsVariableType:true,supportsRunInTerminalRequest:true});
+        ideDebugInitialized=true;
+        ideUpdateDebugStatus("Waiting for debugger initialization…");
+        if(initializedEvent)finish(true);
+      }catch(err){ideUpdateDebugStatus("Debugger initialization failed");finish(false,err)}
+    };
+    ws.onmessage=e=>{
+      try{
+        const d=JSON.parse(e.data);
+        if(d.type==="response"&&d.request_seq!==undefined&&ideDebugPending.has(d.request_seq)){
+          const p=ideDebugPending.get(d.request_seq);ideDebugPending.delete(d.request_seq);
+          if(d.success===false)p.reject(Error(d.message||"Debugger request failed"));else p.resolve(d);
+          return;
+        }
+        if(d.type==="event"){
+          if(d.event==="initialized"){
+            initializedEvent=true;
+            if(ideDebugInitialized){ideUpdateDebugStatus("Debugger ready");finish(true)}
+          }else if(d.event==="stopped"){
+            ideDebugRunning=false;ideUpdateDebugStatus("Paused · "+(d.body?.reason||"breakpoint"));ideDebugStack(d.body?.threadId);
+          }else if(d.event==="continued"){
+            ideDebugRunning=true;ideUpdateDebugStatus("Running");
+          }else if(d.event==="output"){
+            ideBottom("output");$("#ideBottomBody").insertAdjacentText("beforeend",d.body?.output||"");$("#ideBottomBody").scrollTop=$("#ideBottomBody").scrollHeight;
+          }else if(d.event==="terminated"||d.event==="exited"){
+            ideDebugRunning=false;ideUpdateDebugStatus("Program exited");
+          }else if(d.event==="thread"){
+            ideUpdateDebugStatus("Debugger thread event");
+          }
+        }
+      }catch(err){toast("Debugger message error: "+err.message)}
+    };
+    ws.onclose=()=>{
+      if(ideDebugSocket===ws)ideDebugSocket=null;
+      ideDebugInitialized=false;ideDebugConnectTimer=null;
+      ideUpdateDebugStatus("Debugger disconnected");
+      for(const p of ideDebugPending.values())p.reject(Error("Debugger disconnected"));
+      ideDebugPending.clear();
+      if(!settled)finish(false,Error("Debugger disconnected"));
+    };
+    ws.onerror=()=>{ideUpdateDebugStatus("Debugger connection error");if(!settled)finish(false,Error("Debugger connection failed"))};
+  });
+  return ideDebugConnectTimer;
+}
 async function ideSendBreakpoints(){if(!ideDebugSocket||ideDebugSocket.readyState!==WebSocket.OPEN||!ideActive)return;const bp=window.__fuzeBreakpoints||new Map();const lines=[];for(const [key,value] of bp){if(key.startsWith(ideActive+":"))lines.push({line:Number(value.line),column:1})}await ideDebugRequest("setBreakpoints",{source:{path:ideActive,name:ideActive,sourceReference:0},breakpoints:lines});}
-async function ideDebugStart(){try{if(!ideActive){throw Error("Open a Go file before starting the debugger")}if(!/\.go$/i.test(ideActive)){throw Error("Studio debugger currently targets Go files with Delve")}await ideDebugConnect();const workspace=cfg?.workspace||"";const program=workspace?workspace.replace(/[\\/]+$/,"")+"/"+ideActive.replace(/^[/\\]+/,""):ideActive;await ideSendBreakpoints();try{await ideDebugRequest("setExceptionBreakpoints",{filters:[]})}catch(e){}try{await ideDebugRequest("configurationDone",{})}catch(e){}await ideDebugRequest("launch",{mode:"debug",program,cwd:workspace,stopOnEntry:false});ideDebugRunning=true;ideUpdateDebugStatus("Running · "+ideActive)}catch(e){ideDebugRunning=false;ideUpdateDebugStatus("Debugger error");toast("Debugger: "+e.message)}}
+async function ideDebugStart(){
+  try{
+    if(!ideActive)throw Error("Open a Go file before starting the debugger");
+    if(!/\\.go$/i.test(ideActive))throw Error("Studio debugger targets Go files with Delve");
+    if(ideEditor?.getValue()!==undefined){
+      const dirty=$(".ide-tab.active")?.classList.contains("dirty");
+      if(dirty)await ideSaveFile();
+    }
+    await ideDebugConnect();
+    const workspace=String(cfg?.workspace||"").replace(/[\\/]+$/,"");
+    if(!workspace)throw Error("Workspace root is unavailable");
+    const program=workspace+"/"+ideActive.replace(/^[/\\]+/,"");
+    await ideSendBreakpoints();
+    try{await ideDebugRequest("setExceptionBreakpoints",{filters:[]})}catch(_){}
+    await ideDebugRequest("configurationDone",{});
+    await ideDebugRequest("launch",{mode:"debug",program,cwd:workspace,stopOnEntry:false});
+    ideDebugRunning=true;
+    ideUpdateDebugStatus("Running · "+ideActive);
+  }catch(e){
+    ideDebugRunning=false;ideUpdateDebugStatus("Debugger error");toast("Debugger: "+e.message);
+  }
+}
 async function ideDebugCommand(command,args={}){try{if(!ideDebugSocket||ideDebugSocket.readyState!==WebSocket.OPEN)await ideDebugConnect();await ideDebugRequest(command,args)}catch(e){ideUpdateDebugStatus("Debugger unavailable");toast("Debugger: "+e.message)}}
 async function ideDebugStack(threadId){try{const d=await ideDebugRequest("stackTrace",{threadId:threadId||1,startFrame:0,levels:50});const frames=d.body?.stackFrames||[];$("#ideDebugFrames").innerHTML=frames.map(f=>'<button class="ide-debug-frame" data-line="'+f.line+'">'+esc(f.name||"frame")+' <span>'+esc(f.source?.path||"")+"</span></button>").join("")||"<span>No stack frames.</span>";$("#ideDebugFrames").onclick=e=>{const b=e.target.closest("[data-line]");if(b&&ideEditor)ideEditor.revealLineInCenter(Number(b.dataset.line))}}catch(e){}}
 function ideToggleBreakpoint(line){if(!ideEditor||!ideActive)return;const key=ideActive+":"+line;window.__fuzeBreakpoints??=new Map();const bp=window.__fuzeBreakpoints;if(bp.has(key)){const item=bp.get(key);bp.delete(key);if(item.dec)ideEditor.deltaDecorations(item.dec,[])}else{const dec=ideEditor.deltaDecorations([],[{range:new monaco.Range(line,1,line,1),options:{isWholeLine:false,glyphMarginClassName:"ide-breakpoint"}}]);bp.set(key,{line,dec})}if(ideDebugSocket?.readyState===WebSocket.OPEN)ideSendBreakpoints().catch(()=>{})}
