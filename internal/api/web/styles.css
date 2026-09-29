@@ -722,3 +722,27 @@ select option{background:#15181a;color:#fbfaf5}
 .ide-debug-var span{color:#aeb2aa;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
 .live-metrics{display:flex;align-items:center;gap:10px;height:32px;padding:0 10px;border:1px solid var(--line);background:var(--panel);font:10px var(--mono);color:var(--muted);white-space:nowrap}.live-metrics span{display:flex;gap:4px;align-items:center}.live-metrics b{color:var(--text);font-weight:600}.live-metrics b#liveCost{color:var(--accent)}
+
+.github-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;padding:0 30px 28px;overflow:auto;height:calc(100% - 90px)}
+.github-grid .panel{min-width:0;padding:15px}
+.github-auth-panel,.github-sync-panel{min-height:180px}
+.github-grid .panel-title{padding:0 0 11px;margin-bottom:10px}
+.github-status{font-size:12px;color:var(--text);padding:10px 0}
+.github-status.ok{color:var(--good)}
+.github-status.error{color:var(--danger)}
+.github-row{display:flex;gap:7px;align-items:center}
+.github-row button{flex:0 0 auto}
+.github-output{margin:12px 0 0;padding:10px;background:#0a1017;border:1px solid var(--line);border-radius:7px;color:#9ca9b8;font:10px/1.6 "Cascadia Code",Consolas,monospace;white-space:pre-wrap;min-height:44px}
+.github-list{display:flex;flex-direction:column;gap:5px;max-height:330px;overflow:auto}
+.github-item{display:flex;justify-content:space-between;gap:12px;padding:9px 10px;border:1px solid var(--line);border-radius:7px;background:#0a1017;color:#b8c4d0;font-size:10px}
+.github-item b{display:block;color:#eef3f8;font-size:10px;margin-bottom:3px}
+.github-item span{color:#687789}
+.github-item a{color:#9db3e7;text-decoration:none}
+.github-item a:hover{text-decoration:underline}
+.github-inline{display:flex;gap:6px;margin:8px 0}
+.github-inline input{flex:1;min-width:0;background:#0a1017;color:#eef3f8;border:1px solid var(--line2);border-radius:7px;padding:8px;font:10px inherit;outline:0}
+.github-inline input:focus{border-color:#6279bd}
+.github-comments{max-height:210px;overflow:auto;display:flex;flex-direction:column;gap:5px}
+.github-comment{padding:8px 9px;background:#0a1017;border:1px solid var(--line);border-radius:7px;color:#aeb9c7;font-size:10px;line-height:1.5}
+.github-comment b{color:#eef3f8;margin-right:5px}
+@media(max-width:900px){.github-grid{grid-template-columns:1fr;padding:0 16px 16px;height:auto}.github-list{max-height:260px}}
