@@ -122,6 +122,7 @@ func (s *Service) Chat(ctx context.Context, req ChatRequest) (ChatResponse, erro
 	s.emitEvent(StudioEvent{RequestID:requestID, Type:"generation.started", Phase:"generation", Message:"Generating response", Provider:name, Model:model, Percent:15})
 	stream, streamErr := s.App.Registry.Stream(ctx, name, msgs, provider.RequestOptions{Model:model, Temperature:0.3, MaxTokens:32768, JSONMode:true, JSONSchema:generation.ChatResponseSchema(), BillingMode:req.BillingMode, RequestID:requestID})
 	var raw strings.Builder
+	var usage provider.Usage
 	if streamErr == nil {
 		for chunk := range stream {
 			if chunk.Error != nil {
@@ -130,6 +131,9 @@ func (s *Service) Chat(ctx context.Context, req ChatRequest) (ChatResponse, erro
 			}
 			if chunk.Delta != "" {
 				raw.WriteString(chunk.Delta)
+				usage.PromptTokens += chunk.Usage.PromptTokens
+				usage.CompletionTokens += chunk.Usage.CompletionTokens
+				usage.TotalTokens += chunk.Usage.TotalTokens
 				s.emitEvent(StudioEvent{RequestID:requestID, Type:"generation.chunk", Phase:"generation", Message:chunk.Delta, Provider:name, Model:model, Percent:45})
 			}
 		}
@@ -146,7 +150,7 @@ func (s *Service) Chat(ctx context.Context, req ChatRequest) (ChatResponse, erro
 	if parsed.Response != "" { content = parsed.Response } else if parsed.Message != "" { content = parsed.Message } else if parsed.Explanation != "" { content = parsed.Explanation }
 	if err := s.App.Store.AddMessage(provider.Message{Role:"assistant", Content:content}); err != nil { return ChatResponse{}, err }
 	s.emitEvent(StudioEvent{RequestID:requestID, Type:"validation.completed", Phase:"validation", Message:"Structured response validated", Provider:name, Model:model, Percent:72})
-	result := ChatResponse{Content:content, Provider:name, Model:model}
+	result := ChatResponse{Content:content, Provider:name, Model:model, PromptTokens:usage.PromptTokens, CompletionTokens:usage.CompletionTokens, TotalTokens:usage.TotalTokens}
 	if parsed.Plan != nil && req.Apply {
 		s.emitEvent(StudioEvent{RequestID:requestID, Type:"apply.started", Phase:"files", Message:"Applying workspace changes", Percent:78})
 		written, applyErr := generation.ApplyChatPlan(s.App.Store.Root, *parsed.Plan)
