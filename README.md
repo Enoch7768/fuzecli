@@ -39,8 +39,8 @@ go test ./...
 go vet ./...
 $env:CGO_ENABLED="0"
 go build -trimpath -ldflags="-s -w -X main.version=v0.1.0" -o dist/aicli.exe ./cmd/aicli
-.\dist\aicli.exe version
-.\dist\aicli.exe --help
+.\\dist\\aicli.exe version
+.\\dist\\aicli.exe --help
 ```
 
 For memory-constrained Windows development machines:
@@ -188,7 +188,7 @@ Generated file paths are resolved inside the active workspace with traversal and
 
 These controls reduce the execution surface but cannot make arbitrary user workspaces, third-party dependencies, or provider-generated source code mathematically or operationally guaranteed to be malware-free. Normal endpoint security, source control, dependency review, and safe execution practices still apply.
 
-See [docs/SECURITY.md](docs/SECURITY.md) and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+See [SECURITY.md](SECURITY.md) for vulnerability reporting and [docs/SECURITY.md](docs/SECURITY.md) for the detailed security model.
 
 ## CI and releases
 
@@ -196,14 +196,18 @@ Every supported development build is validated with formatting checks, module co
 
 Tagged Windows releases are built from a clean checkout and publish both `aicli.exe` and a SHA-256 checksum. GitHub release notes are generated automatically.
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the project quality bar, [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the system boundaries and roadmap, and [evals/README.md](evals/README.md) for the coding-agent evaluation harness.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the project quality bar, [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) for community standards, [SUPPORT.md](SUPPORT.md) for troubleshooting, [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the system boundaries and roadmap, and [evals/README.md](evals/README.md) for the coding-agent evaluation harness.
 
 ## Project documentation
 
 ```text
 README.md
 CONTRIBUTING.md
+CODE_OF_CONDUCT.md
+SECURITY.md
+SUPPORT.md
 CHANGELOG.md
+docs/README.md
 docs/API.md
 docs/MCP.md
 docs/WEB.md
