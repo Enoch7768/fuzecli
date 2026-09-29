@@ -540,8 +540,10 @@ func (s *Server) lsp(w http.ResponseWriter, r *http.Request) {
 func (s *Server) debug(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet { writeError(w, http.StatusMethodNotAllowed, "method not allowed"); return }
 	if s.workbench == nil { writeError(w, http.StatusServiceUnavailable, "workbench runtime unavailable"); return }
+	language := strings.TrimSpace(r.URL.Query().Get("language"))
+	if language == "" { writeError(w, http.StatusBadRequest, "debug language is required"); return }
 	conn, err := s.workbench.upgrader.Upgrade(w, r, nil)
 	if err != nil { return }
-	if err := bridgeDAP(conn, s.service.Root()); err != nil { _ = conn.WriteJSON(map[string]any{"type":"error","message":err.Error()}) }
+	if err := bridgeDAP(conn, s.service.Root(), language); err != nil { _ = conn.WriteJSON(map[string]any{"type":"error","message":err.Error()}) }
 	_ = conn.Close()
 }
