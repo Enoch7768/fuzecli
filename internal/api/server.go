@@ -63,6 +63,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/v1/terminal", s.terminal)
 	mux.HandleFunc("/v1/lsp", s.lsp)
 	mux.HandleFunc("/v1/debug", s.debug)
+	mux.HandleFunc("/v1/github", s.githubRoutes)
 	return s.securityHeaders(s.origin(s.auth(requestContext(s.rateLimit(mux)))))
 }
 
