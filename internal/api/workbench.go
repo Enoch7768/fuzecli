@@ -178,14 +178,18 @@ func startDAP(root string) (net.Conn, *exec.Cmd, error) {
 			for i, field := range fields {
 				candidate := strings.Trim(strings.TrimSpace(field), ",")
 				if strings.HasPrefix(candidate, "127.0.0.1:") || strings.HasPrefix(candidate, "[::1]:") {
-					listenerAddr = candidate
-					once.Do(func(){ close(ready) })
-					return
+					if listenerAddr == "" {
+						listenerAddr = candidate
+						once.Do(func(){ close(ready) })
+					}
+					continue
 				}
 				if i+1 < len(fields) && (field == "127.0.0.1:" || field == "[::1]:") {
-					listenerAddr = strings.Trim(fields[i+1], ",")
-					once.Do(func(){ close(ready) })
-					return
+					if listenerAddr == "" {
+						listenerAddr = strings.Trim(fields[i+1], ",")
+						once.Do(func(){ close(ready) })
+					}
+					continue
 				}
 			}
 		}
