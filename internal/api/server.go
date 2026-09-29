@@ -61,7 +61,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/preview/", s.preview)
 	mux.HandleFunc("/v1/preview/runtime", s.runtimePreviewHandler)
 	mux.HandleFunc("/v1/files", s.files)
-	mux.HandleFunc("/v1/workspace/roots", s.roots)
+	mux.HandleFunc("/v1/workspace/roots", s.workspaceRoots)
 	mux.HandleFunc("/v1/history", s.history)
 	mux.HandleFunc("/v1/touched", s.touched)
 	mux.HandleFunc("/v1/telemetry", s.telemetry)
