@@ -72,7 +72,7 @@
 <section class="view" id="view-settings"><div class="section-head"><div><span class="eyebrow">CONTROL</span><h2>Settings</h2></div></div><div class="settings-grid"><div class="panel"><div class="panel-title">Runtime</div><label>Default provider<select id="settingsProvider"></select></label><label>Default model<select id="settingsModel"></select></label><button class="primary" id="saveProvider">Save provider</button></div><div class="panel"><div class="panel-title">Provider keys</div><p class="muted">Credentials stay on the machine. The UI only reports whether a provider is configured.</p><div id="keyRows"></div></div></div></section>
 </main>
 </div>
-<div id="toast" class="toast"></div>
+<div class="ide-command-overlay" id="ideCommandOverlay" hidden><div class="ide-command-dialog"><div class="ide-command-head"><span id="ideCommandLabel">QUICK OPEN</span><kbd>ESC</kbd></div><input id="ideCommandInput" autocomplete="off" spellcheck="false" placeholder="Search files or commands…"><div id="ideCommandResults"></div></div></div><div id="toast" class="toast"></div>
 <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js"></script><script src="/assets/app.js" defer></script>
 </body>
 </html>
