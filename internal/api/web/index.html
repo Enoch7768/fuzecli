@@ -19,6 +19,7 @@
     <button class="nav-item" data-view="workspace"><span>▦</span><div><b>Files</b><small>Workspace explorer</small></div></button>
     <button class="nav-item" data-view="activity"><span>◷</span><div><b>Activity</b><small>Session history</small></div></button>
     <button class="nav-item" data-view="telemetry"><span>◌</span><div><b>Telemetry</b><small>Provider health</small></div></button>
+    <button class="nav-item" data-view="github"><span>⑂</span><div><b>GitHub</b><small>Repos · PRs · Actions</small></div></button>
     <button class="nav-item" data-view="settings"><span>⚙</span><div><b>Settings</b><small>Runtime controls</small></div></button>
   </nav>
   <div class="side-bottom"><div class="status-pill"><i></i><span id="statusText">Connecting</span></div><div class="side-note">Built for people who ship.</div></div>
@@ -73,6 +74,17 @@
 <section class="view" id="view-activity"><div class="section-head"><div><span class="eyebrow">SESSION</span><h2>Activity</h2></div><button class="ghost" id="activityRefresh">Refresh</button></div><div class="panel activity-panel"><div id="activityList"></div></div></section>
 
 <section class="view" id="view-telemetry"><div class="section-head"><div><span class="eyebrow">RELIABILITY</span><h2>Provider telemetry</h2><p>Live request health, latency, errors, token usage, and provider-reported cost.</p></div><button class="ghost" id="telemetryRefresh">Refresh</button></div><div class="telemetry-grid" id="telemetryGrid"></div><div class="panel telemetry-events"><div class="panel-title">Request log <span>last 500 requests</span></div><div id="telemetryEvents"></div></div></section>
+
+<section class="view" id="view-github">
+<div class="section-head"><div><span class="eyebrow">SOURCE CONTROL</span><h2>GitHub</h2><p>Manage repositories, workspace sync, pull requests, comments, issues, branches, and Actions.</p></div><button class="ghost" id="githubRefresh">Refresh</button></div>
+<div class="github-grid">
+<div class="panel github-auth-panel"><div class="panel-title">Connection</div><div id="githubStatus" class="github-status">Checking GitHub…</div><label>Personal access token<input id="githubToken" type="password" autocomplete="off" placeholder="ghp_… or github_pat_…"></label><div class="github-row"><button class="primary" id="githubConnect">Connect</button><button class="ghost" id="githubDisconnect">Disconnect</button></div><p class="muted">Stored locally. GITHUB_TOKEN and GH_TOKEN take precedence.</p></div>
+<div class="panel github-sync-panel"><div class="panel-title">Workspace sync <span id="githubRemote">No origin</span></div><div class="github-row"><button class="primary" id="githubPull">Pull</button><button class="primary" id="githubPush">Push</button></div><p id="githubSyncOutput" class="github-output">Git output will appear here.</p></div>
+<div class="panel github-repos-panel"><div class="panel-title">Repositories <button class="ghost small" id="githubCreateRepo">Create</button></div><div id="githubRepoList" class="github-list"></div></div>
+<div class="panel github-pr-panel"><div class="panel-title">Pull requests <button class="ghost small" id="githubCreatePR">New PR</button></div><div class="github-inline"><input id="githubPRNumber" type="number" min="1" placeholder="PR #"><button class="ghost small" id="githubLoadComments">Comments</button></div><div id="githubPRList" class="github-list"></div><div id="githubComments" class="github-comments"></div><div class="github-inline"><input id="githubComment" placeholder="Write a PR comment…"><button class="primary small" id="githubSendComment">Send</button></div></div>
+<div class="panel github-actions-panel"><div class="panel-title">GitHub Actions <button class="ghost small" id="githubRefreshActions">Refresh</button></div><div id="githubActionsList" class="github-list"></div></div>
+<div class="panel github-issues-panel"><div class="panel-title">Issues <button class="ghost small" id="githubCreateIssue">New issue</button></div><div id="githubIssuesList" class="github-list"></div></div>
+</div></section>
 
 <section class="view" id="view-settings"><div class="section-head"><div><span class="eyebrow">CONTROL</span><h2>Settings</h2></div></div><div class="settings-grid"><div class="panel"><div class="panel-title">Runtime</div><label>Default provider<select id="settingsProvider"></select></label><label>Default model<select id="settingsModel"></select></label><button class="primary" id="saveProvider">Save provider</button></div><div class="panel"><div class="panel-title">Provider keys</div><p class="muted">Credentials stay on the machine. The UI only reports whether a provider is configured.</p><div id="keyRows"></div></div></div></section>
 </main>
