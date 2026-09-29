@@ -63,12 +63,12 @@ var compatibleCatalog = []compatibleSpec{
 	{Name: "inference-net", BaseURL: "https://api.inference.net/v1", EnvKey: "INFERENCE_NET_API_KEY", MinInterval: 5 * time.Second, MaxInputChars: 22000, MaxOutputTokens: 3500, JSONOutputTokens: 3000},
 	{Name: "portkey", BaseURL: "https://api.portkey.ai/v1", EnvKey: "PORTKEY_API_KEY", MinInterval: 4 * time.Second, MaxInputChars: 22000, MaxOutputTokens: 3500, JSONOutputTokens: 3000},
 	{Name: "databricks", BaseURL: "", EnvKey: "DATABRICKS_TOKEN", MinInterval: 5 * time.Second, MaxInputChars: 20000, MaxOutputTokens: 3000, JSONOutputTokens: 2500},
-	{Name: "ollama", BaseURL: "http://127.0.0.1:11434/v1", EnvKey: "OLLAMA_API_KEY", MinInterval: 500 * time.Millisecond, MaxInputChars: 10000, MaxOutputTokens: 2200, JSONOutputTokens: 1800},
-	{Name: "vllm", BaseURL: "http://127.0.0.1:8000/v1", EnvKey: "VLLM_API_KEY", MinInterval: 500 * time.Millisecond, MaxInputChars: 12000, MaxOutputTokens: 2400, JSONOutputTokens: 2000},
-	{Name: "text-generation-inference", BaseURL: "http://127.0.0.1:8080/v1", EnvKey: "TGI_API_KEY", MinInterval: 500 * time.Millisecond, MaxInputChars: 12000, MaxOutputTokens: 2400, JSONOutputTokens: 2000},
-	{Name: "lmstudio", BaseURL: "http://127.0.0.1:1234/v1", EnvKey: "LMSTUDIO_API_KEY", MinInterval: 500 * time.Millisecond, MaxInputChars: 10000, MaxOutputTokens: 2200, JSONOutputTokens: 1800},
-	{Name: "jan", BaseURL: "http://127.0.0.1:1337/v1", EnvKey: "JAN_API_KEY", MinInterval: 500 * time.Millisecond, MaxInputChars: 10000, MaxOutputTokens: 2200, JSONOutputTokens: 1800},
-	{Name: "litellm", BaseURL: "http://127.0.0.1:4000/v1", EnvKey: "LITELLM_API_KEY", MinInterval: 1 * time.Second, MaxInputChars: 18000, MaxOutputTokens: 3000, JSONOutputTokens: 2500},
+	{Name: "ollama", BaseURL: "http://127.0.0.1:11434/v1", EnvKey: "OLLAMA_API_KEY", MinInterval: 500 * time.Millisecond, MaxInputChars: 240000, MaxOutputTokens: 32768, JSONOutputTokens: 32768},
+	{Name: "vllm", BaseURL: "http://127.0.0.1:8000/v1", EnvKey: "VLLM_API_KEY", MinInterval: 500 * time.Millisecond, MaxInputChars: 240000, MaxOutputTokens: 32768, JSONOutputTokens: 32768},
+	{Name: "text-generation-inference", BaseURL: "http://127.0.0.1:8080/v1", EnvKey: "TGI_API_KEY", MinInterval: 500 * time.Millisecond, MaxInputChars: 240000, MaxOutputTokens: 32768, JSONOutputTokens: 32768},
+	{Name: "lmstudio", BaseURL: "http://127.0.0.1:1234/v1", EnvKey: "LMSTUDIO_API_KEY", MinInterval: 500 * time.Millisecond, MaxInputChars: 240000, MaxOutputTokens: 32768, JSONOutputTokens: 32768},
+	{Name: "jan", BaseURL: "http://127.0.0.1:1337/v1", EnvKey: "JAN_API_KEY", MinInterval: 500 * time.Millisecond, MaxInputChars: 240000, MaxOutputTokens: 32768, JSONOutputTokens: 32768},
+	{Name: "litellm", BaseURL: "http://127.0.0.1:4000/v1", EnvKey: "LITELLM_API_KEY", MinInterval: 1 * time.Second, MaxInputChars: 240000, MaxOutputTokens: 32768, JSONOutputTokens: 32768},
 	{Name: "ai21", BaseURL: "https://api.ai21.com/studio/v1", EnvKey: "AI21_API_KEY", MinInterval: 5 * time.Second, MaxInputChars: 18000, MaxOutputTokens: 3000, JSONOutputTokens: 2500},
 	{Name: "alephalpha", BaseURL: "https://api.aleph-alpha.com", EnvKey: "ALEPH_ALPHA_API_KEY", MinInterval: 5 * time.Second, MaxInputChars: 18000, MaxOutputTokens: 3000, JSONOutputTokens: 2500},
 	{Name: "inworld", BaseURL: "https://api.inworld.ai/llm/v1", EnvKey: "INWORLD_API_KEY", MinInterval: 5 * time.Second, MaxInputChars: 18000, MaxOutputTokens: 3000, JSONOutputTokens: 2500},
@@ -137,7 +137,7 @@ func ProviderPolicy(name string) compatibleSpec {
 	case "groq":
 		return compatibleSpec{Name: name, MinInterval: 2 * time.Second, MaxInputChars: 120000, MaxOutputTokens: 16000, JSONOutputTokens: 16000}
 	case "llamacpp":
-		return compatibleSpec{Name: name, MinInterval: 500 * time.Millisecond, MaxInputChars: 100000, MaxOutputTokens: 12000, JSONOutputTokens: 12000}
+		return compatibleSpec{Name: name, MinInterval: 500 * time.Millisecond, MaxInputChars: 240000, MaxOutputTokens: 32768, JSONOutputTokens: 32768}
 	}
 	if spec, ok := compatibleSpecFor(name); ok {
 		return spec
