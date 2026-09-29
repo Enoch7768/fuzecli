@@ -31,7 +31,7 @@ type ChatResponse struct {
 func ChatResponseSchema() map[string]any {
 	return map[string]any{
 		"type": "object",
-		"additionalProperties": false,
+		"additionalProperties": true,
 		"properties": map[string]any{
 			"type":        map[string]any{"type": "string", "enum": []string{"chat", "edit"}},
 			"response":    map[string]any{"type": "string", "description": "Natural-language response for compatibility with the FuzeCLI chat envelope."},
@@ -48,14 +48,13 @@ func ChatResponseSchema() map[string]any {
 						"line_start": map[string]any{"type": "integer"},
 						"line_end":   map[string]any{"type": "integer"},
 					},
-					"required": []string{"path", "content", "action", "line_start", "line_end"},
+					"required": []string{},
 				},
 			},
 			"explanation": map[string]any{"type": "string"},
 			"commands":    map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
 		},
-		"required": []string{"type", "response", "message", "files", "explanation", "commands"},
-		"propertyOrdering": []string{"type", "response", "message", "files", "explanation", "commands"},
+		"required": []string{},
 	}
 }
 
@@ -64,7 +63,115 @@ func ParseChatResponse(raw string) (ChatResponse, error) {
 	if err != nil {
 		return ChatResponse{}, fmt.Errorf("invalid chat JSON: %w", err)
 	}
-	return parseChatResponseDocument(clean)
+	return parseChatResponseDocument(normalizeChatResponseEnvelope(clean))
+}
+
+func normalizeChatResponseEnvelope(clean []byte) []byte {
+	var value any
+	if json.Unmarshal(clean, &value) != nil {
+		return clean
+	}
+	if array, ok := value.([]any); ok {
+		value = map[string]any{"type": "edit", "files": array}
+	}
+	object, ok := value.(map[string]any)
+	if !ok {
+		return clean
+	}
+	for _, nested := range []string{"data", "result", "output"} {
+		if child, ok := object[nested].(map[string]any); ok {
+			if _, hasFiles := object["files"]; !hasFiles {
+				if _, childFiles := child["files"]; childFiles {
+					object = child
+					break
+				}
+			}
+		}
+	}
+	copyString := func(target string, aliases ...string) {
+		if _, ok := object[target]; ok {
+			return
+		}
+		for _, alias := range aliases {
+			if v, ok := object[alias].(string); ok {
+				object[target] = v
+				return
+			}
+		}
+	}
+	copyString("response", "answer", "content", "text", "output")
+	copyString("message", "answer", "content", "text")
+	copyString("explanation", "summary", "description")
+	if _, ok := object["files"]; !ok {
+		for _, alias := range []string{"changes", "edits", "patches"} {
+			if v, ok := object[alias]; ok {
+				object["files"] = v
+				break
+			}
+		}
+	}
+	if _, ok := object["commands"]; !ok {
+		if command, ok := object["command"].(string); ok {
+			object["commands"] = []any{command}
+		}
+	}
+	if _, ok := object["type"]; !ok {
+		if _, ok := object["files"]; ok {
+			object["type"] = "edit"
+		} else {
+			object["type"] = "chat"
+		}
+	} else if mode, ok := object["type"].(string); ok {
+		switch strings.ToLower(strings.TrimSpace(mode)) {
+		case "edit", "edits", "change", "changes", "patch", "patches", "code":
+			object["type"] = "edit"
+		default:
+			object["type"] = "chat"
+		}
+	}
+	if files, ok := object["files"].([]any); ok {
+		for i, rawFile := range files {
+			file, ok := rawFile.(map[string]any)
+			if !ok {
+				continue
+			}
+			copyFile := func(target string, aliases ...string) {
+				if _, exists := file[target]; exists {
+					return
+				}
+				for _, alias := range aliases {
+					if v, exists := file[alias]; exists {
+						file[target] = v
+						return
+					}
+				}
+			}
+			copyFile("path", "file", "filename", "filepath", "name")
+			copyFile("content", "code", "source", "text", "body")
+			copyFile("action", "operation", "op", "change")
+			copyFile("line_start", "start_line", "from_line")
+			copyFile("line_end", "end_line", "to_line")
+			if _, exists := file["action"]; !exists {
+				file["action"] = "modify"
+			}
+			if _, exists := file["content"]; !exists {
+				file["content"] = ""
+			}
+			files[i] = file
+		}
+		object["files"] = files
+	} else if fileMap, ok := object["files"].(map[string]any); ok {
+		files := make([]any, 0, len(fileMap))
+		for path, content := range fileMap {
+			files = append(files, map[string]any{"path": path, "content": content, "action": "modify"})
+		}
+		object["files"] = files
+	}
+	out, err := json.Marshal(object)
+	if err != nil {
+		return clean
+	}
+	return out
 }
 
 func parseChatResponseDocument(clean []byte) (ChatResponse, error) {
