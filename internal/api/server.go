@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Enoch7768/fuzecli/internal/generation"
@@ -20,6 +21,8 @@ import (
 type Server struct {
 	service        *Service
 	token          string
+	workspaceRootsMu sync.RWMutex
+	workspaceRoots []string
 	uiSession      string
 	runtimePreview *runtimePreviewManager
 	workbench *workbenchRuntime
@@ -36,6 +39,7 @@ func NewServer(service *Service, token string) *Server {
 		uiSession: hex.EncodeToString(session),
 		runtimePreview: &runtimePreviewManager{},
 		workbench: newWorkbenchRuntime(),
+		workspaceRoots: []string{service.Root()},
 		limiter: newRequestLimiter(),
 		chatSlots: make(chan struct{}, 4),
 	}
@@ -57,6 +61,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/preview/", s.preview)
 	mux.HandleFunc("/v1/preview/runtime", s.runtimePreviewHandler)
 	mux.HandleFunc("/v1/files", s.files)
+	mux.HandleFunc("/v1/workspace/roots", s.workspaceRoots)
 	mux.HandleFunc("/v1/history", s.history)
 	mux.HandleFunc("/v1/touched", s.touched)
 	mux.HandleFunc("/v1/telemetry", s.telemetry)
@@ -278,7 +283,7 @@ func (s *Server) file(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodPost {
 		r.Body = http.MaxBytesReader(w, r.Body, 2<<20)
 		var req struct {
-			Path    string `json:"path"`
+			Path string `json:"path"`
 			Content string `json:"content"`
 		}
 		dec := json.NewDecoder(r.Body)
@@ -289,6 +294,14 @@ func (s *Server) file(w http.ResponseWriter, r *http.Request) {
 		}
 		if strings.TrimSpace(req.Path) == "" {
 			writeError(w, http.StatusBadRequest, "path is required")
+			return
+		}
+		if abs, ok := s.resolveWorkspaceRootPath(req.Path); ok {
+			if err := os.WriteFile(abs, []byte(req.Content), 0600); err != nil {
+				writeError(w, http.StatusInternalServerError, "write file failed: "+err.Error())
+				return
+			}
+			writeJSON(w, http.StatusOK, map[string]any{"ok": true, "path": filepath.ToSlash(req.Path)})
 			return
 		}
 		if err := s.service.WriteFile(req.Path, req.Content); err != nil {
@@ -305,6 +318,24 @@ func (s *Server) file(w http.ResponseWriter, r *http.Request) {
 	path := strings.TrimSpace(r.URL.Query().Get("path"))
 	if path == "" {
 		writeError(w, http.StatusBadRequest, "path is required")
+		return
+	}
+	if abs, ok := s.resolveWorkspaceRootPath(path); ok {
+		info, err := os.Stat(abs)
+		if err != nil || info.IsDir() {
+			writeError(w, http.StatusNotFound, "file not found")
+			return
+		}
+		if info.Size() > 2<<20 {
+			writeError(w, http.StatusRequestEntityTooLarge, "file is too large")
+			return
+		}
+		data, err := os.ReadFile(abs)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "read file failed: "+err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"path": path, "content": string(data)})
 		return
 	}
 	content, err := s.service.ReadFile(path)
@@ -405,12 +436,113 @@ func (s *Server) files(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
+	root := strings.TrimSpace(r.URL.Query().Get("root"))
+	if root != "" {
+		if abs, ok := s.resolveWorkspaceRootPath(root); ok {
+			files, err := listWorkspaceRootFiles(abs, r.URL.Query().Get("prefix"))
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, err.Error())
+				return
+			}
+			writeJSON(w, http.StatusOK, map[string]any{"files": files, "root": root})
+			return
+		}
+	}
 	files, err := s.service.ListFiles(r.URL.Query().Get("prefix"))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"files": files})
+	writeJSON(w, http.StatusOK, map[string]any{"files": files, "root": s.service.Root()})
+}
+
+func (s *Server) workspaceRoots(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		s.workspaceRootsMu.RLock()
+		roots := append([]string(nil), s.workspaceRoots...)
+		s.workspaceRootsMu.RUnlock()
+		writeJSON(w, http.StatusOK, map[string]any{"roots": roots})
+	case http.MethodPost:
+		r.Body = http.MaxBytesReader(w, r.Body, 16<<10)
+		var req struct{ Path string `json:"path"` }
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid workspace root")
+			return
+		}
+		root, err := filepath.Abs(strings.TrimSpace(req.Path))
+		if err != nil { writeError(w, http.StatusBadRequest, "invalid workspace root"); return }
+		info, err := os.Stat(root)
+		if err != nil || !info.IsDir() { writeError(w, http.StatusBadRequest, "workspace root must be an existing directory"); return }
+		s.workspaceRootsMu.Lock()
+		found := false
+		for _, existing := range s.workspaceRoots { if samePath(existing, root) { found = true; break } }
+		if !found { s.workspaceRoots = append(s.workspaceRoots, root) }
+		roots := append([]string(nil), s.workspaceRoots...)
+		s.workspaceRootsMu.Unlock()
+		writeJSON(w, http.StatusOK, map[string]any{"roots": roots})
+	case http.MethodDelete:
+		root := strings.TrimSpace(r.URL.Query().Get("path"))
+		s.workspaceRootsMu.Lock()
+		filtered := s.workspaceRoots[:0]
+		for _, existing := range s.workspaceRoots {
+			if samePath(existing, root) && !samePath(existing, s.service.Root()) { continue }
+			filtered = append(filtered, existing)
+		}
+		s.workspaceRoots = filtered
+		roots := append([]string(nil), s.workspaceRoots...)
+		s.workspaceRootsMu.Unlock()
+		writeJSON(w, http.StatusOK, map[string]any{"roots": roots})
+	default:
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+	}
+}
+
+func (s *Server) resolveWorkspaceRootPath(path string) (string, bool) {
+	candidate := strings.TrimSpace(path)
+	if candidate == "" { return "", false }
+	abs, err := filepath.Abs(candidate)
+	if err != nil { return "", false }
+	info, err := os.Stat(abs)
+	if err == nil && info.IsDir() { return abs, false }
+	s.workspaceRootsMu.RLock()
+	defer s.workspaceRootsMu.RUnlock()
+	for _, root := range s.workspaceRoots {
+		rel, err := filepath.Rel(root, abs)
+		if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) { continue }
+		return abs, true
+	}
+	return "", false
+}
+
+func samePath(a, b string) bool {
+	aa, errA := filepath.Abs(a)
+	bb, errB := filepath.Abs(b)
+	if errA != nil || errB != nil { return false }
+	return strings.EqualFold(filepath.Clean(aa), filepath.Clean(bb))
+}
+
+func listWorkspaceRootFiles(root, prefix string) ([]string, error) {
+	prefix = filepath.ToSlash(strings.Trim(strings.TrimSpace(prefix), "/"))
+	files := make([]string, 0, 256)
+	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+		if err != nil { return err }
+		if d.IsDir() {
+			name := d.Name()
+			if name == ".git" || name == "node_modules" || name == "vendor" || name == "dist" || name == "build" || name == ".next" {
+				if path != root { return filepath.SkipDir }
+			}
+			return nil
+		}
+		rel, err := filepath.Rel(root, path)
+		if err != nil { return nil }
+		rel = filepath.ToSlash(rel)
+		if prefix != "" && !strings.HasPrefix(rel, prefix) { return nil }
+		files = append(files, filepath.ToSlash(root)+"/"+rel)
+		if len(files) >= 20000 { return filepath.SkipDir }
+		return nil
+	})
+	return files, err
 }
 
 func (s *Server) history(w http.ResponseWriter, r *http.Request) {
