@@ -381,112 +381,104 @@ func (a *App) terminalStream(ctx context.Context, prompt, providerName, model, b
 			system += "\n--- " + path + " ---\n" + content + "\n--- end " + path + " ---\n"
 		}
 	}
-	engine := generation.Engine{Registry: a.Registry, Profile: &a.Profile, MaxContextChars: 120000}
+	engine := generation.Engine{Registry: a.Registry, Profile: &a.Profile, MaxContextChars: 240000}
 	msgs := engine.Messages(a.Profile.Condensed(), workspaceContext, history, prompt)
 	msgs[0].Content = system
 	if err := a.Store.AddMessage(provider.Message{Role: "user", Content: prompt}); err != nil {
 		return fmt.Errorf("save user message: %w", err)
 	}
-	stream, err := a.Registry.Stream(ctx, name, msgs, provider.RequestOptions{Model: mdl, Temperature: 0.3, MaxTokens: 32768, JSONMode: true, JSONSchema: generation.ChatResponseSchema(), BillingMode: billingMode})
-	if err != nil {
-		return fmt.Errorf("provider request failed: %w", err)
-	}
 
-	var response strings.Builder
-	var candidate strings.Builder
-	jsonPossible := false
-	var parsedJSON *generation.ChatResponse
-	fmt.Print("\n")
+	fmt.Printf("\n%sYou%s\n%s\n\n%sFuze%s\n", uiBold, uiReset, prompt, uiAccent, uiReset)
 	progress := newTerminalProgress()
 	progress.update(8, "Connecting")
 	defer progress.finish()
-	for chunk := range stream {
-		if chunk.Error != nil {
-			return fmt.Errorf("provider stream failed: %w", chunk.Error)
-		}
-		if chunk.Delta != "" {
-			response.WriteString(chunk.Delta)
+
+	opts := provider.RequestOptions{Model: mdl, Temperature: 0.3, MaxTokens: 32768, JSONMode: true, JSONSchema: generation.ChatResponseSchema(), BillingMode: billingMode}
+	stream, streamErr := a.Registry.Stream(ctx, name, msgs, opts)
+	var response strings.Builder
+	var usage provider.Usage
+	if streamErr == nil {
+		for chunk := range stream {
+			if chunk.Error != nil {
+				return fmt.Errorf("provider stream failed: %w", chunk.Error)
+			}
+			if chunk.Delta != "" {
+				response.WriteString(chunk.Delta)
+			}
+			usage.PromptTokens += chunk.Usage.PromptTokens
+			usage.CompletionTokens += chunk.Usage.CompletionTokens
+			usage.TotalTokens += chunk.Usage.TotalTokens
+			usage.CostUSD += chunk.Usage.CostUSD
 			percent := 18
-			if response.Len() > 8192 {
-				percent = 45
-			}
-			if response.Len() > 32768 {
-				percent = 68
-			}
+			if response.Len() > 8192 { percent = 45 }
+			if response.Len() > 32768 { percent = 68 }
 			progress.update(percent, "Generating response")
-			trimmed := strings.TrimSpace(response.String())
-			if !jsonPossible && generation.LooksLikeChatPlanPrefix(trimmed) {
-				jsonPossible = true
-			}
-			if jsonPossible {
-				candidate.WriteString(chunk.Delta)
-				if structured, parseErr := generation.ParseChatResponse(candidate.String()); parseErr == nil {
-					parsedJSON = &structured
-					break
-				}
-				if candidate.Len() >= 512 && !strings.Contains(candidate.String(), `"files"`) && !strings.Contains(candidate.String(), `"response"`) && !strings.Contains(candidate.String(), `"explanation"`) {
-					jsonPossible = false
-					fmt.Print(candidate.String())
-					candidate.Reset()
-				}
-			} else {
-				fmt.Print(chunk.Delta)
-			}
 		}
-		if chunk.Done {
-			progress.update(82, "Validating response")
-			break
+	} else {
+		progress.update(45, "Retrying request")
+		resp, err := a.Registry.Send(ctx, name, msgs, opts)
+		if err != nil {
+			return fmt.Errorf("provider request failed: %w", err)
 		}
+		response.WriteString(resp.Content)
+		usage = resp.Usage
 	}
 
-	progress.update(90, "Finalizing response")
-	if parsedJSON != nil {
-		if parsedJSON.Type == "chat" {
-			fmt.Printf("\r\x1b[K%s\n", parsedJSON.Response)
-			if err := a.Store.AddMessage(provider.Message{Role: "assistant", Content: parsedJSON.Response}); err != nil {
-				return fmt.Errorf("save assistant response: %w", err)
-			}
-			fmt.Println("\x1b[38;5;244mResponse complete · validated chat JSON.\x1b[0m")
-			return nil
-		}
-		if parsedJSON.Plan == nil {
-			return fmt.Errorf("validated edit response did not contain a file plan")
-		}
-		written, applyErr := generation.ApplyChatPlan(a.Store.Root, *parsedJSON.Plan)
-		if applyErr != nil {
-			return fmt.Errorf("validated edit could not be applied: %w", applyErr)
-		}
-		if err := a.Store.MarkTouched(written); err != nil {
-			return fmt.Errorf("record changed files: %w", err)
-		}
-		st, _ := a.Store.LoadState()
-		st.ActiveProvider = name
-		st.ActiveModel = mdl
-		if err := a.Store.SaveState(st); err != nil {
-			return fmt.Errorf("save session state: %w", err)
-		}
-		if err := a.Store.RefreshHashes(written); err != nil {
-			return fmt.Errorf("refresh workspace hashes: %w", err)
-		}
-		if len(parsedJSON.Plan.Files) == 1 {
-			fmt.Printf("\n\x1b[38;5;111m✓ Applied\x1b[0m %s\n", parsedJSON.Plan.Files[0].Path)
-		} else {
-			fmt.Printf("\n\x1b[38;5;111m✓ Applied\x1b[0m %d files\n", len(parsedJSON.Plan.Files))
-		}
-		if parsedJSON.Explanation != "" {
-			fmt.Printf("%s\n", parsedJSON.Explanation)
-		}
-		fmt.Println("\x1b[38;5;244mResponse complete · validated edit JSON.\x1b[0m")
-		return a.Store.AddMessage(provider.Message{Role: "assistant", Content: parsedJSON.Explanation})
-	}
-
-	text := strings.TrimSpace(response.String())
-	if text == "" {
+	progress.update(82, "Validating response")
+	raw := strings.TrimSpace(response.String())
+	if raw == "" {
 		return fmt.Errorf("provider returned an empty response; no assistant content was received")
 	}
-	if jsonPossible {
-		return fmt.Errorf("provider returned incomplete or invalid structured JSON; the response was not applied. Raw response length: %d bytes", len(response.String()))
+	parsed, parseErr := generation.ParseChatResponse(raw)
+	if parseErr != nil {
+		return fmt.Errorf("complete assistant response could not be validated: %w", parseErr)
 	}
-	fmt.Print("\n\x1b[38;5;244mResponse complete.\x1b[0m\n")
-	return a.Store.AddMessage(provider.Message{Role: "assistant", Content: response.String()})
+
+	if parsed.Type == "chat" {
+		content := parsed.Response
+		if content == "" { content = parsed.Message }
+		if content == "" { content = parsed.Explanation }
+		if strings.TrimSpace(content) == "" {
+			return fmt.Errorf("validated chat response did not contain assistant content")
+		}
+		fmt.Printf("%s%s%s\n", uiTextLabel(""), content, uiReset)
+		if err := a.Store.AddMessage(provider.Message{Role: "assistant", Content: content}); err != nil {
+			return fmt.Errorf("save assistant response: %w", err)
+		}
+		_ = usage
+		return nil
+	}
+
+	if parsed.Plan == nil {
+		return fmt.Errorf("validated edit response did not contain a file plan")
+	}
+	written, applyErr := generation.ApplyChatPlan(a.Store.Root, *parsed.Plan)
+	if applyErr != nil {
+		return fmt.Errorf("validated edit could not be applied: %w", applyErr)
+	}
+	if err := a.Store.MarkTouched(written); err != nil {
+		return fmt.Errorf("record changed files: %w", err)
+	}
+	st, _ := a.Store.LoadState()
+	st.ActiveProvider = name
+	st.ActiveModel = mdl
+	if err := a.Store.SaveState(st); err != nil {
+		return fmt.Errorf("save session state: %w", err)
+	}
+	if err := a.Store.RefreshHashes(written); err != nil {
+		return fmt.Errorf("refresh workspace hashes: %w", err)
+	}
+	if len(written) == 1 {
+		fmt.Printf("%s✓ Applied%s %s\n", uiGreen, uiReset, written[0])
+	} else {
+		fmt.Printf("%s✓ Applied%s %d files\n", uiGreen, uiReset, len(written))
+	}
+	if parsed.Explanation != "" {
+		fmt.Printf("%s%s%s\n", uiMuted, parsed.Explanation, uiReset)
+	}
+	return a.Store.AddMessage(provider.Message{Role: "assistant", Content: parsed.Explanation})
+}
+
+func uiTextLabel(_ string) string {
+	return ""
 }
