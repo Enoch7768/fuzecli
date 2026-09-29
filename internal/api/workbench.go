@@ -160,8 +160,60 @@ func bridgeLSP(ws *websocket.Conn, root, language string) error {
 	}
 }
 
-func startDAP(root string) (net.Conn, *exec.Cmd, error) {
-	cmd := exec.Command("dlv", "dap", "--listen=127.0.0.1:0")
+type debugAdapterSpec struct {
+	Command string
+	Args []string
+	LaunchMode string
+}
+
+func debugAdapterForLanguage(language string) (debugAdapterSpec, error) {
+	lang := strings.ToLower(strings.TrimSpace(language))
+	switch lang {
+	case "go":
+		return debugAdapterSpec{Command: "dlv", Args: []string{"dap", "--listen=127.0.0.1:0"}, LaunchMode: "go"}, nil
+	case "python":
+		return debugAdapterSpec{Command: "python", Args: []string{"-m", "debugpy.adapter"}, LaunchMode: "python"}, nil
+	case "javascript", "typescript":
+		if command, err := exec.LookPath("js-debug-adapter"); err == nil {
+			return debugAdapterSpec{Command: command, Args: []string{"--port", "0"}, LaunchMode: "node"}, nil
+		}
+		if command, err := exec.LookPath("js-debug"); err == nil {
+			return debugAdapterSpec{Command: command, Args: []string{"--port", "0"}, LaunchMode: "node"}, nil
+		}
+		return debugAdapterSpec{}, fmt.Errorf("no JavaScript/TypeScript DAP adapter found; install js-debug-adapter or configure FUZECLI_DEBUG_ADAPTER_NODE")
+	case "rust", "c", "cpp":
+		for _, command := range []string{"lldb-dap", "lldb-dap.exe", "gdb"} {
+			if path, err := exec.LookPath(command); err == nil {
+				if strings.EqualFold(filepath.Base(path), "gdb") {
+					return debugAdapterSpec{Command: path, Args: []string{"--interpreter=dap"}, LaunchMode: "native"}, nil
+				}
+				return debugAdapterSpec{Command: path, Args: []string{"--connection", "listen://127.0.0.1:0"}, LaunchMode: "native"}, nil
+			}
+		}
+		return debugAdapterSpec{}, fmt.Errorf("no native DAP adapter found; install lldb-dap or GDB")
+	case "ruby":
+		if command, err := exec.LookPath("rdbg"); err == nil {
+			return debugAdapterSpec{Command: command, Args: []string{"--open", "--port", "0"}, LaunchMode: "ruby"}, nil
+		}
+		return debugAdapterSpec{}, fmt.Errorf("Ruby DAP adapter not found; install rdbg")
+	case "php":
+		if command, err := exec.LookPath("php-debug-adapter"); err == nil {
+			return debugAdapterSpec{Command: command, Args: []string{"--port", "0"}, LaunchMode: "php"}, nil
+		}
+		return debugAdapterSpec{}, fmt.Errorf("PHP DAP adapter not found; install php-debug-adapter")
+	case "java", "kotlin":
+		return debugAdapterSpec{}, fmt.Errorf("%s debugging requires a JVM DAP adapter; configure FUZECLI_DEBUG_ADAPTER_JVM", lang)
+	default:
+		return debugAdapterSpec{}, fmt.Errorf("no DAP adapter configured for %s; configure FUZECLI_DEBUG_ADAPTER_%s", language, strings.ToUpper(strings.ReplaceAll(lang, "-", "_")))
+	}
+}
+
+func startDAP(root, language string) (net.Conn, *exec.Cmd, error) {
+	spec, err := debugAdapterForLanguage(language)
+	if err != nil {
+		return nil, nil, err
+	}
+	cmd := exec.Command(spec.Command, spec.Args...)
 	cmd.Dir = root
 	cmd.Env = os.Environ()
 	stderr, err := cmd.StderrPipe()
@@ -213,8 +265,8 @@ func startDAP(root string) (net.Conn, *exec.Cmd, error) {
 	return conn, cmd, nil
 }
 
-func bridgeDAP(ws *websocket.Conn, root string) error {
-	conn, cmd, err := startDAP(root)
+func bridgeDAP(ws *websocket.Conn, root, language string) error {
+	conn, cmd, err := startDAP(root, language)
 	if err != nil { return err }
 	defer cmd.Process.Kill()
 	defer conn.Close()
