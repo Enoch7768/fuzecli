@@ -133,11 +133,15 @@ func (s *Service) Chat(ctx context.Context, req ChatRequest) (ChatResponse, erro
 				s.emitEvent(StudioEvent{RequestID:requestID, Type:"generation.failed", Phase:"generation", Message:chunk.Error.Error(), Provider:name, Model:model})
 				return ChatResponse{}, chunk.Error
 			}
+			usage.PromptTokens += chunk.Usage.PromptTokens
+			usage.CompletionTokens += chunk.Usage.CompletionTokens
+			usage.TotalTokens += chunk.Usage.TotalTokens
+			usage.CostUSD += chunk.Usage.CostUSD
+			if chunk.Usage.PromptTokens > 0 || chunk.Usage.CompletionTokens > 0 || chunk.Usage.TotalTokens > 0 || chunk.Usage.CostUSD > 0 {
+				s.emitEvent(StudioEvent{RequestID:requestID, Type:"generation.usage", Phase:"generation", Message:"Usage updated", Provider:name, Model:model, PromptTokens:usage.PromptTokens, CompletionTokens:usage.CompletionTokens, TotalTokens:usage.TotalTokens, CostUSD:usage.CostUSD, Percent:58})
+			}
 			if chunk.Delta != "" {
 				raw.WriteString(chunk.Delta)
-				usage.PromptTokens += chunk.Usage.PromptTokens
-				usage.CompletionTokens += chunk.Usage.CompletionTokens
-				usage.TotalTokens += chunk.Usage.TotalTokens
 				s.emitEvent(StudioEvent{RequestID:requestID, Type:"generation.chunk", Phase:"generation", Message:chunk.Delta, Provider:name, Model:model, Percent:45})
 			}
 		}
