@@ -1,6 +1,8 @@
 package api
 
 import (
+	"sync"
+	"time"
 	"context"
 	"errors"
 	"fmt"
@@ -28,6 +30,7 @@ type Attachment struct {
 }
 
 type ChatRequest struct {
+	RequestID string `json:"request_id,omitempty"`
 	Prompt   string   `json:"prompt"`
 	Provider string   `json:"provider,omitempty"`
 	Model    string   `json:"model,omitempty"`
@@ -47,12 +50,51 @@ type ChatResponse struct {
 	Applied       bool           `json:"applied"`
 }
 
+type StudioEvent struct {
+	RequestID string `json:"request_id"`
+	Type string `json:"type"`
+	Phase string `json:"phase,omitempty"`
+	Message string `json:"message,omitempty"`
+	Provider string `json:"provider,omitempty"`
+	Model string `json:"model,omitempty"`
+	Path string `json:"path,omitempty"`
+	Percent int `json:"percent,omitempty"`
+	Timestamp time.Time `json:"timestamp"`
+}
+
+type studioSubscriber struct { ch chan StudioEvent }
+
 type Service struct {
 	App *app.App
+	eventMu sync.Mutex
+	eventSubscribers map[*studioSubscriber]struct{}
+}
+
+func (s *Service) emitEvent(event StudioEvent) {
+	if s == nil { return }
+	if event.Timestamp.IsZero() { event.Timestamp = time.Now() }
+	s.eventMu.Lock()
+	defer s.eventMu.Unlock()
+	for sub := range s.eventSubscribers {
+		select { case sub.ch <- event: default: }
+	}
+}
+
+func (s *Service) SubscribeStudioEvents() (<-chan StudioEvent, func()) {
+	sub := &studioSubscriber{ch: make(chan StudioEvent, 64)}
+	s.eventMu.Lock()
+	if s.eventSubscribers == nil { s.eventSubscribers = make(map[*studioSubscriber]struct{}) }
+	s.eventSubscribers[sub] = struct{}{}
+	s.eventMu.Unlock()
+	return sub.ch, func() {
+		s.eventMu.Lock()
+		if _, ok := s.eventSubscribers[sub]; ok { delete(s.eventSubscribers, sub); close(sub.ch) }
+		s.eventMu.Unlock()
+	}
 }
 
 func NewService(a *app.App) *Service {
-	return &Service{App: a}
+	return &Service{App: a, eventSubscribers: make(map[*studioSubscriber]struct{})}
 }
 
 func (s *Service) Chat(ctx context.Context, req ChatRequest) (ChatResponse, error) {
