@@ -9,10 +9,12 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+	"strconv"
 
 	"github.com/Enoch7768/fuzecli/internal/api"
 	"github.com/Enoch7768/fuzecli/internal/app"
 	"github.com/Enoch7768/fuzecli/internal/config"
+	"github.com/Enoch7768/fuzecli/internal/github"
 	"github.com/Enoch7768/fuzecli/internal/mcpserver"
 	"github.com/Enoch7768/fuzecli/internal/profile"
 )
@@ -62,6 +64,8 @@ func run(args []string) error {
 		return appCommand(args[1:])
 	case "apikey":
 		return apiKeyCommand(args[1:])
+	case "github":
+		return githubCommand(args[1:])
 	case "mcp":
 		return mcpCommand()
 	case "doctor":
@@ -421,6 +425,105 @@ func apiKeyCommand(args []string) error {
 	}
 }
 
+func githubCommand(args []string) error {
+	if len(args) == 0 || args[0] == "help" || args[0] == "--help" {
+		fmt.Println("Usage: aicli github auth set|status|clear")
+		fmt.Println("       aicli github repo list|create|info|clone")
+		fmt.Println("       aicli github pull [remote] [branch]")
+		fmt.Println("       aicli github push [remote] [branch]")
+		fmt.Println("       aicli github branch list|create <name> [from]")
+		fmt.Println("       aicli github pr list|create|view|comments|comment|review")
+		fmt.Println("       aicli github issue list|create")
+		fmt.Println("       aicli github actions list|rerun|jobs")
+		return nil
+	}
+	token, err := config.GitHubToken()
+	if err != nil { return err }
+	client := github.New(token)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	switch args[0] {
+	case "auth":
+		if len(args) < 2 { return fmt.Errorf("usage: aicli github auth set|status|clear") }
+		switch args[1] {
+		case "set":
+			if len(args) != 3 || strings.TrimSpace(args[2]) == "" { return fmt.Errorf("usage: aicli github auth set <token>") }
+			if err := config.SetGitHubToken(args[2]); err != nil { return err }
+			fmt.Println("GitHub token saved locally.")
+			return nil
+		case "clear":
+			if err := config.ClearGitHubToken(); err != nil { return err }
+			fmt.Println("GitHub token cleared.")
+			return nil
+		case "status":
+			if !client.Authenticated() { fmt.Println("GitHub: not authenticated"); return nil }
+			user, err := client.Profile(ctx); if err != nil { return err }
+			fmt.Printf("GitHub: authenticated as %s\n", user.Login)
+			return nil
+		default:
+			return fmt.Errorf("unknown github auth command %q", args[1])
+		}
+	case "repo":
+		if len(args) < 2 { return fmt.Errorf("usage: aicli github repo list|create|info|clone") }
+		switch args[1] {
+		case "list":
+			repos, err := client.Repositories(ctx, 1, 100); if err != nil { return err }
+			for _, r := range repos { fmt.Printf("%s\t%s\t%s\n", r.FullName, r.DefaultBranch, map[bool]string{true:"private",false:"public"}[r.Private]) }
+			return nil
+		case "create":
+			if len(args) < 3 { return fmt.Errorf("usage: aicli github repo create <name> [--private] [--description text] [--init]") }
+			req := github.CreateRepositoryRequest{Name: args[2]}
+			for i:=3;i<len(args);i++ { switch args[i] { case "--private": req.Private=true; case "--init": req.AutoInit=true; case "--description": if i+1>=len(args){return fmt.Errorf("missing description")}; req.Description=args[i+1]; i++; default:return fmt.Errorf("unknown repo option %q",args[i]) } }
+			r, err := client.CreateRepository(ctx, req); if err != nil { return err }
+			fmt.Printf("Created %s\n%s\n", r.FullName, r.HTMLURL)
+			return nil
+		case "info":
+			if len(args)!=3{return fmt.Errorf("usage: aicli github repo info <owner/name>")}
+			r,err:=client.Repository(ctx,args[2]);if err!=nil{return err}
+			fmt.Printf("%s\nDefault branch: %s\nVisibility: %s\nClone: %s\n",r.FullName,r.DefaultBranch,map[bool]string{true:"private",false:"public"}[r.Private],r.CloneURL)
+			return nil
+		case "clone":
+			if len(args)<3||len(args)>4{return fmt.Errorf("usage: aicli github repo clone <owner/name> [destination]")}
+			r,err:=client.Repository(ctx,args[2]);if err!=nil{return err}; dest:=r.Name;if len(args)==4{dest=args[3]}
+			out,err:=github.Clone(ctx,r.CloneURL,dest,token);if err!=nil{return err};fmt.Println(out);return nil
+		}
+	case "pull","push":
+		if len(args)>3{return fmt.Errorf("usage: aicli github %s [remote] [branch]",args[0])}
+		remote,branch:="","";if len(args)>1{remote=args[1]};if len(args)>2{branch=args[2]}
+		var out string
+		if args[0]=="pull"{out,err=github.Pull(ctx,".",remote,branch,token)}else{out,err=github.Push(ctx,".",remote,branch,token)}
+		if err!=nil{return err};fmt.Println(out);return nil
+	case "branch":
+		if len(args)<2{return fmt.Errorf("usage: aicli github branch list|create <name> [from]")}
+		if args[1]=="list"{remote,err:=github.LocalRemote(".");if err!=nil{return err};parts:=strings.Split(strings.TrimSuffix(strings.TrimSuffix(remote,".git"),"/"),"/");if len(parts)<2{return fmt.Errorf("origin is not a GitHub repository")};full:=parts[len(parts)-2]+"/"+parts[len(parts)-1];bs,err:=client.Branches(ctx,full);if err!=nil{return err};for _,b:=range bs{fmt.Printf("%s\t%s\n",b.Name,b.SHA)};return nil}
+		if args[1]=="create"{if len(args)<3||len(args)>4{return fmt.Errorf("usage: aicli github branch create <name> [from]")};remote,err:=github.LocalRemote(".");if err!=nil{return err};parts:=strings.Split(strings.TrimSuffix(strings.TrimSuffix(remote,".git"),"/"),"/");if len(parts)<2{return fmt.Errorf("origin is not a GitHub repository")};full:=parts[len(parts)-2]+"/"+parts[len(parts)-1];from:="";if len(args)==4{from=args[3]};if err:=client.CreateBranch(ctx,full,args[2],from);err!=nil{return err};fmt.Println("Branch created:",args[2]);return nil}
+	case "pr":
+		if len(args)<2{return fmt.Errorf("usage: aicli github pr list|create|view|comments|comment|review")}
+		full,numberErr:=githubRepoFromOrigin();if numberErr!=nil{return numberErr}
+		switch args[1]{
+		case "list":state:="open";if len(args)==3{state=args[2]};prs,err:=client.PullRequests(ctx,full,state);if err!=nil{return err};for _,p:=range prs{fmt.Printf("#%d %s [%s] %s\n",p.Number,p.Title,p.State,p.HTMLURL)};return nil
+		case "create":if len(args)<5{return fmt.Errorf("usage: aicli github pr create <head> <base> <title> [body]")};body:="";if len(args)>5{body=strings.Join(args[5:]," ")};p,err:=client.CreatePullRequest(ctx,full,github.CreatePullRequestRequest{Head:args[2],Base:args[3],Title:args[4],Body:body});if err!=nil{return err};fmt.Printf("#%d %s\n%s\n",p.Number,p.Title,p.HTMLURL);return nil
+		case "view","comments","comment","review":
+			if len(args)<3{return fmt.Errorf("pull request number is required")};n,e:=strconv.Atoi(args[2]);if e!=nil{return fmt.Errorf("invalid pull request number")};if args[1]=="view"{p,err:=client.PullRequest(ctx,full,n);if err!=nil{return err};fmt.Printf("#%d %s\n%s\n%s -> %s\n",p.Number,p.Title,p.HTMLURL,p.Head.Ref,p.Base.Ref);return nil};if args[1]=="comments"{cs,err:=client.Comments(ctx,full,n);if err!=nil{return err};for _,c:=range cs{fmt.Printf("%s: %s\n",c.User.Login,c.Body)};return nil};if args[1]=="comment"{if len(args)<4{return fmt.Errorf("usage: aicli github pr comment <number> <body>")};_,err:=client.AddComment(ctx,full,n,strings.Join(args[3:]," "));return err};if len(args)<4{return fmt.Errorf("usage: aicli github pr review <number> <approve|comment|request_changes> [body]")};event:=strings.ToUpper(strings.ReplaceAll(args[3],"-","_"));body:="";if len(args)>4{body=strings.Join(args[4:]," ")};return client.Review(ctx,full,n,github.ReviewRequest{Event:event,Body:body})
+		}
+	case "issue":
+		if len(args)<2{return fmt.Errorf("usage: aicli github issue list|create")}
+		full,err:=githubRepoFromOrigin();if err!=nil{return err};if args[1]=="list"{issues,err:=client.Issues(ctx,full,"open");if err!=nil{return err};for _,i:=range issues{fmt.Printf("#%d %s %s\n",i.Number,i.Title,i.HTMLURL)};return nil};if args[1]=="create"{if len(args)<3{return fmt.Errorf("usage: aicli github issue create <title> [body]")};body:="";if len(args)>3{body=strings.Join(args[3:]," ")};i,err:=client.CreateIssue(ctx,full,args[2],body);if err!=nil{return err};fmt.Printf("#%d %s\n",i.Number,i.HTMLURL);return nil}
+	case "actions":
+		if len(args)<2{return fmt.Errorf("usage: aicli github actions list|rerun|jobs")}
+		full,err:=githubRepoFromOrigin();if err!=nil{return err};if args[1]=="list"{runs,err:=client.WorkflowRuns(ctx,full);if err!=nil{return err};for _,r:=range runs{fmt.Printf("%d #%d %s [%s/%s] %s\n",r.ID,r.RunNumber,r.Name,r.Status,r.Conclusion,r.HTMLURL)};return nil};if len(args)<3{return fmt.Errorf("workflow run id is required")};id,e:=strconv.ParseInt(args[2],10,64);if e!=nil{return fmt.Errorf("invalid workflow run id")};if args[1]=="rerun"{return client.RerunWorkflow(ctx,full,id)};if args[1]=="jobs"{v,err:=client.WorkflowJobs(ctx,full,id);if err!=nil{return err};b,_:=json.MarshalIndent(v,"","  ");fmt.Println(string(b));return nil}
+	}
+	return fmt.Errorf("unknown github command %q",args[0])
+}
+
+func githubRepoFromOrigin()(string,error){
+	remote,err:=github.LocalRemote(".");if err!=nil{return "",err}
+	value:=strings.TrimSuffix(strings.TrimSuffix(strings.TrimSpace(remote),".git"),"/")
+	if strings.HasPrefix(value,"git@github.com:"){value=strings.TrimPrefix(value,"git@github.com:")}else if i:=strings.Index(value,"github.com/");i>=0{value=value[i+len("github.com/"):]}else{return "",fmt.Errorf("origin is not a GitHub repository")}
+	parts:=strings.Split(strings.Trim(value,"/"),"/");if len(parts)!=2{return "",fmt.Errorf("could not determine GitHub repository from origin")}
+	return parts[0]+"/"+parts[1],nil
+}
+
 func mcpCommand() error {
 	a, err := app.Load()
 	if err != nil {
@@ -670,6 +773,7 @@ Integration:
   aicli app [--addr host:port]       Start the polished local web app
   aicli api [--addr host:port]       Start the local API server
   aicli apikey set <provider> <key>  Save a provider API key
+  aicli github ...                   GitHub repos, Git sync, pull requests, issues, comments, and Actions
   aicli apikey status                Show provider key status
   aicli apikey clear <provider>      Remove a provider API key
   aicli mcp                          Start the MCP server
