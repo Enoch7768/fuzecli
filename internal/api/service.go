@@ -113,7 +113,7 @@ func (s *Service) Chat(ctx context.Context, req ChatRequest) (ChatResponse, erro
 	history, err := s.App.Store.History(400); if err != nil { return ChatResponse{}, err }
 	workspaceContext, err := s.App.Store.WorkspaceContext(); if err != nil { return ChatResponse{}, err }
 	attachments, err := s.ReadAttachments(req.Files); if err != nil { return ChatResponse{}, err }
-	system := generation.SessionSystemPrompt() + "\n\nYou are FuzeCLI, a practical coding assistant. Use the session response contract above for every response and never ask the user to provide source files that FuzeCLI already supplied."
+	system := generation.SessionSystemPrompt() + "\n\nSTRUCTURED RESPONSE CONTRACT: Return one JSON object for every request. For conversation use type=chat with response (or compatible message/content/text). For workspace changes use type=edit with plan.files containing path, action, and complete content; include explanation when useful. Never truncate file content. The parser accepts compatible field aliases, but prefer the canonical contract.\n\nYou are FuzeCLI, a practical coding assistant. Use the session response contract above for every response and never ask the user to provide source files that FuzeCLI already supplied."
 	if workspaceContext != "" { system += "\nRelevant workspace files read from disk:\n" + workspaceContext }
 	if len(attachments) > 0 {
 		system += "\nThe user attached the following workspace files for this request. These attachments are authoritative input. The provider receives their extracted UTF-8 text directly in the request. MIME type and size are included so you know exactly what is available. Binary or unsupported formats are rejected instead of silently omitted:\n"
