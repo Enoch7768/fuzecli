@@ -495,8 +495,8 @@ func githubCommand(args []string) error {
 		if err!=nil{return err};fmt.Println(out);return nil
 	case "branch":
 		if len(args)<2{return fmt.Errorf("usage: aicli github branch list|create <name> [from]")}
-		if args[1]=="list"{remote,err:=github.LocalRemote(".");if err!=nil{return err};parts:=strings.Split(strings.TrimSuffix(strings.TrimSuffix(remote,".git"),"/"),"/");if len(parts)<2{return fmt.Errorf("origin is not a GitHub repository")};full:=parts[len(parts)-2]+"/"+parts[len(parts)-1];bs,err:=client.Branches(ctx,full);if err!=nil{return err};for _,b:=range bs{fmt.Printf("%s\t%s\n",b.Name,b.SHA)};return nil}
-		if args[1]=="create"{if len(args)<3||len(args)>4{return fmt.Errorf("usage: aicli github branch create <name> [from]")};remote,err:=github.LocalRemote(".");if err!=nil{return err};parts:=strings.Split(strings.TrimSuffix(strings.TrimSuffix(remote,".git"),"/"),"/");if len(parts)<2{return fmt.Errorf("origin is not a GitHub repository")};full:=parts[len(parts)-2]+"/"+parts[len(parts)-1];from:="";if len(args)==4{from=args[3]};if err:=client.CreateBranch(ctx,full,args[2],from);err!=nil{return err};fmt.Println("Branch created:",args[2]);return nil}
+		if args[1]=="list"{full,err:=githubRepoFromOrigin();if err!=nil{return err};bs,err:=client.Branches(ctx,full);if err!=nil{return err};for _,b:=range bs{fmt.Printf("%s\t%s\n",b.Name,b.SHA)};return nil}
+		if args[1]=="create"{if len(args)<3||len(args)>4{return fmt.Errorf("usage: aicli github branch create <name> [from]")};full,err:=githubRepoFromOrigin();if err!=nil{return err};from:="";if len(args)==4{from=args[3]};if err:=client.CreateBranch(ctx,full,args[2],from);err!=nil{return err};fmt.Println("Branch created:",args[2]);return nil}
 	case "pr":
 		if len(args)<2{return fmt.Errorf("usage: aicli github pr list|create|view|comments|comment|review")}
 		full,numberErr:=githubRepoFromOrigin();if numberErr!=nil{return numberErr}
