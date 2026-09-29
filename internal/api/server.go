@@ -184,6 +184,32 @@ func (s *Server) memoryRefresh(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "message": "conversation memory refreshed"})
 }
 
+func (s *Server) events(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet { writeError(w, http.StatusMethodNotAllowed, "method not allowed"); return }
+	flusher, ok := w.(http.Flusher)
+	if !ok { writeError(w, http.StatusInternalServerError, "event streaming is unavailable"); return }
+	events, unsubscribe := s.service.SubscribeStudioEvents()
+	defer unsubscribe()
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache, no-store")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+	_, _ = fmt.Fprint(w, ": connected\n\n")
+	flusher.Flush()
+	for {
+		select {
+		case <-r.Context().Done():
+			return
+		case event, ok := <-events:
+			if !ok { return }
+			data, err := json.Marshal(event)
+			if err != nil { continue }
+			_, _ = fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event.Type, data)
+			flusher.Flush()
+		}
+	}
+}
+
 func (s *Server) chat(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
