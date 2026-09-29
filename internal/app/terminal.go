@@ -351,6 +351,13 @@ func formatTerminalError(err error) string {
 	return fmt.Sprintf("\x1b[38;5;214mError:\x1b[0m %s\n\x1b[38;5;244mDetails are intentionally shown so you can diagnose the problem. Use /status or /help for context.\x1b[0m", err.Error())
 }
 
+func terminalPromptNeedsApproval(prompt string) bool {
+	s := strings.ToLower(strings.TrimSpace(prompt))
+	analysisOnly := strings.Contains(s, "analyze") || strings.Contains(s, "analyse") || strings.Contains(s, "audit") || strings.Contains(s, "review") || strings.Contains(s, "inspect") || strings.Contains(s, "assess") || strings.Contains(s, "suggest") || strings.Contains(s, "recommend") || strings.Contains(s, "improvement")
+	explicitChange := strings.Contains(s, "fix") || strings.Contains(s, "change") || strings.Contains(s, "edit") || strings.Contains(s, "update") || strings.Contains(s, "implement") || strings.Contains(s, "apply") || strings.Contains(s, "build") || strings.Contains(s, "create") || strings.Contains(s, "add") || strings.Contains(s, "remove") || strings.Contains(s, "refactor") || strings.Contains(s, "rewrite") || strings.Contains(s, "replace") || strings.Contains(s, "go ahead")
+	return !analysisOnly || explicitChange
+}
+
 func (a *App) terminalStream(ctx context.Context, prompt, providerName, model, billingMode string, attachments map[string]string) error {
 	history, err := a.Store.History(400)
 	if err != nil {
@@ -388,6 +395,10 @@ func (a *App) terminalStream(ctx context.Context, prompt, providerName, model, b
 		return fmt.Errorf("save user message: %w", err)
 	}
 
+	applyChanges := terminalPromptNeedsApproval(prompt)
+	if !applyChanges {
+		system += "\nThis is an analysis-only request. Do not modify files; report findings and exactly three high-value improvements."
+	}
 	fmt.Printf("\n%sYou%s\n%s\n\n%sFuze%s\n", uiBold, uiReset, prompt, uiAccent, uiReset)
 	progress := newTerminalProgress()
 	progress.update(8, "Connecting")
@@ -451,6 +462,12 @@ func (a *App) terminalStream(ctx context.Context, prompt, providerName, model, b
 
 	if parsed.Plan == nil {
 		return fmt.Errorf("validated edit response did not contain a file plan")
+	}
+	if !applyChanges {
+		content := parsed.Explanation
+		if content == "" { content = parsed.Response }
+		fmt.Printf("%s%s%s\n", uiBold, content, uiReset)
+		return a.Store.AddMessage(provider.Message{Role: "assistant", Content: content})
 	}
 	written, applyErr := generation.ApplyChatPlan(a.Store.Root, *parsed.Plan)
 	if applyErr != nil {
