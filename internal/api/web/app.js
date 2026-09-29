@@ -209,7 +209,7 @@ function ideDebugConnect(){
   if(ideDebugSocket?.readyState===WebSocket.OPEN&&ideDebugInitialized)return Promise.resolve();
   if(ideDebugConnectTimer)return ideDebugConnectTimer;
   const proto=location.protocol==="https:"?"wss":"ws";
-  const ws=new WebSocket(proto+"://"+location.host+"/v1/debug");
+  const debugLanguage=ideLang(ideActive);const ws=new WebSocket(proto+"://"+location.host+"/v1/debug?language="+encodeURIComponent(debugLanguage));
   ideDebugSocket=ws;ideDebugInitialized=false;
   ideUpdateDebugStatus("Connecting to Delve…");
   ideDebugConnectTimer=new Promise((resolve,reject)=>{
@@ -269,8 +269,10 @@ async function ideSendBreakpoints(){if(!ideDebugSocket||ideDebugSocket.readyStat
 async function ideWaitForInitialized(timeoutMs=10000){if(ideDebugInitialized)return;return new Promise((resolve,reject)=>{const started=Date.now();const poll=()=>{if(ideDebugInitialized){resolve();return}if(Date.now()-started>timeoutMs){reject(Error("Debugger did not send initialized event"))}else setTimeout(poll,50)};poll()})}
 async function ideDebugStart(){
   try{
-    if(!ideActive)throw Error("Open a Go file before starting the debugger");
-    if(!/\.go$/i.test(ideActive))throw Error("Studio debugger targets Go files with Delve");
+    if(!ideActive)throw Error("Open a source file before starting the debugger");
+    const language=ideLang(ideActive);
+    const supported=["go","python","javascript","typescript","rust","c","cpp","ruby","php"];
+    if(!supported.includes(language))throw Error("No built-in DAP debugger is configured for "+language+"; configure a DAP adapter for this language");
     const dirty=$(".ide-tab.active")?.classList.contains("dirty");
     if(dirty)await ideSaveFile();
     await ideDebugConnect();
@@ -278,7 +280,18 @@ async function ideDebugStart(){
     if(!workspace)throw Error("Workspace root is unavailable");
     const program=workspace+"/"+ideActive.replace(/^[/\\]+/,"");
     ideUpdateDebugStatus("Launching · "+ideActive);
-    await ideDebugRequest("launch",{mode:"debug",program,cwd:workspace,stopOnEntry:false});
+    const launch={
+      request:"launch",
+      program,
+      cwd:workspace,
+      stopOnEntry:false
+    };
+    if(language==="python")launch.type="python";
+    else if(language==="javascript"||language==="typescript")launch.type="pwa-node";
+    else if(language==="ruby")launch.type="rdbg";
+    else if(language==="php")launch.type="php";
+    else if(language==="go")launch.mode="debug";
+    await ideDebugRequest("launch",launch);
     await ideWaitForInitialized();
     await ideSendBreakpoints();
     try{await ideDebugRequest("setExceptionBreakpoints",{filters:[]})}catch(_){}
