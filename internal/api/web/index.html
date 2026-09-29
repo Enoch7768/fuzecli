@@ -26,7 +26,7 @@
 <main class="main">
 <header class="topbar">
   <div><span class="eyebrow">FUZECLI / LOCAL AGENT WORKBENCH</span><h1 id="pageTitle">Command</h1></div>
-  <div class="top-actions"><select id="providerSelect"></select><select id="modelSelect"></select><select id="billingMode" title="API access mode"><option value="auto">Auto safety</option><option value="free">Free / low quota</option><option value="paid">Paid API key</option></select><button class="icon-btn" id="refreshMemoryBtn" title="Refresh memory">↻ Memory</button><button class="icon-btn" id="refreshBtn" title="Refresh runtime">↻</button></div>
+  <div class="live-metrics" id="liveMetrics" aria-live="polite"><span><b id="liveRequests">0</b> req</span><span><b id="liveTokens">0</b> tok</span><span><b id="liveCost">$0.0000</b></span></div><div class="top-actions"><select id="providerSelect"></select><select id="modelSelect"></select><select id="billingMode" title="API access mode"><option value="auto">Auto safety</option><option value="free">Free / low quota</option><option value="paid">Paid API key</option></select><button class="icon-btn" id="refreshMemoryBtn" title="Refresh memory">↻ Memory</button><button class="icon-btn" id="refreshBtn" title="Refresh runtime">↻</button></div>
 </header>
 
 <section class="view active" id="view-chat">
@@ -72,7 +72,7 @@
 
 <section class="view" id="view-activity"><div class="section-head"><div><span class="eyebrow">SESSION</span><h2>Activity</h2></div><button class="ghost" id="activityRefresh">Refresh</button></div><div class="panel activity-panel"><div id="activityList"></div></div></section>
 
-<section class="view" id="view-telemetry"><div class="section-head"><div><span class="eyebrow">RELIABILITY</span><h2>Provider telemetry</h2><p>Live request health, latency, errors, and token usage from this session.</p></div><button class="ghost" id="telemetryRefresh">Refresh</button></div><div class="telemetry-grid" id="telemetryGrid"></div><div class="panel telemetry-events"><div class="panel-title">Request log <span>last 500 requests</span></div><div id="telemetryEvents"></div></div></section>
+<section class="view" id="view-telemetry"><div class="section-head"><div><span class="eyebrow">RELIABILITY</span><h2>Provider telemetry</h2><p>Live request health, latency, errors, token usage, and provider-reported cost.</p></div><button class="ghost" id="telemetryRefresh">Refresh</button></div><div class="telemetry-grid" id="telemetryGrid"></div><div class="panel telemetry-events"><div class="panel-title">Request log <span>last 500 requests</span></div><div id="telemetryEvents"></div></div></section>
 
 <section class="view" id="view-settings"><div class="section-head"><div><span class="eyebrow">CONTROL</span><h2>Settings</h2></div></div><div class="settings-grid"><div class="panel"><div class="panel-title">Runtime</div><label>Default provider<select id="settingsProvider"></select></label><label>Default model<select id="settingsModel"></select></label><button class="primary" id="saveProvider">Save provider</button></div><div class="panel"><div class="panel-title">Provider keys</div><p class="muted">Credentials stay on the machine. The UI only reports whether a provider is configured.</p><div id="keyRows"></div></div></div></section>
 </main>
