@@ -10,23 +10,23 @@
 <body>
 <div class="app-shell">
 <aside class="sidebar">
-  <div class="brand"><div class="brand-mark">FZ</div><div><strong>FuzeCLI</strong><span>Local agent workbench</span></div></div>
+  <div class="brand"><div class="brand-mark">FZ</div><div><strong>FuzeCLI</strong><span>Developer Studio</span></div></div>
   <div class="workspace-badge"><span class="live-dot"></span><div><b>Local workspace</b><small id="workspacePath">Loading…</small></div></div>
   <nav id="nav">
-    <button class="nav-item active" data-view="chat"><span>⌁</span><div><b>Command</b><small>AI coding session</small></div></button>
-    <button class="nav-item" data-view="ide"><span>⌘</span><div><b>Studio</b><small>Code workspace</small></div></button>
-    <button class="nav-item" data-view="builder"><span>◈</span><div><b>Builder</b><small>Live site studio</small></div></button>
-    <button class="nav-item" data-view="workspace"><span>▦</span><div><b>Files</b><small>Workspace explorer</small></div></button>
-    <button class="nav-item" data-view="activity"><span>◷</span><div><b>Activity</b><small>Session history</small></div></button>
-    <button class="nav-item" data-view="telemetry"><span>◌</span><div><b>Telemetry</b><small>Provider health</small></div></button>
-    <button class="nav-item" data-view="github"><span>⑂</span><div><b>GitHub</b><small>Repos · PRs · Actions</small></div></button>
-    <button class="nav-item" data-view="settings"><span>⚙</span><div><b>Settings</b><small>Runtime controls</small></div></button>
+    <button class="nav-item active" data-view="chat"><span>⌁</span><div><b>Chat</b><small>Build with Fuze</small></div></button>
+    <button class="nav-item" data-view="ide"><span>⌘</span><div><b>Code</b><small>Editor · debug · terminal</small></div></button>
+    <button class="nav-item" data-view="builder"><span>◈</span><div><b>Builder</b><small>Visual editing</small></div></button>
+    <button class="nav-item" data-view="workspace"><span>▦</span><div><b>Files</b><small>Project files</small></div></button>
+    <button class="nav-item" data-view="activity"><span>◷</span><div><b>Activity</b><small>What changed</small></div></button>
+    <button class="nav-item" data-view="telemetry"><span>◌</span><div><b>Usage</b><small>Tokens · cost · health</small></div></button>
+    <button class="nav-item" data-view="github"><span>⑂</span><div><b>GitHub</b><small>Repo · branch · PRs</small></div></button>
+    <button class="nav-item" data-view="settings"><span>⚙</span><div><b>Settings</b><small>Preferences</small></div></button>
   </nav>
   <div class="side-bottom"><div class="status-pill"><i></i><span id="statusText">Connecting</span></div><div class="side-note">Built for people who ship.</div></div>
 </aside>
 <main class="main">
 <header class="topbar">
-  <div><span class="eyebrow">FUZECLI / LOCAL AGENT WORKBENCH</span><h1 id="pageTitle">Command</h1></div>
+  <div><span class="eyebrow">FUZECLI / DEVELOPER STUDIO</span><h1 id="pageTitle">Command</h1></div>
   <div class="top-context" id="topContext"><span id="topContextText">Ready to build</span></div><div class="top-actions"><button class="ghost runtime-btn" id="runtimeBtn" type="button">Runtime</button><button class="icon-btn" id="refreshMemoryBtn" title="Refresh memory">↻ Memory</button><button class="icon-btn" id="refreshBtn" title="Refresh runtime">↻</button></div><div class="runtime-state" hidden><select id="providerSelect"></select><select id="modelSelect"></select><select id="billingMode"><option value="auto">Auto safety</option><option value="free">Free / low quota</option><option value="paid">Paid API key</option></select><span id="liveMetrics"><b id="liveRequests">0</b><b id="liveTokens">0</b><b id="liveCost">$0.0000</b></span></div>
 </header>
 
