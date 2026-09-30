@@ -835,3 +835,305 @@ button:active{transform:translateY(1px)}
   .top-context{display:none!important}
   .runtime-btn{display:none!important}
 }
+
+
+/* Command chat — premium conversational surface */
+body.command-mode{
+  --chat-width:920px;
+  background:var(--bg);
+}
+body.command-mode .main{background:transparent}
+body.command-mode .topbar{
+  padding:18px 30px 12px;
+  border-bottom:0;
+}
+body.command-mode .topbar>div:first-child{
+  min-width:0;
+}
+body.command-mode .topbar .eyebrow{
+  font-size:8px;
+  letter-spacing:.16em;
+  opacity:.52;
+}
+body.command-mode .topbar h1{
+  font-size:14px;
+  letter-spacing:-.02em;
+}
+body.command-mode .top-context{
+  position:absolute;
+  left:50%;
+  transform:translateX(-50%);
+  color:#6e756d;
+  font-size:10px;
+}
+body.command-mode .chat-layout,
+body.command-mode .chat-sessionbar,
+body.command-mode .composer-wrap{
+  width:min(var(--chat-width),calc(100vw - 48px));
+}
+body.command-mode .chat-layout{
+  height:calc(100vh - 132px);
+}
+body.command-mode .welcome{
+  width:min(var(--chat-width),calc(100vw - 48px));
+  padding:76px 0 30px;
+  margin:0 auto;
+}
+body.command-mode .welcome .eyebrow{
+  display:none;
+}
+body.command-mode .welcome h2{
+  margin:0;
+  font-size:46px;
+  line-height:1.06;
+  letter-spacing:-.055em;
+  font-weight:650;
+  color:#f0f1ec;
+}
+body.command-mode .welcome p{
+  margin:14px 0 0;
+  max-width:640px;
+  font-size:13px;
+  line-height:1.7;
+  color:#747a73;
+}
+body.command-mode .quick-actions{
+  margin:22px 0 0;
+  gap:7px;
+}
+body.command-mode .quick-actions button{
+  min-height:32px;
+  padding:7px 12px;
+  border-radius:8px;
+  background:#101315;
+  border-color:#252b2a;
+  color:#9da39c;
+  font-size:10px;
+  transition:all .16s ease;
+}
+body.command-mode .quick-actions button:hover{
+  color:#e6e9e2;
+  border-color:#3a423b;
+  background:#151917;
+  transform:translateY(-1px);
+}
+body.command-mode .quick-actions button::after{
+  content:"";
+}
+body.command-mode .chat-sessionbar{
+  border:0;
+  padding:0 0 8px;
+  min-height:28px;
+}
+body.command-mode .chat-sessionbar>div:first-child{
+  opacity:.55;
+}
+body.command-mode .chat-sessionbar strong{
+  font-size:9px;
+  font-weight:600;
+  letter-spacing:.02em;
+}
+body.command-mode .session-actions{
+  gap:6px;
+}
+body.command-mode .session-actions>span{
+  font-size:9px;
+  color:#626961;
+}
+body.command-mode .session-actions .ghost{
+  border-color:transparent;
+  background:transparent;
+}
+body.command-mode .conversation{
+  padding:26px 0 32px;
+  scrollbar-width:thin;
+  scrollbar-color:#252b29 transparent;
+}
+body.command-mode .conversation::-webkit-scrollbar{width:7px}
+body.command-mode .conversation::-webkit-scrollbar-track{background:transparent}
+body.command-mode .conversation::-webkit-scrollbar-thumb{background:#252b29;border-radius:99px}
+body.command-mode .msg{
+  width:100%;
+  max-width:var(--chat-width);
+  margin:0 auto 34px;
+  display:flex;
+  flex-direction:column;
+  align-items:flex-start;
+}
+body.command-mode .msg.user{
+  align-items:flex-end;
+}
+body.command-mode .msg-head{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  height:24px;
+  margin-bottom:7px;
+  color:#686f68;
+  font-size:9px;
+}
+body.command-mode .msg.user .msg-head{
+  flex-direction:row-reverse;
+}
+body.command-mode .msg-author{
+  letter-spacing:.01em;
+}
+body.command-mode .avatar{
+  width:22px;
+  height:22px;
+  flex:none;
+  display:grid;
+  place-items:center;
+  border-radius:7px;
+  background:#151917;
+  border:1px solid #292f2b;
+  color:#b5bbaf;
+  font-size:8px;
+  font-weight:700;
+}
+body.command-mode .msg.assistant .avatar{
+  color:#d9ff63;
+  border-color:#39432e;
+}
+body.command-mode .bubble{
+  width:100%;
+  max-width:820px;
+  color:#d0d4ce;
+  font-size:13px;
+  line-height:1.78;
+  letter-spacing:-.005em;
+  overflow-wrap:anywhere;
+}
+body.command-mode .msg.user .bubble{
+  width:auto;
+  max-width:min(720px,82%);
+  padding:11px 14px;
+  background:#171b19;
+  border:1px solid #292f2c;
+  border-radius:15px 15px 4px 15px;
+  color:#eef0eb;
+  line-height:1.65;
+}
+body.command-mode .msg.assistant .bubble{
+  padding:0 0 0 30px;
+}
+body.command-mode .msg-actions{
+  display:flex;
+  gap:4px;
+  margin:8px 0 0 30px;
+  opacity:0;
+  transition:opacity .15s ease;
+}
+body.command-mode .msg.assistant:hover .msg-actions{opacity:1}
+body.command-mode .msg-action{
+  border:1px solid #252b29;
+  background:#101315;
+  color:#737a73;
+  border-radius:6px;
+  padding:4px 7px;
+  font:inherit;
+  font-size:8px;
+  cursor:pointer;
+}
+body.command-mode .msg-action:hover{
+  color:#d9ff63;
+  border-color:#3a4530;
+}
+body.command-mode .composer-wrap{
+  padding:8px 0 22px;
+}
+body.command-mode .composer{
+  position:relative;
+  padding:8px;
+  border-radius:17px;
+  background:#111513;
+  border:1px solid #303730;
+  box-shadow:0 18px 60px rgba(0,0,0,.26),0 0 0 1px rgba(217,255,99,.015);
+  transition:border-color .16s ease,box-shadow .16s ease,transform .16s ease;
+}
+body.command-mode .composer:focus-within{
+  border-color:#4a5548;
+  box-shadow:0 22px 70px rgba(0,0,0,.32),0 0 0 1px rgba(217,255,99,.055);
+}
+body.command-mode .composer textarea{
+  min-height:64px;
+  max-height:220px;
+  padding:12px 13px 8px;
+  font-size:13px;
+  line-height:1.6;
+}
+body.command-mode .attachment-bar{
+  min-height:0;
+  padding:2px 5px 3px;
+}
+body.command-mode .attachment-bar:has(#attachmentList:empty){
+  display:none;
+}
+body.command-mode .attachment-chip{
+  background:#191e1a;
+  border-color:#30382f;
+}
+body.command-mode .composer-bar{
+  padding:5px 5px 3px;
+}
+body.command-mode .composer .hint{
+  font-size:9px;
+  color:#606860;
+}
+body.command-mode .composer .send{
+  min-width:76px;
+  height:34px;
+  border-radius:9px;
+  font-size:10px;
+  font-weight:700;
+}
+body.command-mode .chat-empty{
+  margin:0 auto;
+  padding:54px 0 30px;
+}
+body.command-mode .chat-empty-mark{
+  width:30px;
+  height:30px;
+  margin-bottom:12px;
+  border-radius:9px;
+  background:#151917;
+  border:1px solid #30382f;
+  color:#d9ff63;
+  font-size:12px;
+}
+body.command-mode .chat-empty strong{
+  font-size:11px;
+  font-weight:600;
+  color:#a4aaa2;
+}
+body.command-mode .chat-empty span{
+  margin-top:5px;
+  font-size:9px;
+  color:#626961;
+}
+body.command-mode .generation-progress{
+  margin:0 0 8px;
+  border-radius:10px;
+}
+@media(max-width:800px){
+  body.command-mode .topbar{padding:14px 18px 8px}
+  body.command-mode .top-context{display:none}
+  body.command-mode .chat-layout,
+  body.command-mode .chat-sessionbar,
+  body.command-mode .composer-wrap,
+  body.command-mode .welcome{
+    width:calc(100vw - 28px);
+  }
+  body.command-mode .welcome{padding-top:42px}
+  body.command-mode .welcome h2{font-size:34px}
+  body.command-mode .welcome p{font-size:12px}
+  body.command-mode .conversation{padding-top:18px}
+  body.command-mode .msg.user .bubble{max-width:90%}
+  body.command-mode .msg.assistant .bubble{padding-left:0}
+  body.command-mode .msg-actions{margin-left:0;opacity:1}
+}
+@media(prefers-reduced-motion:reduce){
+  body.command-mode .quick-actions button,
+  body.command-mode .composer,
+  body.command-mode .msg-actions{transition:none}
+}
