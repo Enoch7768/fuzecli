@@ -316,6 +316,7 @@ function ideDebugConnect(){
 async function ideSendBreakpoints(){if(!ideDebugSocket||ideDebugSocket.readyState!==WebSocket.OPEN||!ideActive)return;const bp=window.__fuzeBreakpoints||new Map();const lines=[];for(const [key,value] of bp){if(key.startsWith(ideActive+":"))lines.push({line:Number(value.line),column:1})}const workspace=String(cfg?.workspace||"").replace(/[\\/]+$/,"");const absoluteSource=workspace?workspace+"/"+ideActive.replace(/^[/\\]+/,""):ideActive;await ideDebugRequest("setBreakpoints",{source:{path:absoluteSource,name:ideActive,sourceReference:0},breakpoints:lines});}
 async function ideWaitForInitialized(timeoutMs=10000){if(ideDebugInitialized)return;return new Promise((resolve,reject)=>{const started=Date.now();const poll=()=>{if(ideDebugInitialized){resolve();return}if(Date.now()-started>timeoutMs){reject(Error("Debugger did not send initialized event"))}else setTimeout(poll,50)};poll()})}
 async function ideDebugStart(){
+  populateDebugLanguages();
   try{
     if(!ideActive)throw Error("Open a source file before starting the debugger");
     const language=ideLang(ideActive);
@@ -410,6 +411,8 @@ function ideCommandOpen(mode="quick"){const overlay=$("#ideCommandOverlay"),inpu
 function ideCommandClose(){const overlay=$("#ideCommandOverlay");if(overlay)overlay.hidden=true}
 function ideRenderCommandResults(){const overlay=$("#ideCommandOverlay"),input=$("#ideCommandInput"),out=$("#ideCommandResults");if(!overlay||!input||!out)return;const q=input.value.trim().toLowerCase(),mode=overlay.dataset.mode||"quick";const items=mode==="command"?ideCommands.filter(x=>!q||x.label.toLowerCase().includes(q)):ideFiles.filter(x=>!q||x.toLowerCase().includes(q)).slice(0,80).map(path=>({label:path,key:"",run:()=>{ideCommandClose();ideOpenFile(path)}}));out.innerHTML=items.map((x,i)=>'<button class="ide-command-row '+(i===0?"active":"")+'" data-command-index="'+i+'"><span>'+esc(x.label)+'</span><kbd>'+esc(x.key||"")+"</kbd></button>").join("")||'<div class="ide-panel-empty">No matches.</div>';out.__items=items}
 function ideRunCommandIndex(index){const out=$("#ideCommandResults"),item=out?.__items?.[index];if(item){ideCommandClose();item.run()}}
+const IDE_DEBUG_LANGUAGES=[["javascript","JavaScript"],["typescript","TypeScript"],["php","PHP"],["ruby","Ruby"],["html","HTML/CSS"],["python","Python"],["r","R"],["julia","Julia"],["matlab","MATLAB"],["java","Java"],["csharp","C#"],["cobol","COBOL"],["abap","ABAP"],["c","C"],["cpp","C++"],["rust","Rust"],["go","Go"],["assembly","Assembly"],["swift","Swift"],["kotlin","Kotlin"],["dart","Dart"],["sql","SQL"],["shell","Bash / Shell"],["perl","Perl"],["scala","Scala"]];
+function populateDebugLanguages(){const s=$("#ideDebugLanguage");if(!s||s.options.length>1)return;for(const [v,l] of IDE_DEBUG_LANGUAGES){const o=document.createElement("option");o.value=v;o.textContent=l;s.appendChild(o)}}
 function initIDEEvents(){
 document.querySelectorAll("[data-ide-panel]").forEach(b=>b.onclick=async()=>{
   document.querySelectorAll(".ide-rail-btn").forEach(x=>x.classList.toggle("active",x===b));
@@ -452,3 +455,6 @@ window.addEventListener("error",e=>{const message=e.error?.message||e.message||"
 window.addEventListener("unhandledrejection",e=>{const message=e.reason?.message||String(e.reason||"Unhandled promise rejection");toast("Studio error: "+message);});
 
 document.addEventListener("click",e=>{const b=e.target.closest("[data-copy-message]");if(!b)return;const m=b.closest(".msg")?.querySelector(".bubble");if(!m)return;navigator.clipboard?.writeText(m.innerText).then(()=>{b.textContent="Copied";setTimeout(()=>b.textContent="Copy",1200)}).catch(()=>toast("Copy failed"))});initIDEEvents();
+
+function initGithubContext(){const repo=$("#githubRepoSelect"),branch=$("#githubBranchSelect");if(!repo||!branch)return;repo.addEventListener("change",()=>{if(repo.value){$("#githubContextRepo").textContent=repo.value;$("#githubContextMeta").textContent="Repository selected. Choose a branch to work from."}});branch.addEventListener("change",()=>{if(branch.value)$("#githubContextMeta").textContent="Branch "+branch.value+" selected."});$("#githubUseInChat")?.addEventListener("click",()=>{view("chat");const p=$("#prompt");if(p){p.value=(p.value?p.value+"\n\n":"")+"Work with the connected GitHub repository and current branch.";p.focus()}});$("#githubOpenPRContext")?.addEventListener("click",()=>$("#githubCreatePR")?.click())}
+initGithubContext();
