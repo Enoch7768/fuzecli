@@ -33,7 +33,7 @@ func ChatResponseSchema() map[string]any {
 		"type": "object",
 		"additionalProperties": true,
 		"properties": map[string]any{
-			"protocol_version": map[string]any{"type": "string", "const": ResponseProtocolVersion},
+			"protocol_version": map[string]any{"type": "string"},
 			"type":        map[string]any{"type": "string", "enum": []string{"chat", "edit", "command", "analysis", "error", "progress"}},
 			"response":    map[string]any{"type": "string", "description": "Natural-language response for compatibility with the FuzeCLI chat envelope."},
 			"message":     map[string]any{"type": "string", "description": "Natural-language response shown before or alongside file changes."},
@@ -41,7 +41,7 @@ func ChatResponseSchema() map[string]any {
 				"type": "array",
 				"items": map[string]any{
 					"type": "object",
-					"additionalProperties": false,
+					"additionalProperties": true,
 					"properties": map[string]any{
 						"path":       map[string]any{"type": "string"},
 						"content":    map[string]any{"type": "string"},
@@ -200,7 +200,7 @@ func parseChatResponseDocument(clean []byte) (ChatResponse, error) {
 		}
 	}
 	if response.Type != "chat" && response.Type != "edit" {
-		return ChatResponse{}, fmt.Errorf("invalid chat JSON type %q; expected chat or edit", response.Type)
+		response.Type = "chat"
 	}
 		if response.Type == "chat" && message == "" && strings.TrimSpace(response.Explanation) == "" {
 		return ChatResponse{}, errors.New("chat JSON contains neither a message nor an explanation")
