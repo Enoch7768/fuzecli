@@ -44,6 +44,7 @@ type Loop struct {
 	Repair            StepFunc
 	Summarize         StepFunc
 	OnEvent           func(Event)
+	Trace             *Trace
 }
 
 func (l *Loop) Run(ctx context.Context) error {
@@ -111,6 +112,9 @@ func (l *Loop) step(ctx context.Context, phase Phase, attempt int, fn StepFunc) 
 }
 
 func (l *Loop) emit(event Event) {
+	if l.Trace != nil {
+		l.Trace.Add(TaskEvent{Stage: TaskStage(event.Phase), Message: event.Message, Attempt: event.Attempt})
+	}
 	if l.OnEvent != nil {
 		l.OnEvent(event)
 	}
