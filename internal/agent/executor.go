@@ -7,6 +7,7 @@ import (
 
 	"github.com/Enoch7768/fuzecli/internal/generation"
 	"github.com/Enoch7768/fuzecli/internal/transaction"
+	"github.com/Enoch7768/fuzecli/internal/security"
 )
 
 type VerificationResult struct {
@@ -17,6 +18,7 @@ type VerificationResult struct {
 
 type Executor struct {
 	Root string
+	Capabilities security.CapabilitySet
 }
 
 func (e Executor) Execute(plan generation.Plan, verify func() VerificationResult) (VerificationResult, error) {
@@ -26,7 +28,22 @@ func (e Executor) Execute(plan generation.Plan, verify func() VerificationResult
 	tx := transaction.New()
 	changed := make([]string, 0, len(plan.Files))
 
+	if e.Capabilities != nil {
+		if err := e.Capabilities.Require(security.WriteWorkspace); err != nil {
+			return VerificationResult{}, err
+		}
+	}
 	for _, file := range plan.Files {
+		if err := security.ValidateWorkspacePath(e.Root, file.Path, file.Action == "delete"); err != nil {
+			_ = tx.Rollback()
+			return VerificationResult{}, err
+		}
+		if file.Action == "delete" && e.Capabilities != nil {
+			if err := e.Capabilities.Require(security.DeleteFile); err != nil {
+				_ = tx.Rollback()
+				return VerificationResult{}, err
+			}
+		}
 		path, err := generation.Resolve(e.Root, file.Path)
 		if err != nil {
 			_ = tx.Rollback()
