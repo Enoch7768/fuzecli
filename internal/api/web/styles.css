@@ -1139,3 +1139,49 @@ body.command-mode .generation-progress{
 }
 
 .sidebar{position:sticky;top:0;height:100vh;max-height:100vh;overflow:auto;overscroll-behavior:contain}.github-section-head{margin-bottom:14px}.github-context{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;gap:18px;padding:14px 16px}.github-context-main{display:flex;align-items:center;gap:12px;min-width:0}.github-mark{width:36px;height:36px;border-radius:10px;display:grid;place-items:center;background:#151c25;border:1px solid var(--line2);font-size:11px;font-weight:800;letter-spacing:.08em}.github-context-main strong,.github-context-main span{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.github-context-main span{margin-top:3px;color:var(--muted);font-size:12px}.github-context-controls{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}.github-context-controls select{min-width:150px;max-width:220px}.ide-debugbar select{min-width:120px;max-width:170px}@media(max-width:900px){.sidebar{position:fixed;z-index:30;left:0;bottom:0;height:auto;max-height:72px;width:100%;overflow-x:auto;overflow-y:hidden;flex-direction:row;padding:8px;border-right:0;border-top:1px solid var(--line)}.sidebar .brand,.sidebar .workspace-badge,.sidebar .side-bottom{display:none}.sidebar nav{display:flex;gap:6px;width:max-content}.sidebar .nav-item{min-width:54px;padding:8px}.sidebar .nav-item>div{display:none}.main{padding-bottom:76px}.github-context{align-items:flex-start;flex-direction:column}.github-context-controls{justify-content:flex-start;width:100%}}
+
+/* Studio product-quality pass */
+body.command-mode .sidebar{width:210px}
+body.command-mode .main{min-width:0}
+body.command-mode .topbar{height:58px;border-bottom:1px solid rgba(255,255,255,.06)}
+body.command-mode .topbar .eyebrow{opacity:.55}
+body.command-mode .welcome{max-width:920px;padding-top:62px}
+body.command-mode .welcome h2{font-size:clamp(34px,4vw,50px);letter-spacing:-.055em;font-weight:650}
+body.command-mode .welcome p{max-width:620px;font-size:13px;line-height:1.75;color:#7f8b9b}
+body.command-mode .quick-actions button{border-radius:999px;padding:9px 13px;background:#0d131b;border-color:#263342;color:#aeb9c7}
+body.command-mode .quick-actions button:hover{background:#151d27;border-color:#3a4b5f;color:#f1f5f8;transform:translateY(-1px)}
+body.command-mode .chat-layout{max-width:920px}
+body.command-mode .chat-sessionbar{border:0;background:transparent;padding:4px 2px 10px}
+body.command-mode .chat-sessionbar strong{font-weight:600}
+body.command-mode .conversation{padding-top:8px}
+body.command-mode .msg{max-width:780px;margin-bottom:28px}
+body.command-mode .msg.user{margin-left:auto;max-width:690px}
+body.command-mode .msg.user .bubble{background:#171f29;border:1px solid #263342;border-radius:15px 15px 5px 15px;padding:11px 14px}
+body.command-mode .msg.assistant .bubble{padding:2px 0;background:transparent;border:0;line-height:1.78;color:#d8e0e8}
+body.command-mode .msg-head{opacity:.72;margin-bottom:7px}
+body.command-mode .composer-wrap{padding-bottom:28px}
+body.command-mode .composer{background:#0d141c;border:1px solid #2a3746;border-radius:18px;box-shadow:0 18px 55px rgba(0,0,0,.25)}
+body.command-mode .composer:focus-within{border-color:#52657a;box-shadow:0 0 0 3px rgba(217,255,99,.04),0 22px 65px rgba(0,0,0,.3)}
+body.command-mode .composer textarea{min-height:52px;font-size:14px;line-height:1.55}
+body.command-mode .send{border-radius:11px;min-width:74px}
+.ide-shell{background:#080b10}
+.ide-rail{position:sticky;left:0;z-index:4}
+.ide-center{min-width:0;background:#090d13}
+.ide-debugbar{background:#0b1118;border-bottom:1px solid #202b38;gap:5px}
+.ide-debugbar select{background:#111923;color:#dbe4ec;border:1px solid #293746;border-radius:7px;padding:6px 8px;font-size:9px;outline:0}
+.ide-debugbar button{border-radius:7px}
+.ide-debugbar button:hover{border-color:#53667b}
+.ide-ai{border-left:1px solid #202b38;background:#0b1016}
+.ide-ai-head{padding:14px 15px;border-bottom:1px solid #202b38}
+.ide-ai-head .eyebrow{font-size:8px;letter-spacing:.16em;color:#667487}
+.ide-ai-head strong{font-size:12px;font-weight:650;color:#e3e9ef}
+.ide-ai-context{margin:12px;border:1px solid #202b38;border-radius:8px;padding:9px 10px;background:#0d141c;color:#8795a5;font-size:9px}
+.ide-ai-actions{padding:0 12px 12px;display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.ide-ai-actions button{border:1px solid #263443;background:#101720;color:#aeb9c7;border-radius:7px;padding:8px;font-size:9px}
+.ide-ai-actions button:hover{background:#151e29;color:#edf2f7;border-color:#405166}
+.ide-ai-compose{padding:10px 12px;border-top:1px solid #202b38;background:#0a0f15}
+.ide-ai-compose textarea{border-radius:9px;background:#0d141c;border-color:#283646}
+.ide-ai-compose button{border-radius:8px}
+.ide-tabs{background:#0b1016}
+.ide-tab.active{background:#111923;border-top-color:#d9ff63}
+@media(max-width:900px){body.command-mode .sidebar{width:auto}.ide-ai{display:none}.ide-explorer{width:250px}.ide-shell{grid-template-columns:34px 250px minmax(0,1fr)}}
