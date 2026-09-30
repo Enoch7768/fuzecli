@@ -140,7 +140,16 @@ async function githubStatus(){
   }catch(e){$("#githubStatus").className="github-status error";$("#githubStatus").textContent=e.message;return false}
 }
 async function githubRepos(){
-  try{const d=await api("/v1/github/repos");$("#githubRepoList").innerHTML=(d.repositories||[]).map(r=>'<div class="github-item"><div><b>'+esc(r.full_name)+'</b><span>'+esc(r.description||"No description")+'</span></div><a href="'+esc(r.html_url||"#")+'" target="_blank" rel="noopener">Open</a></div>').join("")||'<div class="ide-panel-empty">No repositories found.</div>'}catch(e){$("#githubRepoList").innerHTML='<div class="ide-panel-empty">'+esc(e.message)+'</div>'}
+  try{
+    const d=await api("/v1/github/repos"),items=d.repositories||[],select=$("#githubRepoSelect");
+    if(select){select.innerHTML='<option value="">Repository</option>'+items.map(r=>'<option value="'+esc(r.full_name)+'">'+esc(r.full_name)+'</option>').join("");}
+    $("#githubRepoList").innerHTML=items.map(r=>'<div class="github-item"><div><b>'+esc(r.full_name)+'</b><span>'+esc(r.description||"No description")+'</span></div><a href="'+esc(r.html_url||"#")+'" target="_blank" rel="noopener">Open</a></div>').join("")||'<div class="ide-panel-empty">No repositories found.</div>';
+    if(items[0]&&select&&!select.value){select.value=items[0].full_name;$("#githubContextRepo").textContent=items[0].full_name;await githubBranches(items[0].full_name)}
+  }catch(e){$("#githubRepoList").innerHTML='<div class="ide-panel-empty">'+esc(e.message)+'</div>'}
+}
+async function githubBranches(full){
+  const select=$("#githubBranchSelect");if(!select||!full)return;
+  try{const d=await api("/v1/github/branches?name="+encodeURIComponent(full)),items=d.branches||[];select.innerHTML='<option value="">Branch</option>'+items.map(b=>'<option value="'+esc(b.name||b.ref||b)+'">'+esc(b.name||b.ref||b)+'</option>').join("");if(items[0])select.value=items[0].name||items[0].ref||items[0]}catch(e){select.innerHTML='<option value="">Branches unavailable</option>'}
 }
 async function githubPRs(){
   try{const d=await api("/v1/github/prs");$("#githubPRList").innerHTML=(d.pull_requests||[]).map(p=>'<button class="github-item" data-github-pr="'+p.number+'"><div><b>#'+p.number+" "+esc(p.title)+'</b><span>'+esc(p.head?.ref||"")+" → "+esc(p.base?.ref||"")+" · "+esc(p.state)+'</span></div><span>Open</span></button>').join("")||'<div class="ide-panel-empty">No open pull requests.</div>'}catch(e){$("#githubPRList").innerHTML='<div class="ide-panel-empty">'+esc(e.message)+'</div>'}
@@ -456,5 +465,5 @@ window.addEventListener("unhandledrejection",e=>{const message=e.reason?.message
 
 document.addEventListener("click",e=>{const b=e.target.closest("[data-copy-message]");if(!b)return;const m=b.closest(".msg")?.querySelector(".bubble");if(!m)return;navigator.clipboard?.writeText(m.innerText).then(()=>{b.textContent="Copied";setTimeout(()=>b.textContent="Copy",1200)}).catch(()=>toast("Copy failed"))});initIDEEvents();
 
-function initGithubContext(){const repo=$("#githubRepoSelect"),branch=$("#githubBranchSelect");if(!repo||!branch)return;repo.addEventListener("change",()=>{if(repo.value){$("#githubContextRepo").textContent=repo.value;$("#githubContextMeta").textContent="Repository selected. Choose a branch to work from."}});branch.addEventListener("change",()=>{if(branch.value)$("#githubContextMeta").textContent="Branch "+branch.value+" selected."});$("#githubUseInChat")?.addEventListener("click",()=>{view("chat");const p=$("#prompt");if(p){p.value=(p.value?p.value+"\n\n":"")+"Work with the connected GitHub repository and current branch.";p.focus()}});$("#githubOpenPRContext")?.addEventListener("click",()=>$("#githubCreatePR")?.click())}
+function initGithubContext(){const repo=$("#githubRepoSelect"),branch=$("#githubBranchSelect");if(!repo||!branch)return;repo.addEventListener("change",async()=>{if(repo.value){$("#githubContextRepo").textContent=repo.value;$("#githubContextMeta").textContent="Repository selected. Choose a branch to work from.";await githubBranches(repo.value)}});branch.addEventListener("change",()=>{if(branch.value)$("#githubContextMeta").textContent="Branch "+branch.value+" selected."});$("#githubUseInChat")?.addEventListener("click",()=>{view("chat");const p=$("#prompt");if(p){p.value=(p.value?p.value+"\n\n":"")+"Work with the connected GitHub repository and current branch.";p.focus()}});$("#githubOpenPRContext")?.addEventListener("click",()=>$("#githubCreatePR")?.click())}
 initGithubContext();
