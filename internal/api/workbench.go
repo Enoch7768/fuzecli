@@ -176,53 +176,49 @@ type debugAdapterSpec struct {
 	Command string
 	Args []string
 	LaunchMode string
+	Transport string
+	Setup string
 }
 
 func debugAdapterForLanguage(language string) (debugAdapterSpec, error) {
 	lang := strings.ToLower(strings.TrimSpace(language))
 	envName := "FUZECLI_DEBUG_ADAPTER_" + strings.ToUpper(strings.ReplaceAll(lang, "-", "_"))
 	if command := strings.TrimSpace(os.Getenv(envName)); command != "" {
-		args := strings.Fields(strings.TrimSpace(os.Getenv(envName + "_ARGS")))
-		return debugAdapterSpec{Command: command, Args: args, LaunchMode: "generic"}, nil
+		return debugAdapterSpec{Command: command, Args: strings.Fields(os.Getenv(envName+"_ARGS")), LaunchMode: "generic", Transport: "stdio", Setup: "custom adapter"}, nil
 	}
-	switch lang {
-	case "go":
-		return debugAdapterSpec{Command: "dlv", Args: []string{"dap", "--listen=127.0.0.1:0"}, LaunchMode: "go"}, nil
-	case "python":
-		return debugAdapterSpec{Command: "python", Args: []string{"-m", "debugpy.adapter"}, LaunchMode: "python"}, nil
-	case "javascript", "typescript":
-		if command, err := exec.LookPath("js-debug-adapter"); err == nil {
-			return debugAdapterSpec{Command: command, Args: []string{"--port", "0"}, LaunchMode: "node"}, nil
-		}
-		if command, err := exec.LookPath("js-debug"); err == nil {
-			return debugAdapterSpec{Command: command, Args: []string{"--port", "0"}, LaunchMode: "node"}, nil
-		}
-		return debugAdapterSpec{}, fmt.Errorf("no JavaScript/TypeScript DAP adapter found; install js-debug-adapter or configure FUZECLI_DEBUG_ADAPTER_NODE")
-	case "rust", "c", "cpp":
-		for _, command := range []string{"lldb-dap", "lldb-dap.exe", "gdb"} {
-			if path, err := exec.LookPath(command); err == nil {
-				if strings.EqualFold(filepath.Base(path), "gdb") {
-					return debugAdapterSpec{Command: path, Args: []string{"--interpreter=dap"}, LaunchMode: "native"}, nil
-				}
-				return debugAdapterSpec{Command: path, Args: []string{"--connection", "listen://127.0.0.1:0"}, LaunchMode: "native"}, nil
-			}
-		}
-		return debugAdapterSpec{}, fmt.Errorf("no native DAP adapter found; install lldb-dap or GDB")
-	case "ruby":
-		if command, err := exec.LookPath("rdbg"); err == nil {
-			return debugAdapterSpec{Command: command, Args: []string{"--open", "--port", "0"}, LaunchMode: "ruby"}, nil
-		}
-		return debugAdapterSpec{}, fmt.Errorf("Ruby DAP adapter not found; install rdbg")
-	case "php":
-		if command, err := exec.LookPath("php-debug-adapter"); err == nil {
-			return debugAdapterSpec{Command: command, Args: []string{"--port", "0"}, LaunchMode: "php"}, nil
-		}
-		return debugAdapterSpec{}, fmt.Errorf("PHP DAP adapter not found; install php-debug-adapter")
-	case "java", "kotlin":
-		return debugAdapterSpec{}, fmt.Errorf("%s debugging requires a JVM DAP adapter; configure FUZECLI_DEBUG_ADAPTER_JVM", lang)
-	default:
-		return debugAdapterSpec{}, fmt.Errorf("no DAP adapter configured for %s; configure FUZECLI_DEBUG_ADAPTER_%s", language, strings.ToUpper(strings.ReplaceAll(lang, "-", "_")))
+	profiles := map[string]debugAdapterSpec{
+		"javascript": {Command: "js-debug-adapter", Args: []string{"--stdio"}, LaunchMode: "node", Transport: "stdio", Setup: "Node.js + vscode-js-debug"},
+		"typescript": {Command: "js-debug-adapter", Args: []string{"--stdio"}, LaunchMode: "node", Transport: "stdio", Setup: "Node.js + vscode-js-debug"},
+		"html": {Command: "js-debug-adapter", Args: []string{"--stdio"}, LaunchMode: "browser", Transport: "stdio", Setup: "Browser debugging + vscode-js-debug"},
+		"python": {Command: "python", Args: []string{"-m", "debugpy.adapter"}, LaunchMode: "python", Transport: "stdio", Setup: "Python + debugpy"},
+		"go": {Command: "dlv", Args: []string{"dap"}, LaunchMode: "go", Transport: "stdio", Setup: "Go + Delve"},
+		"rust": {Command: "lldb-dap", LaunchMode: "native", Transport: "stdio", Setup: "Rust + LLDB"},
+		"c": {Command: "lldb-dap", LaunchMode: "native", Transport: "stdio", Setup: "C + LLDB"},
+		"cpp": {Command: "lldb-dap", LaunchMode: "native", Transport: "stdio", Setup: "C++ + LLDB"},
+		"swift": {Command: "lldb-dap", LaunchMode: "native", Transport: "stdio", Setup: "Swift + LLDB"},
+		"assembly": {Command: "lldb-dap", LaunchMode: "native", Transport: "stdio", Setup: "Assembly + LLDB/GDB"},
+		"ruby": {Command: "rdbg", Args: []string{"--open", "--port", "0"}, LaunchMode: "ruby", Transport: "tcp", Setup: "Ruby + rdbg"},
+		"php": {Command: "php-debug-adapter", Args: []string{"--port", "0"}, LaunchMode: "php", Transport: "tcp", Setup: "PHP + Xdebug"},
+		"java": {Command: "java-debug-adapter", LaunchMode: "jvm", Transport: "stdio", Setup: "Java JVM DAP"},
+		"kotlin": {Command: "kotlin-debug-adapter", LaunchMode: "jvm", Transport: "stdio", Setup: "Kotlin JVM DAP"},
+		"scala": {Command: "java-debug-adapter", LaunchMode: "jvm", Transport: "stdio", Setup: "Scala JVM DAP"},
+		"csharp": {Command: "netcoredbg", Args: []string{"--interpreter=vscode"}, LaunchMode: "dotnet", Transport: "stdio", Setup: ".NET + netcoredbg"},
+		"dart": {Command: "dart", Args: []string{"debug_adapter"}, LaunchMode: "dart", Transport: "stdio", Setup: "Dart SDK DAP"},
+		"julia": {Command: "julia", Args: []string{"--startup-file=no", "-e", "using DebugAdapter; DebugAdapter.run_debugger()"}, LaunchMode: "julia", Transport: "stdio", Setup: "Julia + DebugAdapter.jl"},
+		"perl": {Command: "perl-debug-adapter", LaunchMode: "perl", Transport: "stdio", Setup: "Perl DAP adapter"},
+		"r": {Command: "r-debug-adapter", LaunchMode: "r", Transport: "stdio", Setup: "R DAP adapter"},
+		"cobol": {Command: "cobol-debug-adapter", LaunchMode: "cobol", Transport: "stdio", Setup: "COBOL DAP adapter"},
+		"abap": {Command: "abap-debug-adapter", LaunchMode: "abap", Transport: "stdio", Setup: "ABAP debug bridge"},
+		"matlab": {Command: "matlab-debug-adapter", LaunchMode: "matlab", Transport: "stdio", Setup: "MATLAB debug bridge"},
+		"sql": {Command: "sql-debug-adapter", LaunchMode: "sql", Transport: "stdio", Setup: "database-specific SQL debug adapter"},
+		"shell": {Command: "bash-debug-adapter", LaunchMode: "shell", Transport: "stdio", Setup: "Shell DAP adapter"},
 	}
+	spec, ok := profiles[lang]
+	if !ok { return debugAdapterSpec{}, fmt.Errorf("no debugger profile configured for %s", language) }
+	if _, err := exec.LookPath(spec.Command); err != nil {
+		return debugAdapterSpec{}, fmt.Errorf("%s debugger is configured but %q is not installed or not on PATH", language, spec.Command)
+	}
+	return spec, nil
 }
 
 func startDAP(root, language string) (net.Conn, *exec.Cmd, error) {
