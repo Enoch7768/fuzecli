@@ -97,13 +97,13 @@ func (l *Loop) Run(ctx context.Context) error {
 }
 
 func (l *Loop) step(ctx context.Context, phase Phase, attempt int, fn StepFunc) error {
+	if fn == nil {
+		return nil
+	}
 	if err := ctx.Err(); err != nil {
 		return err
 	}
 	l.emit(Event{Phase: phase, Attempt: attempt, Message: string(phase) + " started"})
-	if fn == nil {
-		return nil
-	}
 	if err := fn(ctx); err != nil {
 		return err
 	}
