@@ -20,7 +20,10 @@ FuzeCLI (`aicli.exe`) is a Windows-native Go CLI for chatting with multiple AI p
 - Local HTTP API for applications and integrations.
 - MCP server over stdio for MCP-compatible AI clients.
 - Repository intelligence with Go AST analysis, source indexing, symbol search, relevance-ranked context, and secret-aware file exclusion.
-- Structured diagnostics for verification failures.
+- Structured diagnostics for verification failures, including stage and severity.
+- Versioned Fuze response protocol with compatibility normalization.
+- Explicit agent capability boundaries and a bounded task trace.
+- Relevance-ranked workspace search over indexed source and symbols.
 - Workspace snapshots and restoration for recoverable changes.
 - Git status and diff inspection without modifying the repository.
 - Model-provided shell commands are informational only and are never executed automatically; verification commands pass through an explicit security policy.
@@ -214,6 +217,7 @@ docs/WEB.md
 docs/TERMINAL.md
 docs/SECURITY.md
 docs/ARCHITECTURE.md
+docs/AGENT_ENGINE.md
 evals/README.md
 .aicliignore.example
 ```
