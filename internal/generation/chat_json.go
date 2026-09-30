@@ -32,8 +32,6 @@ func ChatResponseSchema() map[string]any {
 	return map[string]any{
 		"type": "object",
 		"additionalProperties": true,
-		"required": []string{},
-
 		"properties": map[string]any{
 			"protocol_version": map[string]any{"type": "string", "const": ResponseProtocolVersion},
 			"type":        map[string]any{"type": "string", "enum": []string{"chat", "edit", "command", "analysis", "error", "progress"}},
