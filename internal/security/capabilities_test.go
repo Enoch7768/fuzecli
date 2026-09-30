@@ -13,7 +13,7 @@ func TestSafeCapabilities(t *testing.T) {
 }
 
 func TestValidateWorkspacePath(t *testing.T) {
-	for _, path := range []string{"../secret", "/tmp/secret", "C:\secret", "src/../secret"} {
+	for _, path := range []string{"../secret", "/tmp/secret", "C:\\secret", "src/../secret"} {
 		if err := ValidateWorkspacePath("workspace", path, false); err == nil {
 			t.Fatalf("expected path rejection for %q", path)
 		}
