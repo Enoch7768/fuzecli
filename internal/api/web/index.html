@@ -27,7 +27,7 @@
 <main class="main">
 <header class="topbar">
   <div><span class="eyebrow">FUZECLI / LOCAL AGENT WORKBENCH</span><h1 id="pageTitle">Command</h1></div>
-  <div class="top-context" id="topContext"><span id="topContextText">Ready to build</span></div><div class="top-actions"><button class="ghost runtime-btn" id="runtimeBtn" type="button">Runtime</button><button class="icon-btn" id="refreshMemoryBtn" title="Refresh memory">↻ Memory</button><button class="icon-btn" id="refreshBtn" title="Refresh runtime">↻</button></div>
+  <div class="top-context" id="topContext"><span id="topContextText">Ready to build</span></div><div class="top-actions"><button class="ghost runtime-btn" id="runtimeBtn" type="button">Runtime</button><button class="icon-btn" id="refreshMemoryBtn" title="Refresh memory">↻ Memory</button><button class="icon-btn" id="refreshBtn" title="Refresh runtime">↻</button></div><div class="runtime-state" hidden><select id="providerSelect"></select><select id="modelSelect"></select><select id="billingMode"><option value="auto">Auto safety</option><option value="free">Free / low quota</option><option value="paid">Paid API key</option></select><span id="liveMetrics"><b id="liveRequests">0</b><b id="liveTokens">0</b><b id="liveCost">$0.0000</b></span></div>
 </header>
 
 <section class="view active" id="view-chat">
