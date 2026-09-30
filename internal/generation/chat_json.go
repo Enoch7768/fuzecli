@@ -32,8 +32,11 @@ func ChatResponseSchema() map[string]any {
 	return map[string]any{
 		"type": "object",
 		"additionalProperties": true,
+		"required": []string{},
+
 		"properties": map[string]any{
-			"type":        map[string]any{"type": "string", "enum": []string{"chat", "edit"}},
+			"protocol_version": map[string]any{"type": "string", "const": ResponseProtocolVersion},
+			"type":        map[string]any{"type": "string", "enum": []string{"chat", "edit", "command", "analysis", "error", "progress"}},
 			"response":    map[string]any{"type": "string", "description": "Natural-language response for compatibility with the FuzeCLI chat envelope."},
 			"message":     map[string]any{"type": "string", "description": "Natural-language response shown before or alongside file changes."},
 			"files": map[string]any{
