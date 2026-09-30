@@ -9,6 +9,10 @@ import (
 type Phase string
 
 const (
+	PhaseUnderstand Phase = "understand"
+	PhaseInspect    Phase = "inspect"
+	PhaseFormat     Phase = "format"
+	PhaseSummarize  Phase = "summarize"
 	PhasePlan      Phase = "plan"
 	PhaseContext   Phase = "context"
 	PhaseEdit      Phase = "edit"
@@ -29,12 +33,16 @@ type StepFunc func(context.Context) error
 
 type Loop struct {
 	MaxRepairAttempts int
+	Understand        StepFunc
 	Plan              StepFunc
 	Context           StepFunc
+	Inspect           StepFunc
 	Edit              StepFunc
+	Format            StepFunc
 	Verify            StepFunc
 	Diagnose          StepFunc
 	Repair            StepFunc
+	Summarize         StepFunc
 	OnEvent           func(Event)
 }
 
@@ -47,18 +55,30 @@ func (l *Loop) Run(ctx context.Context) error {
 		return errors.New("max repair attempts cannot be negative")
 	}
 
+	if err := l.step(ctx, PhaseUnderstand, 0, l.Understand); err != nil {
+		return fmt.Errorf("understand: %w", err)
+	}
 	if err := l.step(ctx, PhasePlan, 0, l.Plan); err != nil {
 		return fmt.Errorf("plan: %w", err)
 	}
 	if err := l.step(ctx, PhaseContext, 0, l.Context); err != nil {
 		return fmt.Errorf("context: %w", err)
 	}
+	if err := l.step(ctx, PhaseInspect, 0, l.Inspect); err != nil {
+		return fmt.Errorf("inspect: %w", err)
+	}
 	if err := l.step(ctx, PhaseEdit, 0, l.Edit); err != nil {
 		return fmt.Errorf("edit: %w", err)
 	}
 
 	for attempt := 0; ; attempt++ {
+		if err := l.step(ctx, PhaseFormat, attempt, l.Format); err != nil {
+			return fmt.Errorf("format: %w", err)
+		}
 		if err := l.step(ctx, PhaseVerify, attempt, l.Verify); err == nil {
+			if err := l.step(ctx, PhaseSummarize, attempt, l.Summarize); err != nil {
+				return fmt.Errorf("summarize: %w", err)
+			}
 			l.emit(Event{Phase: PhaseComplete, Attempt: attempt, Message: "agent task verified"})
 			return nil
 		} else if attempt >= l.MaxRepairAttempts {
