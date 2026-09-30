@@ -163,6 +163,62 @@ func searchWordRune(b byte) bool {
 		b == '_' || b == '$'
 }
 
+
+func (i *Index) RankedSearch(query string, limit int) ([]Match, error) {
+	if limit <= 0 {
+		limit = 20
+	}
+	matches, err := i.Search(query, 1000)
+	if err != nil {
+		return nil, err
+	}
+	terms := strings.Fields(strings.ToLower(strings.TrimSpace(query)))
+	type scored struct {
+		match Match
+		score int
+	}
+	scoredMatches := make([]scored, 0, len(matches))
+	for _, match := range matches {
+		score := 0
+		path := strings.ToLower(match.Path)
+		text := strings.ToLower(match.Text)
+		for _, term := range terms {
+			if strings.Contains(path, term) {
+				score += 8
+			}
+			if strings.Contains(text, term) {
+				score += 4
+			}
+			for _, symbol := range match.Symbols {
+				if strings.Contains(strings.ToLower(symbol.Name), term) {
+					score += 12
+				}
+			}
+		}
+		if strings.Contains(path, "test") {
+			score += 2
+		}
+		scoredMatches = append(scoredMatches, scored{match: match, score: score})
+	}
+	sort.SliceStable(scoredMatches, func(a, b int) bool {
+		if scoredMatches[a].score == scoredMatches[b].score {
+			if scoredMatches[a].match.Path == scoredMatches[b].match.Path {
+				return scoredMatches[a].match.Line < scoredMatches[b].match.Line
+			}
+			return scoredMatches[a].match.Path < scoredMatches[b].match.Path
+		}
+		return scoredMatches[a].score > scoredMatches[b].score
+	})
+	if len(scoredMatches) > limit {
+		scoredMatches = scoredMatches[:limit]
+	}
+	out := make([]Match, len(scoredMatches))
+	for n := range scoredMatches {
+		out[n] = scoredMatches[n].match
+	}
+	return out, nil
+}
+
 func (i *Index) FindSymbols(query string, limit int) []Symbol {
 	q := strings.ToLower(strings.TrimSpace(query))
 	if limit <= 0 {
