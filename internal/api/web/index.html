@@ -32,11 +32,10 @@
 
 <section class="view active" id="view-chat">
   <div class="welcome">
-    <span class="eyebrow">COMMAND</span>
-    <h2>What can I help you build?</h2>
-    <p>Describe what you want changed, created, explained, or reviewed. FuzeCLI works from your real workspace and keeps you in control.</p>
-    <div class="quick-actions"><button data-prompt="Analyze this project and tell me the three most valuable improvements you would suggest before changing anything.">Analyze</button><button data-prompt="Inspect the current website and improve its visual quality without changing its core functionality.">Polish</button><button data-prompt="Review this project for important bugs and security issues. Do not change anything yet.">Review</button></div>
-  </div>
+    <h2>What are you working on?</h2>
+    <p>Describe the goal in your own words. Fuze can inspect the workspace, explain what it finds, and make changes when you ask.</p>
+    <div class="quick-actions"><button data-prompt="Analyze this project and tell me the three most valuable improvements you would suggest before changing anything.">Analyze project</button><button data-prompt="Inspect the current website and improve its visual quality without changing its core functionality.">Improve design</button><button data-prompt="Review this project for important bugs and security issues. Do not change anything yet.">Find problems</button></div>
+  </div>iv>
   <div class="chat-sessionbar"><div><strong id="sessionTitle">New chat</strong></div><div class="session-actions"><span id="chatState">Ready</span><button class="ghost small" id="newSessionBtn" type="button">New chat</button><button class="ghost small" id="stopBtn" type="button" disabled>Stop</button></div></div>
   <div class="chat-layout"><div class="conversation" id="messages"><div class="chat-empty" id="chatEmpty"><div class="chat-empty-mark">F</div><strong>Start with a goal.</strong><span>Ask naturally. You can attach files when they matter.</span></div></div>
     <div class="generation-progress" id="generationProgress" hidden><div class="progress-meta"><span id="progressLabel">Preparing</span><span id="progressPercent">0%</span></div><div class="progress-track"><div class="progress-fill" id="progressFill"></div></div></div>
