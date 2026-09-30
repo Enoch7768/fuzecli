@@ -163,3 +163,15 @@ func TestRegistryUsesProviderContract(t *testing.T) {
 		t.Fatalf("registry stream = %q done=%v", got, done)
 	}
 }
+
+func TestProviderConformanceCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	p := conformanceProvider{name: "test"}
+	if _, err := p.Send(ctx, []Message{{Role: "user", Content: "hello"}}, RequestOptions{Model: "test-model"}); !errors.Is(err, context.Canceled) {
+		t.Fatalf("Send cancellation error = %v", err)
+	}
+	if _, err := p.ListModels(ctx); !errors.Is(err, context.Canceled) {
+		t.Fatalf("ListModels cancellation error = %v", err)
+	}
+}
