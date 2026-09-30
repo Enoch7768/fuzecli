@@ -221,40 +221,41 @@ func debugAdapterForLanguage(language string) (debugAdapterSpec, error) {
 	return spec, nil
 }
 
-func startDAP(root, language string) (net.Conn, *exec.Cmd, error) {
+type dapPipe struct { io.Reader; io.Writer; closeFn func() error }
+func (d *dapPipe) Close() error { if d.closeFn != nil { return d.closeFn() }; return nil }
+
+func startDAP(root, language string) (io.ReadWriteCloser, *exec.Cmd, error) {
 	spec, err := debugAdapterForLanguage(language)
-	if err != nil {
-		return nil, nil, err
-	}
+	if err != nil { return nil, nil, err }
 	cmd := exec.Command(spec.Command, spec.Args...)
 	cmd.Dir = root
 	cmd.Env = os.Environ()
+	if spec.Transport == "stdio" {
+		in, err := cmd.StdinPipe()
+		if err != nil { return nil, nil, err }
+		out, err := cmd.StdoutPipe()
+		if err != nil { _ = in.Close(); return nil, nil, err }
+		if err := cmd.Start(); err != nil { _ = in.Close(); _ = out.Close(); return nil, nil, fmt.Errorf("start %s debugger: %w", spec.Command, err) }
+		return &dapPipe{Reader: out, Writer: in, closeFn: func() error { _ = in.Close(); _ = out.Close(); return nil }}, cmd, nil
+	}
 	stderr, err := cmd.StderrPipe()
 	if err != nil { return nil, nil, err }
-	if err := cmd.Start(); err != nil { return nil, nil, fmt.Errorf("start delve: %w", err) }
+	if err := cmd.Start(); err != nil { return nil, nil, fmt.Errorf("start %s debugger: %w", spec.Command, err) }
 	ready := make(chan struct{})
 	var once sync.Once
 	var listenerAddr string
 	go func() {
 		sc := bufio.NewScanner(stderr)
 		for sc.Scan() {
-			line := sc.Text()
-			fields := strings.Fields(line)
+			fields := strings.Fields(sc.Text())
 			for i, field := range fields {
 				candidate := strings.Trim(strings.TrimSpace(field), ",")
 				if strings.HasPrefix(candidate, "127.0.0.1:") || strings.HasPrefix(candidate, "[::1]:") {
-					if listenerAddr == "" {
-						listenerAddr = candidate
-						once.Do(func(){ close(ready) })
-					}
+					if listenerAddr == "" { listenerAddr = candidate; once.Do(func(){ close(ready) }) }
 					continue
 				}
 				if i+1 < len(fields) && (field == "127.0.0.1:" || field == "[::1]:") {
-					if listenerAddr == "" {
-						listenerAddr = strings.Trim(fields[i+1], ",")
-						once.Do(func(){ close(ready) })
-					}
-					continue
+					if listenerAddr == "" { listenerAddr = strings.Trim(fields[i+1], ","); once.Do(func(){ close(ready) }) }
 				}
 			}
 		}
@@ -264,20 +265,13 @@ func startDAP(root, language string) (net.Conn, *exec.Cmd, error) {
 	case <-ready:
 	case <-time.After(5 * time.Second):
 		_ = cmd.Process.Kill()
-		return nil, nil, errors.New("Delve did not expose a DAP listener within 5 seconds; install Delve and ensure dlv is on PATH")
+		return nil, nil, fmt.Errorf("%s debugger did not expose a TCP DAP listener within 5 seconds", language)
 	}
-	if listenerAddr == "" {
-		_ = cmd.Process.Kill()
-		return nil, nil, errors.New("Delve exited without exposing a DAP listener; install Delve and ensure dlv is on PATH")
-	}
+	if listenerAddr == "" { _ = cmd.Process.Kill(); return nil, nil, fmt.Errorf("%s debugger exited without exposing a DAP listener", language) }
 	conn, err := net.DialTimeout("tcp", listenerAddr, 5*time.Second)
-	if err != nil {
-		_ = cmd.Process.Kill()
-		return nil, nil, fmt.Errorf("connect to Delve DAP listener %s: %w", listenerAddr, err)
-	}
+	if err != nil { _ = cmd.Process.Kill(); return nil, nil, fmt.Errorf("connect to %s debugger: %w", language, err) }
 	return conn, cmd, nil
 }
-
 func bridgeDAP(ws *websocket.Conn, root, language string) error {
 	conn, cmd, err := startDAP(root, language)
 	if err != nil { return err }
