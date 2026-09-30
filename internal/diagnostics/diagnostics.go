@@ -17,12 +17,15 @@ const (
 )
 
 type Diagnostic struct {
-	Kind    Kind
-	File    string
-	Line    int
-	Column  int
-	Message string
-	Raw     string
+	Kind     Kind
+	Stage    string
+	Severity string
+	ExitCode int
+	File     string
+	Line     int
+	Column   int
+	Message  string
+	Raw      string
 }
 
 func Parse(output string) []Diagnostic {
@@ -36,7 +39,8 @@ func Parse(output string) []Diagnostic {
 			continue
 		}
 		m := re.FindStringSubmatch(line)
-		d := Diagnostic{Message: line, Raw: line, Kind: classify(line)}
+		kind := classify(line)
+		d := Diagnostic{Message: line, Raw: line, Kind: kind, Stage: stageFor(kind), Severity: severityFor(kind)}
 		if len(m) == 5 {
 			fmt.Sscanf(m[2], "%d", &d.Line)
 			if m[3] != "" {
@@ -53,6 +57,28 @@ func Parse(output string) []Diagnostic {
 		result = append(result, d)
 	}
 	return result
+}
+
+func stageFor(kind Kind) string {
+	switch kind {
+	case Compile:
+		return "verify"
+	case Test:
+		return "verify"
+	case Runtime:
+		return "runtime"
+	default:
+		return "unknown"
+	}
+}
+
+func severityFor(kind Kind) string {
+	switch kind {
+	case Compile, Test, Runtime:
+		return "error"
+	default:
+		return "info"
+	}
 }
 
 func classify(s string) Kind {
