@@ -452,7 +452,7 @@ func (a *App) terminalStream(ctx context.Context, prompt, providerName, model, b
 		if strings.TrimSpace(content) == "" {
 			return fmt.Errorf("validated chat response did not contain assistant content")
 		}
-		fmt.Printf("%s%s%s\n", uiTextLabel(""), content, uiReset)
+		fmt.Printf("%s%s%s\n", uiBold, content, uiReset)
 		if err := a.Store.AddMessage(provider.Message{Role: "assistant", Content: content}); err != nil {
 			return fmt.Errorf("save assistant response: %w", err)
 		}
