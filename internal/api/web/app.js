@@ -257,9 +257,9 @@ function ideDebugConnect(){
   if(ideDebugSocket?.readyState===WebSocket.OPEN&&ideDebugInitialized)return Promise.resolve();
   if(ideDebugConnectTimer)return ideDebugConnectTimer;
   const proto=location.protocol==="https:"?"wss":"ws";
-  const debugLanguage=ideLang(ideActive);const ws=new WebSocket(proto+"://"+location.host+"/v1/debug?language="+encodeURIComponent(debugLanguage));
+  const debugLanguage=$("#ideDebugLanguage")?.value||ideLang(ideActive);const ws=new WebSocket(proto+"://"+location.host+"/v1/debug?language="+encodeURIComponent(debugLanguage));
   ideDebugSocket=ws;ideDebugInitialized=false;
-  ideUpdateDebugStatus("Connecting to Delve…");
+  ideUpdateDebugStatus("Connecting to debugger…");
   ideDebugConnectTimer=new Promise((resolve,reject)=>{
     let settled=false,initializedEvent=false;
     const finish=(ok,err)=>{
@@ -269,7 +269,7 @@ function ideDebugConnect(){
     const timer=setTimeout(()=>{try{ws.close()}catch(_){};finish(false,Error("Debugger connection timed out"))},10000);
     ws.onopen=async()=>{
       try{
-        await ideDebugRequest("initialize",{clientID:"fuzecli-studio",clientName:"FuzeCLI Studio",adapterID:"delve",linesStartAt1:true,columnsStartAt1:true,supportsVariableType:true,supportsRunInTerminalRequest:true});
+        await ideDebugRequest("initialize",{clientID:"fuzecli-studio",clientName:"FuzeCLI Studio",adapterID:debugLanguage,linesStartAt1:true,columnsStartAt1:true,supportsVariableType:true,supportsRunInTerminalRequest:true});
         ideDebugInitialized=true;
         ideUpdateDebugStatus("DAP initialized · waiting for launch");
         finish(true);
@@ -319,8 +319,8 @@ async function ideDebugStart(){
   populateDebugLanguages();
   try{
     if(!ideActive)throw Error("Open a source file before starting the debugger");
-    const language=ideLang(ideActive);
-    const supported=["go","python","javascript","typescript","rust","c","cpp","ruby","php","java","kotlin"];
+    const language=$("#ideDebugLanguage")?.value||ideLang(ideActive);
+    const supported=["javascript","typescript","php","ruby","html","python","r","julia","matlab","java","csharp","cobol","abap","c","cpp","rust","go","assembly","swift","kotlin","dart","sql","shell","perl","scala"];
     if(!supported.includes(language))throw Error("Studio cannot infer a debugger for "+language+"; configure FUZECLI_DEBUG_ADAPTER_"+language.toUpperCase().replace(/-/g,"_")+" for a DAP adapter");
     const dirty=$(".ide-tab.active")?.classList.contains("dirty");
     if(dirty)await ideSaveFile();
