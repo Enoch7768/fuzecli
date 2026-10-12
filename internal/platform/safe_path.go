@@ -2,6 +2,8 @@ package platform
 
 import (
 	"errors"
+	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -42,4 +44,21 @@ func rejectSymlinkComponents(root, target string) error {
 		}
 	}
 	return nil
+}
+
+
+func readBoundedFile(path string, maxBytes int64) ([]byte, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	data, err := io.ReadAll(io.LimitReader(file, maxBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(data)) > maxBytes {
+		return nil, fmt.Errorf("file exceeds %d-byte platform limit", maxBytes)
+	}
+	return data, nil
 }
