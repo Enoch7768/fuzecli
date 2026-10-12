@@ -53,7 +53,7 @@ func LoadSkills(root string) ([]Skill, error) {
 		if !info.Mode().IsRegular() {
 			return nil, errors.New("skill content must be a regular file")
 		}
-		data, err := os.ReadFile(skillPath)
+		data, err := readBoundedFile(skillPath, 64<<10)
 		if err != nil {
 			return nil, err
 		}
@@ -92,7 +92,7 @@ func loadMarkdownDirectory(root, dir string) ([]Rule, error) {
 		if !info.Mode().IsRegular() {
 			return nil, errors.New("rule content must be a regular file")
 		}
-		data, err := os.ReadFile(path)
+		data, err := readBoundedFile(path, 64<<10)
 		if err != nil {
 			return nil, err
 		}
