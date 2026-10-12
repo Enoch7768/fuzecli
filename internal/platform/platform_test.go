@@ -4,7 +4,6 @@ import (
 	"context"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 )
@@ -120,8 +119,5 @@ func TestProofRejectsPathTraversal(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(root, "escape.json")); !os.IsNotExist(err) {
 		t.Fatalf("unexpected path outside proof directory; err=%v", err)
-	}
-	if strings.Contains(filepath.Clean(root), string(filepath.Separator)+".."+string(filepath.Separator)) {
-		t.Fatal("unexpected test root")
 	}
 }
