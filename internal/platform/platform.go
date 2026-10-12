@@ -25,7 +25,7 @@ func NewManager(root string) *Manager {
 }
 
 func (m *Manager) Context(ctx context.Context, prompt string, rules []Rule, skills []Skill) string {
-	if m == nil || ctx.Err() != nil {
+	if m == nil || ctx == nil || ctx.Err() != nil {
 		return ""
 	}
 	memory, err := LoadMemory(m.MemoryRoot)
