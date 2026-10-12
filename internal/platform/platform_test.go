@@ -137,3 +137,49 @@ func TestGraphRejectsImportsOutsideWorkspace(t *testing.T) {
 		t.Fatalf("expected absolute import to be rejected, got %q", got)
 	}
 }
+
+
+func TestPlatformStorageRejectsSymlinks(t *testing.T) {
+	root := t.TempDir()
+	external := filepath.Join(t.TempDir(), "private.json")
+	if err := os.WriteFile(external, []byte(`{"architecture":"outside"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(root, ".aicli")
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(dir, "memory.json")
+	if err := os.Symlink(external, link); err != nil {
+		t.Skipf("symlink creation unavailable: %v", err)
+	}
+	if _, err := LoadMemory(root); err == nil {
+		t.Fatal("LoadMemory followed a symlink outside the workspace")
+	}
+	if err := SaveMemory(root, ProjectMemory{Architecture: "overwrite"}); err == nil {
+		t.Fatal("SaveMemory accepted a symlinked target")
+	}
+	data, err := os.ReadFile(external)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != `{"architecture":"outside"}` {
+		t.Fatalf("external target was modified: %s", data)
+	}
+}
+
+func TestBrowserInspectionRejectsNonLocalTargets(t *testing.T) {
+	for _, rawURL := range []string{
+		"https://example.com",
+		"http://127.0.0.1@example.com",
+		"file:///etc/passwd",
+		"http://192.0.2.1",
+	} {
+		if _, err := InspectURL(context.Background(), rawURL); err == nil {
+			t.Errorf("InspectURL accepted unsafe URL %q", rawURL)
+		}
+	}
+	if _, err := dialLoopback(context.Background(), "tcp", "192.0.2.1:80"); err == nil {
+		t.Fatal("dialLoopback accepted a non-loopback IP")
+	}
+}
