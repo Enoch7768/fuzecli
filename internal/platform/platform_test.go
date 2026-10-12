@@ -183,3 +183,31 @@ func TestBrowserInspectionRejectsNonLocalTargets(t *testing.T) {
 		t.Fatal("dialLoopback accepted a non-loopback IP")
 	}
 }
+
+
+func TestRulesRejectSymlinksAndOversizedFiles(t *testing.T) {
+	root := t.TempDir()
+	rulesDir := filepath.Join(root, ".aicli", "rules")
+	if err := os.MkdirAll(rulesDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	external := filepath.Join(t.TempDir(), "private.md")
+	if err := os.WriteFile(external, []byte("private content"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(external, filepath.Join(rulesDir, "external.md")); err != nil {
+		t.Skipf("symlink creation unavailable: %v", err)
+	}
+	if _, err := LoadRules(root); err == nil {
+		t.Fatal("LoadRules followed a symlink outside the workspace")
+	}
+	if err := os.Remove(filepath.Join(rulesDir, "external.md")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(rulesDir, "large.md"), make([]byte, (64<<10)+1), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadRules(root); err == nil {
+		t.Fatal("LoadRules accepted a file larger than its configured limit")
+	}
+}
