@@ -86,8 +86,8 @@ func (m *Manager) Context(ctx context.Context, prompt string, rules []Rule, skil
 	if len(skills) > 0 {
 		out.WriteString("\nAvailable skills:\n")
 		for _, skill := range skills {
-			if ctx.Err() != nil {
-				break
+			if err := ctx.Err(); err != nil {
+				return "", err
 			}
 			out.WriteString("\n[")
 			out.WriteString(skill.Name)
@@ -99,7 +99,7 @@ func (m *Manager) Context(ctx context.Context, prompt string, rules []Rule, skil
 	const maxContextBytes = 48 << 10
 	result := out.String()
 	if len(result) > maxContextBytes {
-		result = result[:maxContextBytes] + "\n[Project platform context truncated at 48 KiB.]"
+		result = strings.ToValidUTF8(result[:maxContextBytes], "") + "\n[Project platform context truncated at 48 KiB.]"
 	}
 	_ = prompt
 	return result, nil
