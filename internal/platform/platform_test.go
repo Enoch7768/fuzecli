@@ -121,3 +121,19 @@ func TestProofRejectsPathTraversal(t *testing.T) {
 		t.Fatalf("unexpected path outside proof directory; err=%v", err)
 	}
 }
+
+
+func TestGraphRejectsImportsOutsideWorkspace(t *testing.T) {
+	root := t.TempDir()
+	outside := filepath.Join(filepath.Dir(root), "outside.go")
+	if err := os.WriteFile(outside, []byte("package outside"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(outside)
+	if got := resolveImport(root, "main.go", "../outside.go"); got != "" {
+		t.Fatalf("expected outside import to be rejected, got %q", got)
+	}
+	if got := resolveImport(root, "main.go", outside); got != "" {
+		t.Fatalf("expected absolute import to be rejected, got %q", got)
+	}
+}
