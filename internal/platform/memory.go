@@ -34,7 +34,7 @@ func LoadMemory(root string) (ProjectMemory, error) {
 	if !info.Mode().IsRegular() {
 		return ProjectMemory{}, errors.New("project memory must be a regular file")
 	}
-	data, err := os.ReadFile(path)
+	data, err := readBoundedFile(path, 256<<10)
 	if err != nil {
 		return ProjectMemory{}, err
 	}
@@ -64,6 +64,9 @@ func SaveMemory(root string, memory ProjectMemory) error {
 	data, err := json.MarshalIndent(memory, "", "  ")
 	if err != nil {
 		return err
+	}
+	if len(data) > 256<<10 {
+		return errors.New("project memory exceeds 256 KiB")
 	}
 	tmp := path + "." + uuid.NewString() + ".tmp"
 	file, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
