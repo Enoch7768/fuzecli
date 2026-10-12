@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/Enoch7768/fuzecli/internal/generation"
+	"github.com/Enoch7768/fuzecli/internal/platform"
 )
 
 type Server struct {
@@ -69,6 +70,14 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/v1/lsp", s.lsp)
 	mux.HandleFunc("/v1/debug", s.debug)
 	mux.HandleFunc("/v1/github", s.githubRoutes)
+	mux.HandleFunc("/v1/platform", s.platformState)
+	mux.HandleFunc("/v1/graph", s.graph)
+	mux.HandleFunc("/v1/memory", s.memory)
+	mux.HandleFunc("/v1/jobs", s.jobs)
+	mux.HandleFunc("/v1/autocomplete", s.autocomplete)
+	mux.HandleFunc("/v1/browser/inspect", s.browserInspect)
+	mux.HandleFunc("/v1/review", s.review)
+	mux.HandleFunc("/v1/proof", s.proof)
 	return s.securityHeaders(s.origin(s.auth(requestContext(s.rateLimit(mux)))))
 }
 
@@ -677,4 +686,102 @@ func (s *Server) debug(w http.ResponseWriter, r *http.Request) {
 	if err != nil { return }
 	if err := bridgeDAP(conn, s.service.Root(), language); err != nil { _ = conn.WriteJSON(map[string]any{"type":"error","message":err.Error()}) }
 	_ = conn.Close()
+}
+
+
+func (s *Server) platformState(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet { writeError(w, http.StatusMethodNotAllowed, "method not allowed"); return }
+	value, err := s.service.PlatformState()
+	if err != nil { writeError(w, classifyServiceError(err), err.Error()); return }
+	writeJSON(w, http.StatusOK, value)
+}
+
+func (s *Server) graph(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet { writeError(w, http.StatusMethodNotAllowed, "method not allowed"); return }
+	value, err := s.service.ContextGraph()
+	if err != nil { writeError(w, classifyServiceError(err), err.Error()); return }
+	writeJSON(w, http.StatusOK, value)
+}
+
+func (s *Server) memory(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost { writeError(w, http.StatusMethodNotAllowed, "method not allowed"); return }
+	var value platform.ProjectMemory
+	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 256<<10))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&value); err != nil { writeError(w, http.StatusBadRequest, "invalid memory: "+err.Error()); return }
+	if err := s.service.SaveMemory(value); err != nil { writeError(w, classifyServiceError(err), err.Error()); return }
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "memory": value})
+}
+
+func (s *Server) jobs(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodGet {
+		id := strings.TrimSpace(r.URL.Query().Get("id"))
+		if id == "" {
+			if s.service == nil || s.service.App == nil || s.service.App.Platform == nil { writeError(w, http.StatusServiceUnavailable, "platform not initialized"); return }
+			writeJSON(w, http.StatusOK, s.service.App.Platform.Jobs.List())
+			return
+		}
+		job, ok := s.service.Job(id)
+		if !ok { writeError(w, http.StatusNotFound, "job not found"); return }
+		writeJSON(w, http.StatusOK, job)
+		return
+	}
+	if r.Method != http.MethodPost { writeError(w, http.StatusMethodNotAllowed, "method not allowed"); return }
+	r.Body = http.MaxBytesReader(w, r.Body, 2<<20)
+	var req ChatRequest
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&req); err != nil { writeError(w, http.StatusBadRequest, "invalid job request: "+err.Error()); return }
+	if strings.TrimSpace(req.Prompt) == "" { writeError(w, http.StatusBadRequest, "prompt is required"); return }
+	job, err := s.service.StartBackgroundJob(r.Context(), req)
+	if err != nil { writeError(w, classifyServiceError(err), err.Error()); return }
+	writeJSON(w, http.StatusAccepted, job)
+}
+
+func (s *Server) autocomplete(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost { writeError(w, http.StatusMethodNotAllowed, "method not allowed"); return }
+	var req struct {
+		Provider string `json:"provider,omitempty"`
+		Model string `json:"model,omitempty"`
+		Language string `json:"language,omitempty"`
+		Prefix string `json:"prefix"`
+		Suffix string `json:"suffix,omitempty"`
+	}
+	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 256<<10))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&req); err != nil { writeError(w, http.StatusBadRequest, "invalid completion request: "+err.Error()); return }
+	value, err := s.service.Autocomplete(r.Context(), req.Provider, req.Model, req.Language, req.Prefix, req.Suffix)
+	if err != nil { writeError(w, classifyServiceError(err), err.Error()); return }
+	writeJSON(w, http.StatusOK, map[string]string{"completion": value})
+}
+
+func (s *Server) browserInspect(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost { writeError(w, http.StatusMethodNotAllowed, "method not allowed"); return }
+	var req struct { URL string `json:"url"` }
+	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 32<<10))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&req); err != nil { writeError(w, http.StatusBadRequest, "invalid browser inspection request: "+err.Error()); return }
+	value, err := s.service.InspectURL(r.Context(), req.URL)
+	if err != nil { writeError(w, http.StatusBadRequest, err.Error()); return }
+	writeJSON(w, http.StatusOK, value)
+}
+
+func (s *Server) review(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost { writeError(w, http.StatusMethodNotAllowed, "method not allowed"); return }
+	var req struct { Diff string `json:"diff"` }
+	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 2<<20))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&req); err != nil { writeError(w, http.StatusBadRequest, "invalid review request: "+err.Error()); return }
+	writeJSON(w, http.StatusOK, s.service.ReviewDiff(req.Diff))
+}
+
+func (s *Server) proof(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost { writeError(w, http.StatusMethodNotAllowed, "method not allowed"); return }
+	var value platform.Proof
+	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 256<<10))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&value); err != nil { writeError(w, http.StatusBadRequest, "invalid proof: "+err.Error()); return }
+	saved, err := s.service.SaveProof(value)
+	if err != nil { writeError(w, classifyServiceError(err), err.Error()); return }
+	writeJSON(w, http.StatusCreated, saved)
 }

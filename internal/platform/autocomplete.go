@@ -1,0 +1,4 @@
+package platform
+
+import("context";"errors";"strings";"github.com/Enoch7768/fuzecli/internal/provider")
+func Complete(ctx context.Context,registry *provider.Registry,providerName,model,language,prefix,suffix string)(string,error){if registry==nil{return "",errors.New("provider registry is nil")};if strings.TrimSpace(prefix)==""{return "",nil};msgs:=[]provider.Message{{Role:"system",Content:"You are FuzeCLI inline code completion. Return only code to insert at the cursor. Never explain, fence, or repeat existing code."},{Role:"user",Content:"Language: "+language+"\nCode before cursor:\n"+prefix+"\nCode after cursor:\n"+suffix}};resp,err:=registry.Send(ctx,providerName,msgs,provider.RequestOptions{Model:model,Temperature:0,MaxTokens:512});if err!=nil{return "",err};return strings.TrimSpace(resp.Content),nil}

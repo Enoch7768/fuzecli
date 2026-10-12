@@ -17,6 +17,7 @@ import (
 	"github.com/Enoch7768/fuzecli/internal/config"
 	"github.com/Enoch7768/fuzecli/internal/generation"
 	"github.com/Enoch7768/fuzecli/internal/provider"
+	"github.com/Enoch7768/fuzecli/internal/platform"
 )
 
 const MaxAttachmentBytes = 2 << 20
@@ -115,6 +116,15 @@ func (s *Service) Chat(ctx context.Context, req ChatRequest) (ChatResponse, erro
 	attachments, err := s.ReadAttachments(req.Files); if err != nil { return ChatResponse{}, err }
 	system := generation.SessionSystemPrompt() + "\n\nSTRUCTURED RESPONSE CONTRACT: Return one JSON object for every request. For conversation use type=chat with response (or compatible message/content/text). For workspace changes use type=edit with plan.files containing path, action, and complete content; include explanation when useful. Never truncate file content. The parser accepts compatible field aliases, but prefer the canonical contract.\n\nYou are FuzeCLI, a practical coding assistant. Use the session response contract above for every response and never ask the user to provide source files that FuzeCLI already supplied."
 	if workspaceContext != "" { system += "\nRelevant workspace files read from disk:\n" + workspaceContext }
+	if s.App.Platform != nil {
+		rules, ruleErr := platform.LoadRules(s.App.Store.Root)
+		if ruleErr != nil { return ChatResponse{}, fmt.Errorf("load project rules: %w", ruleErr) }
+		skills, skillErr := platform.LoadSkills(s.App.Store.Root)
+		if skillErr != nil { return ChatResponse{}, fmt.Errorf("load project skills: %w", skillErr) }
+		extra, contextErr := s.App.Platform.Context(ctx, req.Prompt, rules, skills)
+		if contextErr != nil { return ChatResponse{}, fmt.Errorf("load project platform context: %w", contextErr) }
+		if extra != "" { system += "\nFuze project platform context:\n" + extra }
+	}
 	if len(attachments) > 0 {
 		system += "\nThe user attached the following workspace files for this request. These attachments are authoritative input. The provider receives their extracted UTF-8 text directly in the request. MIME type and size are included so you know exactly what is available. Binary or unsupported formats are rejected instead of silently omitted:\n"
 		for _, file := range attachments { system += "\n" + attachmentSummary(file) + "\n" }
@@ -429,4 +439,77 @@ func (s *Service) SetProvider(name, model string) error {
 	c.Providers[name] = p
 	c.DefaultProvider = name
 	return config.Save(c)
+}
+
+
+func (s *Service) PlatformState() (map[string]any, error) {
+	if s == nil || s.App == nil || s.App.Platform == nil || s.App.Store == nil {
+		return nil, errors.New("platform not initialized")
+	}
+	memory, err := platform.LoadMemory(s.App.Store.Root)
+	if err != nil { return nil, err }
+	rules, err := platform.LoadRules(s.App.Store.Root)
+	if err != nil { return nil, err }
+	skills, err := platform.LoadSkills(s.App.Store.Root)
+	if err != nil { return nil, err }
+	graph, err := platform.BuildGraph(s.App.Store.Root)
+	if err != nil { return nil, err }
+	return map[string]any{"memory": memory, "rules": rules, "skills": skills, "graph": graph, "workspaces": s.App.Platform.Workspaces.List(), "jobs": s.App.Platform.Jobs.List()}, nil
+}
+
+func (s *Service) SaveMemory(memory platform.ProjectMemory) error {
+	if s == nil || s.App == nil || s.App.Store == nil { return errors.New("workspace not initialized") }
+	return platform.SaveMemory(s.App.Store.Root, memory)
+}
+
+func (s *Service) StartBackgroundJob(ctx context.Context, req ChatRequest) (platform.BackgroundJob, error) {
+	if s == nil || s.App == nil || s.App.Platform == nil {
+		return platform.BackgroundJob{}, errors.New("platform not initialized")
+	}
+	if ctx == nil {
+		return platform.BackgroundJob{}, errors.New("job context is required")
+	}
+	jobContext, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Minute)
+	job, err := s.App.Platform.Jobs.Start(jobContext, req.Prompt, func(ctx context.Context, progress func(string)) (string, error) {
+		defer cancel()
+		progress("agent started")
+		req.Apply = false
+		result, err := s.Chat(ctx, req)
+		if err != nil {
+			return "", err
+		}
+		progress("response generated")
+		return result.Content, nil
+	})
+	if err != nil {
+		cancel()
+		return platform.BackgroundJob{}, err
+	}
+	return job, nil
+}
+
+func (s *Service) Job(id string) (platform.BackgroundJob, bool) {
+	if s == nil || s.App == nil || s.App.Platform == nil { return platform.BackgroundJob{}, false }
+	return s.App.Platform.Jobs.Get(id)
+}
+
+func (s *Service) Autocomplete(ctx context.Context, providerName, model, language, prefix, suffix string) (string, error) {
+	if s == nil || s.App == nil { return "", errors.New("application not initialized") }
+	return platform.Complete(ctx, s.App.Registry, providerName, model, language, prefix, suffix)
+}
+
+func (s *Service) InspectURL(ctx context.Context, rawURL string) (platform.BrowserSession, error) {
+	return platform.InspectURL(ctx, rawURL)
+}
+
+func (s *Service) ReviewDiff(diff string) platform.Review { return platform.ReviewDiff(diff) }
+
+func (s *Service) ContextGraph() (platform.ContextGraph, error) {
+	if s == nil || s.App == nil || s.App.Store == nil { return platform.ContextGraph{}, errors.New("workspace not initialized") }
+	return platform.BuildGraph(s.App.Store.Root)
+}
+
+func (s *Service) SaveProof(proof platform.Proof) (platform.Proof, error) {
+	if s == nil || s.App == nil || s.App.Store == nil { return platform.Proof{}, errors.New("workspace not initialized") }
+	return platform.SaveProof(s.App.Store.Root, proof)
 }

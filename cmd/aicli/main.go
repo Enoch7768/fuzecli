@@ -17,6 +17,9 @@ import (
 	"github.com/Enoch7768/fuzecli/internal/github"
 	"github.com/Enoch7768/fuzecli/internal/mcpserver"
 	"github.com/Enoch7768/fuzecli/internal/profile"
+	gitworkspace "github.com/Enoch7768/fuzecli/internal/git"
+	"github.com/Enoch7768/fuzecli/internal/platform"
+	"github.com/Enoch7768/fuzecli/internal/provider"
 )
 
 var version = "Revision 2.4"
@@ -80,6 +83,12 @@ func run(args []string) error {
 		return gitStatusCommand()
 	case "diff":
 		return gitDiffCommand()
+	case "platform":
+		return platformCommand()
+	case "review":
+		return reviewCommand()
+	case "benchmark":
+		return benchmarkCommand(args[1:])
 	case "help", "--help", "-h":
 		return usage()
 	default:
@@ -750,6 +759,61 @@ func workspaceInitialized(root string) bool {
 	return err == nil && !info.IsDir()
 }
 
+func platformCommand() error {
+	a, err := app.Load()
+	if err != nil { return err }
+	defer a.Close()
+	if err := a.AttachWorkspace("."); err != nil { return err }
+	memory, err := platform.LoadMemory(a.Store.Root)
+	if err != nil { return err }
+	rules, err := platform.LoadRules(a.Store.Root)
+	if err != nil { return err }
+	skills, err := platform.LoadSkills(a.Store.Root)
+	if err != nil { return err }
+	graph, err := platform.BuildGraph(a.Store.Root)
+	if err != nil { return err }
+	value := map[string]any{"memory": memory, "rules": rules, "skills": skills, "graph": graph, "workspaces": a.Platform.Workspaces.List(), "jobs": a.Platform.Jobs.List()}
+	data, err := json.MarshalIndent(value, "", "  ")
+	if err != nil { return err }
+	fmt.Println(string(data))
+	return nil
+}
+
+func reviewCommand() error {
+	a, err := app.Load()
+	if err != nil { return err }
+	defer a.Close()
+	if err := a.AttachWorkspace("."); err != nil { return err }
+	diff, err := gitworkspace.Diff(a.Store.Root, false)
+	if err != nil { return err }
+	review := platform.ReviewDiff(diff)
+	data, err := json.MarshalIndent(review, "", "  ")
+	if err != nil { return err }
+	fmt.Println(string(data))
+	if !review.Passed { return fmt.Errorf("review found blocking findings") }
+	return nil
+}
+
+func benchmarkCommand(args []string) error {
+	prompt := strings.TrimSpace(strings.Join(args, " "))
+	if prompt == "" { return fmt.Errorf("usage: aicli benchmark <task>") }
+	a, err := app.Load()
+	if err != nil { return err }
+	defer a.Close()
+	if len(a.Config.FallbackOrder) == 0 { return fmt.Errorf("no provider candidates configured") }
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	results := platform.RunBenchmark(ctx, prompt, "", a.Config.FallbackOrder, func(ctx context.Context, name string, opts provider.RequestOptions) (provider.Response, error) {
+		response, err := a.Registry.Send(ctx, name, []provider.Message{{Role: "user", Content: prompt}}, opts)
+		if err != nil { return provider.Response{}, err }
+		return *response, nil
+	})
+	data, err := json.MarshalIndent(results, "", "  ")
+	if err != nil { return err }
+	fmt.Println(string(data))
+	return nil
+}
+
 func usage() error {
 	fmt.Println(`FuzeCLI - AI coding workspace for developers
 
@@ -763,7 +827,10 @@ Developer tools:
   aicli debug                        Safe diagnostic report for troubleshooting
   aicli doctor                       Check provider and workspace health
   aicli status                       Inspect Git/workspace status
-  aicli diff                         Review current changes
+  aicli diff                         Inspect current changes
+  aicli platform                     Show project memory, rules, skills, graph and jobs
+  aicli review                       Review current Git diff for local risks
+  aicli benchmark "task"             Compare configured providers on a task
   aicli models --provider gemini     List available models
   aicli history                      View recent conversation history
   aicli snapshot                     Create a local recovery snapshot
