@@ -2,6 +2,7 @@ package platform
 
 import (
 	"context"
+	"errors"
 	"strings"
 )
 
@@ -100,10 +101,10 @@ func (m *Manager) Context(ctx context.Context, prompt string, rules []Rule, skil
 
 func (m *Manager) Validate() error {
 	if m == nil {
-		return context.Canceled
+		return errors.New("platform manager is nil")
 	}
 	if strings.TrimSpace(m.MemoryRoot) == "" {
-		return context.Canceled
+		return errors.New("platform manager has no workspace root")
 	}
 	return nil
 }
