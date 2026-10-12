@@ -802,8 +802,12 @@ Already initialized?
   Use aicli setup when you want to change your AI configuration.
   
 Caution
-  FuzeCLI(AiCli) is not responsible for any of the AI providers misebehaviours or errors. 
+  FuzeCLI(AiClI) is not responsible for any of the AI providers misebehaviours or errors. 
   So for errors concerning AI, Please contact your AI provider. 
-  While this CLI can work on free commands for maximum perfomance, we recommend that you pay for the subscription to avoid errors concerning tokens, usage limits, tpm, and rate limits. `)
+  While this CLI can work on free commands for maximum perfomance, we recommend that you pay for the subscription to avoid errors concerning tokens, usage limits, tpm, and rate limits.
+  Remeber to check your AI provider's documentation for more information on how to use their services effectively.
+  Make sure that your API key is valid and has the necessary permissions to access the provider's services.
+  If you encounter any issues or have questions, please reach out to the FuzeCLI support team or consult the documentation for assistance.
+`)
 	return nil
 }
