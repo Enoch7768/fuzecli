@@ -49,6 +49,9 @@ func SaveProof(root string, proof Proof) (Proof, error) {
 	if err != nil {
 		return Proof{}, fmt.Errorf("encode proof: %w", err)
 	}
+	if len(data) > 256<<10 {
+		return Proof{}, errors.New("proof exceeds 256 KiB")
+	}
 	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
 	if err != nil {
 		return Proof{}, fmt.Errorf("create proof: %w", err)
@@ -83,7 +86,7 @@ func LoadProof(root, id string) (Proof, error) {
 	if !info.Mode().IsRegular() {
 		return Proof{}, errors.New("proof must be a regular file")
 	}
-	data, err := os.ReadFile(path)
+	data, err := readBoundedFile(path, 256<<10)
 	if err != nil {
 		return Proof{}, err
 	}
