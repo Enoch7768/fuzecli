@@ -24,13 +24,19 @@ func NewManager(root string) *Manager {
 	return manager
 }
 
-func (m *Manager) Context(ctx context.Context, prompt string, rules []Rule, skills []Skill) string {
-	if m == nil || ctx == nil || ctx.Err() != nil {
-		return ""
+func (m *Manager) Context(ctx context.Context, prompt string, rules []Rule, skills []Skill) (string, error) {
+	if m == nil {
+		return "", errors.New("platform manager is nil")
+	}
+	if ctx == nil {
+		return "", errors.New("platform context is required")
+	}
+	if err := ctx.Err(); err != nil {
+		return "", err
 	}
 	memory, err := LoadMemory(m.MemoryRoot)
 	if err != nil {
-		return ""
+		return "", err
 	}
 	var out strings.Builder
 	appendSection := func(title, content string) {
@@ -67,8 +73,8 @@ func (m *Manager) Context(ctx context.Context, prompt string, rules []Rule, skil
 	if len(rules) > 0 {
 		out.WriteString("\nProject rules:\n")
 		for _, rule := range rules {
-			if ctx.Err() != nil {
-				break
+			if err := ctx.Err(); err != nil {
+				return "", err
 			}
 			out.WriteString("\n[")
 			out.WriteString(rule.Name)
@@ -96,7 +102,7 @@ func (m *Manager) Context(ctx context.Context, prompt string, rules []Rule, skil
 		result = result[:maxContextBytes] + "\n[Project platform context truncated at 48 KiB.]"
 	}
 	_ = prompt
-	return result
+	return result, nil
 }
 
 func (m *Manager) Validate() error {
