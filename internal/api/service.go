@@ -461,16 +461,29 @@ func (s *Service) SaveMemory(memory platform.ProjectMemory) error {
 }
 
 func (s *Service) StartBackgroundJob(ctx context.Context, req ChatRequest) (platform.BackgroundJob, error) {
-	if s == nil || s.App == nil || s.App.Platform == nil { return platform.BackgroundJob{}, errors.New("platform not initialized") }
-	jobContext := context.WithoutCancel(ctx)
-	return s.App.Platform.Jobs.Start(jobContext, req.Prompt, func(ctx context.Context, progress func(string)) (string, error) {
+	if s == nil || s.App == nil || s.App.Platform == nil {
+		return platform.BackgroundJob{}, errors.New("platform not initialized")
+	}
+	if ctx == nil {
+		return platform.BackgroundJob{}, errors.New("job context is required")
+	}
+	jobContext, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Minute)
+	job, err := s.App.Platform.Jobs.Start(jobContext, req.Prompt, func(ctx context.Context, progress func(string)) (string, error) {
+		defer cancel()
 		progress("agent started")
 		req.Apply = false
 		result, err := s.Chat(ctx, req)
-		if err != nil { return "", err }
+		if err != nil {
+			return "", err
+		}
 		progress("response generated")
 		return result.Content, nil
 	})
+	if err != nil {
+		cancel()
+		return platform.BackgroundJob{}, err
+	}
+	return job, nil
 }
 
 func (s *Service) Job(id string) (platform.BackgroundJob, bool) {
