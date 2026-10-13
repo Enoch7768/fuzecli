@@ -345,6 +345,20 @@ func isStructuredJSONCompatibilityError(err error) bool {
 	return false
 }
 
+func isJSONModeCompatibilityError(err error) bool {
+	var providerErr *ProviderError
+	if !errors.As(err, &providerErr) || providerErr.Kind != ErrorBadRequest {
+		return false
+	}
+	message := strings.ToLower(providerErr.Error())
+	for _, marker := range []string{"json not accepted", "json mode", "json_object", "application/json", "response format", "response_format", "does not support json"} {
+		if strings.Contains(message, marker) {
+			return true
+		}
+	}
+	return isStructuredJSONCompatibilityError(err)
+}
+
 func isRetryableProviderError(err error) bool {
 	return errors.Is(err, ErrRateLimited) || errors.Is(err, ErrProviderUnavailable)
 }
