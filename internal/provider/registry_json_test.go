@@ -108,3 +108,94 @@ func TestRegistryFallsBackWhenProviderRejectsJSONMode(t *testing.T) {
 		t.Fatalf("provider calls = %d, want 2", p.calls)
 	}
 }
+
+
+type emptyThenValidProvider struct {
+	calls int
+}
+
+func (p *emptyThenValidProvider) Name() string { return "empty-test" }
+func (p *emptyThenValidProvider) ListModels(context.Context) ([]string, error) { return []string{"test-model"}, nil }
+func (p *emptyThenValidProvider) Stream(context.Context, []Message, RequestOptions) (<-chan StreamChunk, error) {
+	return nil, &ProviderError{Kind: ErrorBadRequest, Provider: p.Name(), Message: "stream not used"}
+}
+func (p *emptyThenValidProvider) Send(context.Context, []Message, RequestOptions) (*Response, error) {
+	p.calls++
+	if p.calls == 1 {
+		return &Response{Content: "   ", Model: "test-model", ProviderName: p.Name()}, nil
+	}
+	return &Response{Content: "Recovered response", Model: "test-model", ProviderName: p.Name()}, nil
+}
+
+func TestRegistryRetriesEmptyResponse(t *testing.T) {
+	p := &emptyThenValidProvider{}
+	r := NewRegistry([]string{"empty-test"}, map[string]string{"empty-test": "test-model"}, p)
+	got, err := r.Send(context.Background(), "empty-test", []Message{{Role: "user", Content: "hello"}}, RequestOptions{Model: "test-model"})
+	if err != nil {
+		t.Fatalf("Send returned error: %v", err)
+	}
+	if got == nil || got.Content != "Recovered response" {
+		t.Fatalf("unexpected recovered response: %#v", got)
+	}
+	if p.calls != 2 {
+		t.Fatalf("provider calls = %d, want 2", p.calls)
+	}
+}
+
+type unavailableModelProvider struct{}
+
+func (p *unavailableModelProvider) Name() string { return "unavailable-test" }
+func (p *unavailableModelProvider) ListModels(context.Context) ([]string, error) { return nil, nil }
+func (p *unavailableModelProvider) Stream(context.Context, []Message, RequestOptions) (<-chan StreamChunk, error) {
+	return nil, &ProviderError{Kind: ErrorModelNotFound, Provider: p.Name(), Message: "model not found"}
+}
+func (p *unavailableModelProvider) Send(context.Context, []Message, RequestOptions) (*Response, error) {
+	return nil, &ProviderError{Kind: ErrorModelNotFound, Provider: p.Name(), Message: "model not found"}
+}
+
+type fallbackSuccessProvider struct{}
+
+func (p *fallbackSuccessProvider) Name() string { return "fallback-test" }
+func (p *fallbackSuccessProvider) ListModels(context.Context) ([]string, error) { return []string{"test-model"}, nil }
+func (p *fallbackSuccessProvider) Stream(context.Context, []Message, RequestOptions) (<-chan StreamChunk, error) {
+	return nil, &ProviderError{Kind: ErrorBadRequest, Provider: p.Name(), Message: "stream not used"}
+}
+func (p *fallbackSuccessProvider) Send(context.Context, []Message, RequestOptions) (*Response, error) {
+	return &Response{Content: "Fallback response", Model: "test-model", ProviderName: p.Name()}, nil
+}
+
+func TestRegistryFallsBackWhenModelIsUnavailable(t *testing.T) {
+	primary := &unavailableModelProvider{}
+	fallback := &fallbackSuccessProvider{}
+	r := NewRegistry([]string{"unavailable-test", "fallback-test"}, map[string]string{"unavailable-test": "bad-model", "fallback-test": "test-model"}, primary, fallback)
+	got, err := r.Send(context.Background(), "unavailable-test", []Message{{Role: "user", Content: "hello"}}, RequestOptions{Model: "bad-model"})
+	if err != nil {
+		t.Fatalf("Send returned error: %v", err)
+	}
+	if got == nil || got.Content != "Fallback response" || got.ProviderName != "fallback-test" {
+		t.Fatalf("unexpected fallback response: %#v", got)
+	}
+}
+
+type deadlineProvider struct{}
+
+func (p *deadlineProvider) Name() string { return "deadline-test" }
+func (p *deadlineProvider) ListModels(context.Context) ([]string, error) { return []string{"test-model"}, nil }
+func (p *deadlineProvider) Stream(context.Context, []Message, RequestOptions) (<-chan StreamChunk, error) {
+	return nil, context.DeadlineExceeded
+}
+func (p *deadlineProvider) Send(ctx context.Context, _ []Message, _ RequestOptions) (*Response, error) {
+	<-ctx.Done()
+	return nil, ctx.Err()
+}
+
+func TestRegistryReturnsPromptlyWhenRequestTimesOut(t *testing.T) {
+	p := &deadlineProvider{}
+	r := NewRegistry([]string{"deadline-test"}, map[string]string{"deadline-test": "test-model"}, p)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+	defer cancel()
+	_, err := r.Send(ctx, "deadline-test", []Message{{Role: "user", Content: "hello"}}, RequestOptions{Model: "test-model"})
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("error = %v, want deadline exceeded", err)
+	}
+}
