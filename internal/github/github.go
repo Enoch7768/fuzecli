@@ -16,7 +16,7 @@ import (
  "time"
 )
 
-type Client struct{ Token, BaseURL string; HTTP *http.Client }
+type Client struct{ Token, BaseURL string; HTTP *http.Client; DisableCLI bool }
 type Repository struct{ ID int64 `json:"id"`; Name string `json:"name"`; FullName string `json:"full_name"`; Description string `json:"description"`; HTMLURL string `json:"html_url"`; CloneURL string `json:"clone_url"`; SSHURL string `json:"ssh_url"`; DefaultBranch string `json:"default_branch"`; Private bool `json:"private"`; Archived bool `json:"archived"` }
 type Branch struct{Name string `json:"name"`; SHA string `json:"sha"`}
 type PullRequest struct{ Number int `json:"number"`; Title string `json:"title"`; Body string `json:"body"`; State string `json:"state"`; Draft bool `json:"draft"`; HTMLURL string `json:"html_url"`; Head struct{Ref string `json:"ref"`; SHA string `json:"sha"`} `json:"head"`; Base struct{Ref string `json:"ref"`; SHA string `json:"sha"`} `json:"base"`; User struct{Login string `json:"login"`} `json:"user"` }
@@ -35,6 +35,7 @@ func New(token string) *Client {
 func (c *Client) Authenticated() bool {
 	if c == nil { return false }
 	if strings.TrimSpace(c.Token) != "" { return true }
+	if c.DisableCLI { return false }
 	if _, err := exec.LookPath("gh"); err != nil { return false }
 	return exec.Command("gh", "auth", "status", "--hostname", "github.com").Run() == nil
 }
@@ -48,6 +49,7 @@ func (c *Client) do(ctx context.Context, method, path string, body, out any) err
 		if err != nil { return fmt.Errorf("encode GitHub request: %w", err) }
 	}
 	if strings.TrimSpace(c.Token) == "" {
+		if c.DisableCLI { return errors.New("GitHub is disconnected; connect an account in the GitHub panel") }
 		if _, err := exec.LookPath("gh"); err != nil {
 			return errors.New("GitHub is not authenticated; run 'aicli github auth login' or set GITHUB_TOKEN")
 		}
