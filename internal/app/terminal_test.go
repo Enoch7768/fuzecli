@@ -9,6 +9,7 @@ func TestTerminalPromptUsesPlainChatUnlessChangeIsRequested(t *testing.T) {
 	}{
 		{prompt: "Hello, how are you?", want: false},
 		{prompt: "Explain how Go interfaces work", want: false},
+		{prompt: "How do I create a login page?", want: false},
 		{prompt: "Analyze this code and recommend improvements", want: false},
 		{prompt: "Fix the bug in main.go", want: true},
 		{prompt: "Create a new login page", want: true},
