@@ -201,3 +201,37 @@ func TestRegistryReturnsPromptlyWhenRequestTimesOut(t *testing.T) {
 		t.Fatalf("error = %v, want deadline exceeded", err)
 	}
 }
+
+
+type emptyStreamProvider struct{}
+
+func (p *emptyStreamProvider) Name() string { return "empty-stream-test" }
+func (p *emptyStreamProvider) ListModels(context.Context) ([]string, error) { return []string{"test-model"}, nil }
+func (p *emptyStreamProvider) Stream(context.Context, []Message, RequestOptions) (<-chan StreamChunk, error) {
+	ch := make(chan StreamChunk, 1)
+	ch <- StreamChunk{Done: true}
+	close(ch)
+	return ch, nil
+}
+func (p *emptyStreamProvider) Send(context.Context, []Message, RequestOptions) (*Response, error) {
+	return &Response{Content: "Recovered stream response", Model: "test-model", ProviderName: p.Name()}, nil
+}
+
+func TestRegistryRecoversEmptyStream(t *testing.T) {
+	p := &emptyStreamProvider{}
+	r := NewRegistry([]string{"empty-stream-test"}, map[string]string{"empty-stream-test": "test-model"}, p)
+	stream, err := r.Stream(context.Background(), "empty-stream-test", []Message{{Role: "user", Content: "hello"}}, RequestOptions{Model: "test-model"})
+	if err != nil {
+		t.Fatalf("Stream returned error: %v", err)
+	}
+	var got string
+	for chunk := range stream {
+		if chunk.Error != nil {
+			t.Fatalf("stream returned error: %v", chunk.Error)
+		}
+		got += chunk.Delta
+	}
+	if got != "Recovered stream response" {
+		t.Fatalf("stream response = %q, want recovered response", got)
+	}
+}
