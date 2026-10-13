@@ -39,6 +39,7 @@ var runtimePackages = map[string]runtimePackage{
 	"java": {"EclipseAdoptium.Temurin.21.JDK", "openjdk", "default-jdk", "java-21-openjdk-devel", "jdk-openjdk"},
 	"kotlinc": {"JetBrains.Kotlin.Compiler", "kotlin", "kotlin", "kotlin", "kotlin"},
 	"kotlin compiler + java": {"JetBrains.Kotlin.Compiler", "kotlin", "kotlin", "kotlin", "kotlin"},
+	"dotnet": {"Microsoft.DotNet.SDK.8", "dotnet-sdk", "dotnet-sdk-8.0", "dotnet-sdk-8.0", "dotnet-sdk"},
 	"ruby": {"RubyInstallerTeam.RubyWithDevKit.3.3", "ruby", "ruby-full", "ruby", "ruby"},
 	"perl": {"StrawberryPerl.StrawberryPerl", "perl", "perl", "perl", "perl"},
 	"lua": {"DEVCOM.Lua", "lua", "lua5.4", "lua", "lua"},
