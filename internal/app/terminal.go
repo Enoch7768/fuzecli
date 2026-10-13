@@ -485,14 +485,16 @@ func (a *App) terminalStream(ctx context.Context, prompt, providerName, model, b
 		if parseErr == nil && (parsed.Type != "edit" || parsed.Plan == nil) {
 			parseErr = fmt.Errorf("the response did not contain a validated file-edit plan")
 		}
+		var repairMessages []provider.Message
+		repairOpts := opts
 		if parseErr != nil {
 			progress.update(90, "Repairing structured response")
-			repairMessages := append([]provider.Message(nil), msgs...)
+			repairMessages = append([]provider.Message(nil), msgs...)
 			repairMessages = append(repairMessages,
 				provider.Message{Role: "assistant", Content: raw},
 				provider.Message{Role: "user", Content: "The previous response was not valid for the required file-edit format. Return one complete, valid JSON object matching the required schema. Preserve every intended file change, use complete file contents, use only create/modify/delete actions, and do not include markdown fences or commentary."},
 			)
-			repairOpts := opts
+			repairOpts = opts
 			repairOpts.JSONMode = true
 			repairOpts.JSONSchema = generation.ChatResponseSchema()
 			repaired, repairErr := a.Registry.Send(ctx, name, repairMessages, repairOpts)
