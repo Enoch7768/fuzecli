@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -436,7 +437,7 @@ func apiKeyCommand(args []string) error {
 
 func githubCommand(args []string) error {
 	if len(args) == 0 || args[0] == "help" || args[0] == "--help" {
-		fmt.Println("Usage: aicli github auth set|status|clear")
+		fmt.Println("Usage: aicli github auth login|set|status|clear")
 		fmt.Println("       aicli github repo list|create|info|clone")
 		fmt.Println("       aicli github pull [remote] [branch]")
 		fmt.Println("       aicli github push [remote] [branch]")
@@ -453,8 +454,23 @@ func githubCommand(args []string) error {
 	defer cancel()
 	switch args[0] {
 	case "auth":
-		if len(args) < 2 { return fmt.Errorf("usage: aicli github auth set|status|clear") }
+		if len(args) < 2 { return fmt.Errorf("usage: aicli github auth login|set|status|clear") }
 		switch args[1] {
+		case "login":
+			if len(args) != 2 { return fmt.Errorf("usage: aicli github auth login") }
+			if _, err := exec.LookPath("gh"); err != nil { return fmt.Errorf("install GitHub CLI from https://cli.github.com, then retry") }
+			cmd := exec.Command("gh", "auth", "login", "--hostname", "github.com", "--web", "--git-protocol", "https")
+			cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+			if err := cmd.Run(); err != nil { return fmt.Errorf("GitHub sign-in failed: %w", err) }
+			setupGit := exec.Command("gh", "auth", "setup-git", "--hostname", "github.com")
+			setupGit.Stdin, setupGit.Stdout, setupGit.Stderr = os.Stdin, os.Stdout, os.Stderr
+			if err := setupGit.Run(); err != nil { return fmt.Errorf("configure GitHub CLI for Git operations: %w", err) }
+			if err := config.ClearGitHubToken(); err != nil { return fmt.Errorf("remove legacy saved GitHub token: %w", err) }
+			client = github.New("")
+			user, err := client.Profile(ctx)
+			if err != nil { return fmt.Errorf("verify GitHub sign-in: %w", err) }
+			fmt.Printf("GitHub connected as %s.\n", user.Login)
+			return nil
 		case "set":
 			if len(args) != 3 || strings.TrimSpace(args[2]) == "" { return fmt.Errorf("usage: aicli github auth set <token>") }
 			if err := config.SetGitHubToken(args[2]); err != nil { return err }
@@ -462,7 +478,8 @@ func githubCommand(args []string) error {
 			return nil
 		case "clear":
 			if err := config.ClearGitHubToken(); err != nil { return err }
-			fmt.Println("GitHub token cleared.")
+			fmt.Println("FuzeCLI stored GitHub token cleared. GitHub CLI browser login, if configured, remains active.")
+			fmt.Println("To sign out of GitHub CLI too, run: gh auth logout --hostname github.com")
 			return nil
 		case "status":
 			if !client.Authenticated() { fmt.Println("GitHub: not authenticated"); return nil }
@@ -841,6 +858,7 @@ Integration:
   aicli app [--addr host:port]       Start the polished local web app
   aicli api [--addr host:port]       Start the local API server
   aicli apikey set <provider> <key>  Save a provider API key
+  aicli github auth login            Connect GitHub through your browser
   aicli github ...                   GitHub repos, Git sync, pull requests, issues, comments, and Actions
   aicli apikey status                Show provider key status
   aicli apikey clear <provider>      Remove a provider API key
