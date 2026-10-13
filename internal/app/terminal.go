@@ -436,6 +436,19 @@ func (a *App) terminalStream(ctx context.Context, prompt, providerName, model, b
 			if response.Len() > 32768 { percent = 68 }
 			progress.update(percent, "Generating response")
 		}
+		if streamErr != nil {
+			progress.update(45, "Recovering interrupted stream")
+			retry, retryErr := a.Registry.Send(ctx, name, msgs, opts)
+			if retryErr != nil {
+				return fmt.Errorf("the AI stream was interrupted and the retry also failed; check your connection or provider quota: %w", retryErr)
+			}
+			if retry == nil {
+				return fmt.Errorf("the AI stream was interrupted and the retry returned no response; try again or switch providers with /provider")
+			}
+			response.Reset()
+			response.WriteString(retry.Content)
+			usage = retry.Usage
+		}
 	} else {
 		progress.update(45, "Retrying request")
 		resp, err := a.Registry.Send(ctx, name, msgs, opts)
