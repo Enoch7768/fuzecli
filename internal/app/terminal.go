@@ -403,6 +403,7 @@ func (a *App) terminalStream(ctx context.Context, prompt, providerName, model, b
 
 	if !applyChanges {
 		system += "\nThis is an analysis-only request. Do not modify files; report findings and exactly three high-value improvements."
+		msgs[0].Content = system
 	}
 	fmt.Printf("\n%sYou%s\n%s\n\n%sFuze%s\n", uiBold, uiReset, prompt, uiAccent, uiReset)
 	progress := newTerminalProgress()
