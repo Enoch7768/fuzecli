@@ -110,6 +110,27 @@ aicli config set default_provider gemini
 
 `config show` masks API keys. The web Settings screen can replace or clear a provider key without exposing the stored value back to the browser.
 
+## GitHub sign-in
+
+Connect your GitHub account without creating or pasting a Personal Access Token:
+
+1. Install the official [GitHub CLI](https://cli.github.com) once.
+2. Run:
+
+```powershell
+aicli github auth login
+```
+
+FuzeCLI launches GitHub CLI's browser-based sign-in flow. Your default browser opens the official GitHub authorization page (Chrome if it is your default browser). After approval, FuzeCLI uses GitHub CLI's local authentication for repository, pull request, issue, and Actions operations. The credential stays managed by GitHub CLI instead of being copied into FuzeCLI's config file.
+
+To verify the connection:
+
+```powershell
+aicli github auth status
+```
+
+To sign out of the GitHub CLI account, run `gh auth logout --hostname github.com`. The advanced `aicli github auth set <token>` command remains available for existing setups, but browser login is recommended.
+
 ## Workspace safety
 
 Initialize from the project root:
