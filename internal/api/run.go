@@ -63,6 +63,17 @@ func (s *Server) runFile(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusForbidden, "file is outside the workspace")
 		return
 	}
+	resolved, err := filepath.EvalSymlinks(source)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "workspace file not found")
+		return
+	}
+	resolvedRel, err := filepath.Rel(root, resolved)
+	if err != nil || resolvedRel == ".." || strings.HasPrefix(resolvedRel, ".."+string(os.PathSeparator)) {
+		writeError(w, http.StatusForbidden, "symlink resolves outside the workspace")
+		return
+	}
+	source = resolved
 	info, err := os.Stat(source)
 	if err != nil || !info.Mode().IsRegular() {
 		writeError(w, http.StatusNotFound, "workspace file not found")
