@@ -35,8 +35,8 @@ func New(token string) *Client {
 func (c *Client) Authenticated() bool {
 	if c == nil { return false }
 	if strings.TrimSpace(c.Token) != "" { return true }
-	_, err := exec.LookPath("gh")
-	return err == nil
+	if _, err := exec.LookPath("gh"); err != nil { return false }
+	return exec.Command("gh", "auth", "status", "--hostname", "github.com").Run() == nil
 }
 
 func (c *Client) do(ctx context.Context, method, path string, body, out any) error {
