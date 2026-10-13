@@ -168,6 +168,13 @@ func (r *Registry) sendWithRetry(ctx context.Context, name string, messages []Me
 				response, err = p.Send(ctx, messages, objectMode)
 			}
 		}
+		if err != nil && opts.JSONMode && isJSONModeCompatibilityError(err) {
+			plain := opts
+			plain.JSONMode = false
+			plain.JSONSchema = nil
+			plain.JSONSchemaStrict = false
+			response, err = p.Send(ctx, messages, plain)
+		}
 		if err == nil && response != nil && strings.TrimSpace(response.Content) == "" {
 			err = &ProviderError{Kind: ErrorProviderUnavailable, Provider: name, Message: "model returned an empty response"}
 		}
@@ -298,6 +305,13 @@ func (r *Registry) streamWithRetry(ctx context.Context, name string, messages []
 				objectMode.JSONSchemaStrict = false
 				stream, err = p.Stream(ctx, messages, objectMode)
 			}
+		}
+		if err != nil && opts.JSONMode && isJSONModeCompatibilityError(err) {
+			plain := opts
+			plain.JSONMode = false
+			plain.JSONSchema = nil
+			plain.JSONSchemaStrict = false
+			stream, err = p.Stream(ctx, messages, plain)
 		}
 		r.observe(name, err)
 		if err != nil {
