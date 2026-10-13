@@ -502,6 +502,14 @@ func (a *App) terminalStream(ctx context.Context, prompt, providerName, model, b
 			}
 		}
 		if parseErr != nil {
+			fallback, fallbackErr := a.Registry.Send(ctx, "auto", repairMessages, repairOpts)
+			if fallbackErr == nil && fallback != nil {
+				raw = strings.TrimSpace(fallback.Content)
+				usage = fallback.Usage
+				parsed, parseErr = generation.ParseChatResponse(raw)
+			}
+		}
+		if parseErr != nil {
 			return fmt.Errorf("FuzeCLI could not safely validate the AI's proposed file changes. No files were applied. Try again, reduce the request size, or switch providers with /provider: %w", parseErr)
 		}
 	} else {
