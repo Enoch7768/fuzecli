@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -20,11 +21,20 @@ type runFileRequest struct {
 }
 
 type boundedBuffer struct {
+	mu sync.Mutex
 	bytes.Buffer
 	limit int
 }
 
+func (b *boundedBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.Buffer.String()
+}
+
 func (b *boundedBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
 	n := len(p)
 	remaining := b.limit - b.Len()
 	if remaining > 0 {
@@ -159,9 +169,13 @@ func runSpec(root, source, ext string) (string, []string, string, func() (*exec.
 		return "rustc", []string{source, "-o", bin}, "Rust (rustc)", build, nil
 	case ".c", ".cc", ".cpp", ".cxx":
 		compiler := "cc"
-		if ext == ".cc" || ext == ".cpp" || ext == ".cxx" || ext == ".hpp" { compiler = "g++" }
-		if runtime.GOOS == "windows" && compiler == "cc" { compiler = "gcc" }
-		for _, candidate := range []string{compiler, "clang", "gcc", "g++"} { if _, err := exec.LookPath(candidate); err == nil { compiler = candidate; break } }
+		cpp := ext == ".cc" || ext == ".cpp" || ext == ".cxx" || ext == ".hpp"
+		candidates := []string{"cc", "clang", "gcc"}
+		if cpp { candidates = []string{"g++", "clang++", "c++"} }
+		if runtime.GOOS == "windows" && !cpp { candidates = []string{"gcc", "clang", "cc"} }
+		foundCompiler := false
+		for _, candidate := range candidates { if _, err := exec.LookPath(candidate); err == nil { compiler = candidate; foundCompiler = true; break } }
+		if !foundCompiler { return "", nil, "C/C++ compiler", nil, nil }
 		tmp, err := os.MkdirTemp("", "fuzecli-native-*")
 		if err != nil { return "", nil, "", nil, err }
 		bin := filepath.Join(tmp, "program")
