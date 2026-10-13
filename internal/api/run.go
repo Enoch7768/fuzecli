@@ -192,7 +192,7 @@ func runSpec(root, source, ext string) (string, []string, string, func() (*exec.
 		return "kotlinc", []string{source, "-include-runtime", "-d", jar}, "Kotlin compiler + Java", build, nil
 	case ".cs":
 		if projects, _ := filepath.Glob(filepath.Join(root, "*.csproj")); len(projects) > 0 { return noBuild("dotnet", "run", "--project", projects[0]) }
-		return "", nil, ".NET SDK (open a project containing a .csproj file)", nil, nil
+		return "", nil, "", nil, errors.New("C# execution requires a .csproj project in the workspace")
 	case ".rb":
 		return noBuild("ruby", source)
 	case ".pl", ".pm":
@@ -224,4 +224,3 @@ func runSpec(root, source, ext string) (string, []string, string, func() (*exec.
 	}
 }
 
-var _ = fmt.Sprintf
