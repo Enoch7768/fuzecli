@@ -31,7 +31,7 @@ func(s *Server) githubRoutes(w http.ResponseWriter,r *http.Request){
  default:writeError(w,http.StatusNotFound,"GitHub endpoint not found")
  }
 }
-func(s *Server) githubClient()( *github.Client,error){token,err:=config.GitHubToken();if err!=nil{return nil,err};return github.New(token),nil}
+func(s *Server) githubClient()( *github.Client,error){token,err:=config.GitHubToken();if err!=nil{return nil,err};client:=github.New(token);configured,err:=config.GitHubTokenConfigured();if err!=nil{return nil,err};client.DisableCLI=configured&&strings.TrimSpace(token)=="";return client,nil}
 func(s *Server) githubStatus(w http.ResponseWriter,r *http.Request){
  if r.Method!=http.MethodGet{writeError(w,405,"method not allowed");return}
  c,err:=s.githubClient();if err!=nil{writeError(w,500,err.Error());return}
