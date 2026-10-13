@@ -139,6 +139,7 @@ async function githubStatus(){
     el.className="github-status";el.textContent="Not connected";return false;
   }catch(e){$("#githubStatus").className="github-status error";$("#githubStatus").textContent=e.message;return false}
 }
+function githubSelectedRepo(){return $("#githubRepoSelect")?.value||"";}
 function githubRemoteName(remote){
   const value=String(remote||"").trim();
   const match=value.match(/github\.com[:/]([^/]+\/[^/]+?)(?:\.git)?(?:[?#].*)?$/i);
@@ -170,27 +171,31 @@ async function githubRepos(){
 }
 async function githubBranches(full){
   const select=$("#githubBranchSelect");if(!select||!full)return;
-  try{const d=await api("/v1/github/branches?name="+encodeURIComponent(full)),items=d.branches||[];select.innerHTML='<option value="">Branch</option>'+items.map(b=>'<option value="'+esc(b.name||b.ref||b)+'">'+esc(b.name||b.ref||b)+'</option>').join("");if(items[0])select.value=items[0].name||items[0].ref||items[0]}catch(e){select.innerHTML='<option value="">Branches unavailable</option>'}
+  try{const d=await api("/v1/github/branches?repo="+encodeURIComponent(full)),items=d.branches||[];select.innerHTML='<option value="">Branch</option>'+items.map(b=>'<option value="'+esc(b.name||b.ref||b)+'">'+esc(b.name||b.ref||b)+'</option>').join("");if(items[0])select.value=items[0].name||items[0].ref||items[0]}catch(e){select.innerHTML='<option value="">Branches unavailable</option>'}
 }
 async function githubPRs(){
-  try{const d=await api("/v1/github/prs");$("#githubPRList").innerHTML=(d.pull_requests||[]).map(p=>'<button class="github-item" data-github-pr="'+p.number+'"><div><b>#'+p.number+" "+esc(p.title)+'</b><span>'+esc(p.head?.ref||"")+" → "+esc(p.base?.ref||"")+" · "+esc(p.state)+'</span></div><span>Open</span></button>').join("")||'<div class="ide-panel-empty">No open pull requests.</div>'}catch(e){$("#githubPRList").innerHTML='<div class="ide-panel-empty">'+esc(e.message)+'</div>'}
+  const repo=githubSelectedRepo();if(!repo){$("#githubPRList").innerHTML='<div class="ide-panel-empty">Choose a repository to view pull requests.</div>';return}
+  try{const d=await api("/v1/github/prs?repo="+encodeURIComponent(repo));$("#githubPRList").innerHTML=(d.pull_requests||[]).map(p=>'<button class="github-item" data-github-pr="'+p.number+'"><div><b>#'+p.number+" "+esc(p.title)+'</b><span>'+esc(p.head?.ref||"")+" → "+esc(p.base?.ref||"")+" · "+esc(p.state)+'</span></div><span>Open</span></button>').join("")||'<div class="ide-panel-empty">No open pull requests.</div>'}catch(e){$("#githubPRList").innerHTML='<div class="ide-panel-empty">'+esc(e.message)+'</div>'}
 }
 async function githubActions(){
-  try{const d=await api("/v1/github/actions");$("#githubActionsList").innerHTML=(d.runs||[]).map(r=>'<div class="github-item"><div><b>'+esc(r.name||"Workflow")+' #'+r.run_number+'</b><span>'+esc(r.status||"")+" / "+esc(r.conclusion||"")+" · "+esc(r.head_branch||"")+'</span></div><button class="ghost small" data-github-rerun="'+r.id+'">Rerun</button></div>').join("")||'<div class="ide-panel-empty">No workflow runs found.</div>'}catch(e){$("#githubActionsList").innerHTML='<div class="ide-panel-empty">'+esc(e.message)+'</div>'}
+  const repo=githubSelectedRepo();if(!repo){$("#githubActionsList").innerHTML='<div class="ide-panel-empty">Choose a repository to view workflow runs.</div>';return}
+  try{const d=await api("/v1/github/actions?repo="+encodeURIComponent(repo));$("#githubActionsList").innerHTML=(d.runs||[]).map(r=>'<div class="github-item"><div><b>'+esc(r.name||"Workflow")+' #'+r.run_number+'</b><span>'+esc(r.status||"")+" / "+esc(r.conclusion||"")+" · "+esc(r.head_branch||"")+'</span></div><button class="ghost small" data-github-rerun="'+r.id+'">Rerun</button></div>').join("")||'<div class="ide-panel-empty">No workflow runs found.</div>'}catch(e){$("#githubActionsList").innerHTML='<div class="ide-panel-empty">'+esc(e.message)+'</div>'}
 }
 async function githubIssues(){
-  try{const d=await api("/v1/github/issues");$("#githubIssuesList").innerHTML=(d.issues||[]).map(i=>'<div class="github-item"><div><b>#'+i.number+" "+esc(i.title)+'</b><span>'+esc(i.state)+'</span></div><a href="'+esc(i.html_url||"#")+'" target="_blank" rel="noopener">Open</a></div>').join("")||'<div class="ide-panel-empty">No open issues.</div>'}catch(e){$("#githubIssuesList").innerHTML='<div class="ide-panel-empty">'+esc(e.message)+'</div>'}
+  const repo=githubSelectedRepo();if(!repo){$("#githubIssuesList").innerHTML='<div class="ide-panel-empty">Choose a repository to view issues.</div>';return}
+  try{const d=await api("/v1/github/issues?repo="+encodeURIComponent(repo));$("#githubIssuesList").innerHTML=(d.issues||[]).map(i=>'<div class="github-item"><div><b>#'+i.number+" "+esc(i.title)+'</b><span>'+esc(i.state)+'</span></div><a href="'+esc(i.html_url||"#")+'" target="_blank" rel="noopener">Open</a></div>').join("")||'<div class="ide-panel-empty">No open issues.</div>'}catch(e){$("#githubIssuesList").innerHTML='<div class="ide-panel-empty">'+esc(e.message)+'</div>'}
 }
 async function githubLoadComments(){
- const n=Number($("#githubPRNumber").value);if(!n)return toast("Enter a pull request number");
- try{const d=await api("/v1/github/comments?number="+n);$("#githubComments").innerHTML=(d.comments||[]).map(c=>'<div class="github-comment"><b>'+esc(c.user?.login||"user")+'</b>'+esc(c.body||"")+'</div>').join("")||'<div class="ide-panel-empty">No comments yet.</div>'}catch(e){toast(e.message)}
+ const n=Number($("#githubPRNumber").value),repo=githubSelectedRepo();if(!n)return toast("Enter a pull request number");if(!repo)return toast("Choose a repository first");
+ try{const d=await api("/v1/github/comments?repo="+encodeURIComponent(repo)+"&number="+n);$("#githubComments").innerHTML=(d.comments||[]).map(c=>'<div class="github-comment"><b>'+esc(c.user?.login||"user")+'</b>'+esc(c.body||"")+"</div>").join("")||'<div class="ide-panel-empty">No comments yet.</div>'}catch(e){toast(e.message)}
 }
 async function githubSync(op){
  try{const d=await api("/v1/github/sync",{method:"POST",timeoutMs:300000,body:JSON.stringify({operation:op})});$("#githubSyncOutput").textContent=d.output||"Completed";toast("Git "+op+" completed");await githubStatus()}catch(e){$("#githubSyncOutput").textContent=e.message;toast("Git "+op+" failed: "+e.message)}
 }
 async function loadGithub(){
  const connected=await githubStatus();if(!connected){$("#githubRepoList").innerHTML='<div class="ide-panel-empty">Connect GitHub to load repositories.</div>';$("#githubPRList").innerHTML="";$("#githubActionsList").innerHTML="";$("#githubIssuesList").innerHTML="";return}
- await Promise.all([githubRepos(),githubPRs(),githubActions(),githubIssues()]);
+ await githubRepos();
+ await Promise.all([githubPRs(),githubActions(),githubIssues()]);
 }
 function view(v){document.body.classList.toggle("command-mode",v==="chat");document.querySelectorAll(".nav-item").forEach(b=>b.classList.toggle("active",b.dataset.view===v));document.querySelectorAll(".view").forEach(x=>x.classList.toggle("active",x.id==="view-"+v));$("#pageTitle").textContent=v==="builder"?"Live Builder":v[0].toUpperCase()+v.slice(1);if(v==="ide")loadIDE();if(v==="builder")loadBuilder(currentPreview);if(v==="workspace")workspace();if(v==="activity")activity();if(v==="telemetry")telemetry();if(v==="github")loadGithub()}
 async function save(){try{await api("/v1/config",{method:"POST",body:JSON.stringify({provider:$("#settingsProvider").value,model:$("#settingsModel").value.trim()})});toast("Settings saved");await loadConfig()}catch(e){toast(e.message)}}
