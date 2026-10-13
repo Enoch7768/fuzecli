@@ -4,33 +4,87 @@ FuzeCLI (`aicli.exe`) is a Windows-native Go CLI for chatting with multiple AI p
 
 ## What FuzeCLI does
 
-- Unified provider interface with native providers plus 40+ OpenAI-compatible and local inference backends, including OpenAI, Gemini, Groq, Anthropic, OpenRouter, DeepSeek, Mistral, Together, Fireworks, Cerebras, xAI, Ollama, vLLM, LM Studio, LiteLLM, and custom OpenAI-compatible endpoints.
-- Configurable provider API keys and models from the local web Settings screen or CLI configuration.
-- `--provider auto` fallback across configured providers on rate limits and provider outages.
-- Structured JSON code generation with automatic application in interactive chat.
-- Immediate generation handling: a complete valid file JSON document is applied as soon as it is detected during streaming, and that response ends immediately.
-- Workspace-bound path validation that rejects traversal, absolute paths, and symlink escapes.
-- Interactive Windows file picker for chat attachments with multi-select support.
-- UTF-8 text attachment validation with a 64 KiB per-file limit and 256 KiB total web-message limit.
-- Automatic verification for Go, TypeScript/JavaScript, PHP, and Python projects, with bounded command authorization and structured diagnostics.
-- Verification-driven self-correction with configurable attempts.
-- SQLite conversation history and touched-file context in `.aicli/`.
-- Global developer profile in `%APPDATA%\\aicli\\profile.json`.
-- Streaming chat output with an explicit response-end event for the web interface and immediate next-message availability.
-- Local HTTP API for applications and integrations.
-- MCP server over stdio for MCP-compatible AI clients.
-- Repository intelligence with Go AST analysis, source indexing, symbol search, relevance-ranked context, and secret-aware file exclusion.
-- Project memory, workspace context graphs, project rules, and reusable skills.
-- Background job tracking, local diff review, proof-of-work artifacts, and provider benchmarking.
-- Local-only browser inspection and inline code completion through authenticated API endpoints.
-- Structured diagnostics for verification failures, including stage and severity.
-- Versioned Fuze response protocol with compatibility normalization.
-- Explicit agent capability boundaries and a bounded task trace.
-- Relevance-ranked workspace search over indexed source and symbols.
-- Workspace snapshots and restoration for recoverable changes.
-- Git status and diff inspection without modifying the repository.
-- Model-provided shell commands are informational only and are never executed automatically; verification commands pass through an explicit security policy.
-- No API keys are printed or returned by the web settings API; local API requests are rate-limited and protected by loopback/origin/authentication boundaries.
+* Unified provider interface with native providers plus 40+ OpenAI-compatible and local inference backends, including OpenAI, Gemini, Groq, Anthropic, OpenRouter, DeepSeek, Mistral, Together, Fireworks, Cerebras, xAI, Ollama, vLLM, LM Studio, LiteLLM, and custom OpenAI-compatible endpoints.
+
+
+* Configurable provider API keys and models from the local web Settings screen or CLI configuration.
+
+
+* `--provider auto` fallback across configured providers on rate limits and provider outages.
+
+
+* Structured JSON code generation with automatic application in interactive chat.
+
+
+* Immediate generation handling: a complete valid file JSON document is applied as soon as it is detected during streaming, and that response ends immediately.
+
+
+* Workspace-bound path validation that rejects traversal, absolute paths, and symlink escapes.
+
+
+* Interactive Windows file picker for chat attachments with multi-select support.
+
+
+* UTF-8 text attachment validation with a 64 KiB per-file limit and 256 KiB total web-message limit.
+
+
+* Automatic verification for Go, TypeScript/JavaScript, PHP, and Python projects, with bounded command authorization and structured diagnostics.
+
+
+* Verification-driven self-correction with configurable attempts.
+
+
+* SQLite conversation history and touched-file context in `.aicli/`.
+
+
+* Global developer profile in `%APPDATA%\\aicli\\profile.json`.
+
+
+* Streaming chat output with an explicit response-end event for the web interface and immediate next-message availability.
+
+
+* Local HTTP API for applications and integrations.
+
+
+* MCP server over stdio for MCP-compatible AI clients.
+
+
+* Repository intelligence with Go AST analysis, source indexing, symbol search, relevance-ranked context, and secret-aware file exclusion.
+
+
+* Project memory, workspace context graphs, project rules, and reusable skills.
+
+
+* Background job tracking, local diff review, proof-of-work artifacts, and provider benchmarking.
+
+
+* Local-only browser inspection and inline code completion through authenticated API endpoints.
+
+
+* Structured diagnostics for verification failures, including stage and severity.
+
+
+* Versioned Fuze response protocol with compatibility normalization.
+
+
+* Explicit agent capability boundaries and a bounded task trace.
+
+
+* Relevance-ranked workspace search over indexed source and symbols.
+
+
+* Workspace snapshots and restoration for recoverable changes.
+
+
+* Git status and diff inspection without modifying the repository.
+
+
+* Model-provided shell commands are informational only and are never executed automatically; verification commands pass through an explicit security policy.
+
+
+* No API keys are printed or returned by the web settings API; local API requests are rate-limited and protected by loopback/origin/authentication boundaries.
+
+
 
 ## Build
 
@@ -44,9 +98,10 @@ go mod tidy
 go test ./...
 go vet ./...
 $env:CGO_ENABLED="0"
-go build -trimpath -o dist/aicli.exe ./cmd/aicli
+go build -trimpath -ldflags="-s -w -X main.version=v0.1.0" -o dist/aicli.exe ./cmd/aicli
 .\\dist\\aicli.exe version
 .\\dist\\aicli.exe --help
+
 ```
 
 For memory-constrained Windows development machines:
@@ -55,7 +110,10 @@ For memory-constrained Windows development machines:
 $env:GOMAXPROCS="2"
 go test -p 1 ./...
 go build -p 1 -o dist/aicli.exe ./cmd/aicli
+
 ```
+
+It is recommended to add the app's `dist` folder to your system's PATH so you can run `aicli` from anywhere.
 
 ## Quick start
 
@@ -65,12 +123,14 @@ From an existing project:
 aicli init
 aicli config set default_provider gemini
 aicli chat
+
 ```
 
 For a one-shot request:
 
 ```powershell
 aicli ask "Explain the authentication flow"
+
 ```
 
 Before applying a risky change, inspect the repository and keep a recovery point available:
@@ -79,12 +139,14 @@ Before applying a risky change, inspect the repository and keep a recovery point
 aicli status
 aicli diff
 aicli snapshot
+
 ```
 
 If you need to recover from a change:
 
 ```powershell
 aicli restore
+
 ```
 
 Run diagnostics when something is wrong:
@@ -94,6 +156,7 @@ aicli doctor
 aicli platform
 aicli review
 aicli benchmark "Explain this repository architecture"
+
 ```
 
 ## Configuration
@@ -106,19 +169,27 @@ aicli apikey set gemini YOUR_KEY
 aicli apikey set groq gsk-...
 aicli apikey status
 aicli config set default_provider gemini
+
 ```
 
 `config show` masks API keys. The web Settings screen can replace or clear a provider key without exposing the stored value back to the browser.
 
 ## GitHub sign-in
 
+To use GitHub features, the official **GitHub CLI** (`gh`) must be installed on your computer.
+
 Connect your GitHub account without creating or pasting a Personal Access Token:
 
 1. Install the official [GitHub CLI](https://cli.github.com) once.
+
+
 2. Run:
+
+
 
 ```powershell
 aicli github auth login
+
 ```
 
 FuzeCLI launches GitHub CLI's browser-based sign-in flow. Your default browser opens the official GitHub authorization page (Chrome if it is your default browser). After approval, FuzeCLI uses GitHub CLI's local authentication for repository, pull request, issue, and Actions operations. The credential stays managed by GitHub CLI instead of being copied into FuzeCLI's config file.
@@ -127,6 +198,7 @@ To verify the connection:
 
 ```powershell
 aicli github auth status
+
 ```
 
 To sign out of the GitHub CLI account, run `gh auth logout --hostname github.com`. The advanced `aicli github auth set <token>` command remains available for existing setups, but browser login is recommended.
@@ -137,6 +209,7 @@ Initialize from the project root:
 
 ```powershell
 aicli init
+
 ```
 
 This creates `.aicli/session.db` and workspace state used for history and context.
@@ -153,18 +226,20 @@ Start the polished local interface with:
 
 ```powershell
 aicli app
+
 ```
 
-Open `http://127.0.0.1:8787`. The web UI is embedded in the Go binary; no Node.js server is required.
+Open `[http://127.0.0.1:8787](http://127.0.0.1:8787)`. The web UI is embedded in the Go binary; no Node.js server is required.
 
 The web app provides provider/model selection, local provider-key management, saved chat history, file upload, workspace visibility, streaming responses, generated-file cards, and responsive mobile navigation. The interface uses the repository-root `icon.png` and `icon-mark.png` when those files are present.
 
-See [docs/WEB.md](docs/WEB.md) for the complete web workflow and [docs/API.md](docs/API.md) for API authentication.
+See [docs/WEB.md](https://www.google.com/search?q=docs/WEB.md) for the complete web workflow and [docs/API.md](https://www.google.com/search?q=docs/API.md) for API authentication.
 
 ## Interactive terminal
 
 ```powershell
 aicli chat
+
 ```
 
 Inside chat:
@@ -180,11 +255,12 @@ Inside chat:
 /clear
 /help
 /exit
+
 ```
 
 The terminal streams normal responses as they arrive. A complete generation JSON document is applied immediately, changed files are reported, and the prompt is ready for the next request when the response is complete.
 
-See [docs/TERMINAL.md](docs/TERMINAL.md).
+See [docs/TERMINAL.md](https://www.google.com/search?q=docs/TERMINAL.md).
 
 ## API
 
@@ -192,11 +268,12 @@ Start the local application API with:
 
 ```powershell
 aicli api
+
 ```
 
-Default endpoint: `http://127.0.0.1:8787`.
+Default endpoint: `[http://127.0.0.1:8787](http://127.0.0.1:8787)`.
 
-See [docs/API.md](docs/API.md) for HTTP endpoints, request formats, authentication, and workspace access.
+See [docs/API.md](https://www.google.com/search?q=docs/API.md) for HTTP endpoints, request formats, authentication, and workspace access.
 
 ## MCP
 
@@ -204,11 +281,12 @@ Start the MCP server with:
 
 ```powershell
 aicli mcp
+
 ```
 
 The server communicates over stdio and exposes FuzeCLI chat, workspace file reading, and workspace file listing tools.
 
-See [docs/MCP.md](docs/MCP.md) for MCP client configuration and tool schemas.
+See [docs/MCP.md](https://www.google.com/search?q=docs/MCP.md) for MCP client configuration and tool schemas.
 
 ## Security model
 
@@ -218,7 +296,7 @@ Generated file paths are resolved inside the active workspace with traversal and
 
 These controls reduce the execution surface but cannot make arbitrary user workspaces, third-party dependencies, or provider-generated source code mathematically or operationally guaranteed to be malware-free. Normal endpoint security, source control, dependency review, and safe execution practices still apply.
 
-See [SECURITY.md](SECURITY.md) for vulnerability reporting and [docs/SECURITY.md](docs/SECURITY.md) for the detailed security model.
+See [SECURITY.md](SECURITY.md) for vulnerability reporting and [docs/SECURITY.md](https://www.google.com/search?q=docs/SECURITY.md) for the detailed security model.
 
 ## CI and releases
 
@@ -226,7 +304,7 @@ Every supported development build is validated with formatting checks, module co
 
 Tagged Windows releases are built from a clean checkout and publish both `aicli.exe` and a SHA-256 checksum. GitHub release notes are generated automatically.
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the project quality bar, [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) for community standards, [SUPPORT.md](SUPPORT.md) for troubleshooting, [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the system boundaries and roadmap, and [evals/README.md](evals/README.md) for the coding-agent evaluation harness.
+See [CONTRIBUTING.md](https://www.google.com/search?q=CONTRIBUTING.md) for the project quality bar, [CODE_OF_CONDUCT.md](https://www.google.com/search?q=CODE_OF_CONDUCT.md) for community standards, [SUPPORT.md](SUPPORT.md) for troubleshooting, [docs/ARCHITECTURE.md](https://www.google.com/search?q=docs/ARCHITECTURE.md) for the system boundaries and roadmap, and [evals/README.md](https://www.google.com/search?q=evals/README.md) for the coding-agent evaluation harness.
 
 ## Project documentation
 
@@ -246,5 +324,5 @@ docs/SECURITY.md
 docs/ARCHITECTURE.md
 docs/AGENT_ENGINE.md
 evals/README.md
-.aicliignore.example
+
 ```
