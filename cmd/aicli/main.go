@@ -462,6 +462,10 @@ func githubCommand(args []string) error {
 			cmd := exec.Command("gh", "auth", "login", "--hostname", "github.com", "--web", "--git-protocol", "https")
 			cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 			if err := cmd.Run(); err != nil { return fmt.Errorf("GitHub sign-in failed: %w", err) }
+			setupGit := exec.Command("gh", "auth", "setup-git", "--hostname", "github.com")
+			setupGit.Stdin, setupGit.Stdout, setupGit.Stderr = os.Stdin, os.Stdout, os.Stderr
+			if err := setupGit.Run(); err != nil { return fmt.Errorf("configure GitHub CLI for Git operations: %w", err) }
+			client = github.New("")
 			user, err := client.Profile(ctx)
 			if err != nil { return fmt.Errorf("verify GitHub sign-in: %w", err) }
 			fmt.Printf("GitHub connected as %s.\\n", user.Login)
