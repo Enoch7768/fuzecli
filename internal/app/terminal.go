@@ -13,6 +13,7 @@ import (
 
 	"github.com/Enoch7768/fuzecli/internal/generation"
 	"github.com/Enoch7768/fuzecli/internal/provider"
+	"github.com/Enoch7768/fuzecli/internal/verify"
 )
 
 const terminalAttachmentLimit = 65536
@@ -550,21 +551,39 @@ func (a *App) terminalStream(ctx context.Context, prompt, providerName, model, b
 		fmt.Printf("%s%s%s\n", uiBold, content, uiReset)
 		return a.Store.AddMessage(provider.Message{Role: "assistant", Content: content})
 	}
+	snapshot, snapshotErr := generation.CreatePlanSnapshot(a.Store.Root, *parsed.Plan)
+	if snapshotErr != nil {
+		return fmt.Errorf("could not protect workspace before applying edits: %w", snapshotErr)
+	}
 	written, applyErr := generation.ApplyChatPlan(a.Store.Root, *parsed.Plan)
 	if applyErr != nil {
+		_ = generation.RestorePlanSnapshot(a.Store.Root, snapshot)
 		return fmt.Errorf("validated edit could not be applied: %w", applyErr)
 	}
+	rollback := func(cause error) error {
+		if rollbackErr := generation.RestorePlanSnapshot(a.Store.Root, snapshot); rollbackErr != nil {
+			return fmt.Errorf("%w; automatic rollback also failed: %v", cause, rollbackErr)
+		}
+		return cause
+	}
+	verification, verifyErr := verify.Detect(a.Store.Root, written)
+	if verifyErr != nil {
+		return rollback(fmt.Errorf("could not verify generated changes: %w", verifyErr))
+	}
+	if !verification.Passed {
+		return rollback(fmt.Errorf("verification failed; workspace changes were rolled back\n%s", verify.Format(verification)))
+	}
 	if err := a.Store.MarkTouched(written); err != nil {
-		return fmt.Errorf("record changed files: %w", err)
+		return rollback(fmt.Errorf("record changed files: %w", err))
 	}
 	st, _ := a.Store.LoadState()
 	st.ActiveProvider = name
 	st.ActiveModel = mdl
 	if err := a.Store.SaveState(st); err != nil {
-		return fmt.Errorf("save session state: %w", err)
+		return rollback(fmt.Errorf("save session state: %w", err))
 	}
 	if err := a.Store.RefreshHashes(written); err != nil {
-		return fmt.Errorf("refresh workspace hashes: %w", err)
+		return rollback(fmt.Errorf("refresh workspace hashes: %w", err))
 	}
 	if len(written) == 1 {
 		fmt.Printf("%s✓ Applied%s %s\n", uiGreen, uiReset, written[0])
