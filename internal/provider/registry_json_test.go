@@ -2,7 +2,9 @@ package provider
 
 import (
 	"context"
+	"errors"
 	"testing"
+	"time"
 )
 
 type jsonContinuationProvider struct { calls int }
