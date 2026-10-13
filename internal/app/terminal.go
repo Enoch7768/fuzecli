@@ -353,6 +353,11 @@ func formatTerminalError(err error) string {
 
 func terminalPromptNeedsApproval(prompt string) bool {
 	s := strings.ToLower(strings.TrimSpace(prompt))
+	for _, prefix := range []string{"how do i ", "how can i ", "how do you ", "what is ", "what are ", "why does ", "why is ", "can you explain ", "tell me how "} {
+		if strings.HasPrefix(s, prefix) {
+			return false
+		}
+	}
 	analysisOnly := strings.Contains(s, "analyze") || strings.Contains(s, "analyse") || strings.Contains(s, "audit") || strings.Contains(s, "review") || strings.Contains(s, "inspect") || strings.Contains(s, "assess") || strings.Contains(s, "suggest") || strings.Contains(s, "recommend") || strings.Contains(s, "improvement")
 	explicitChange := strings.Contains(s, "fix") || strings.Contains(s, "change") || strings.Contains(s, "edit") || strings.Contains(s, "update") || strings.Contains(s, "implement") || strings.Contains(s, "apply") || strings.Contains(s, "build") || strings.Contains(s, "create") || strings.Contains(s, "add") || strings.Contains(s, "remove") || strings.Contains(s, "refactor") || strings.Contains(s, "rewrite") || strings.Contains(s, "replace") || strings.Contains(s, "go ahead")
 	if analysisOnly && !explicitChange {
