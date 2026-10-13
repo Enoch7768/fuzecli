@@ -148,7 +148,8 @@ func runSpec(root, source, ext string) (string, []string, string, func() (*exec.
 		return "rustc", []string{source, "-o", bin}, "Rust (rustc)", build, nil
 	case ".c", ".cc", ".cpp", ".cxx":
 		compiler := "cc"
-		if runtime.GOOS == "windows" { compiler = "gcc" }
+		if ext == ".cc" || ext == ".cpp" || ext == ".cxx" || ext == ".hpp" { compiler = "g++" }
+		if runtime.GOOS == "windows" && compiler == "cc" { compiler = "gcc" }
 		for _, candidate := range []string{compiler, "clang", "gcc", "g++"} { if _, err := exec.LookPath(candidate); err == nil { compiler = candidate; break } }
 		tmp, err := os.MkdirTemp("", "fuzecli-native-*")
 		if err != nil { return "", nil, "", nil, err }
