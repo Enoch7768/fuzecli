@@ -468,7 +468,7 @@ func githubCommand(args []string) error {
 			client = github.New("")
 			user, err := client.Profile(ctx)
 			if err != nil { return fmt.Errorf("verify GitHub sign-in: %w", err) }
-			fmt.Printf("GitHub connected as %s.\\n", user.Login)
+			fmt.Printf("GitHub connected as %s.\n", user.Login)
 			return nil
 		case "set":
 			if len(args) != 3 || strings.TrimSpace(args[2]) == "" { return fmt.Errorf("usage: aicli github auth set <token>") }
