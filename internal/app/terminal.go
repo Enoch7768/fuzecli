@@ -355,7 +355,10 @@ func terminalPromptNeedsApproval(prompt string) bool {
 	s := strings.ToLower(strings.TrimSpace(prompt))
 	analysisOnly := strings.Contains(s, "analyze") || strings.Contains(s, "analyse") || strings.Contains(s, "audit") || strings.Contains(s, "review") || strings.Contains(s, "inspect") || strings.Contains(s, "assess") || strings.Contains(s, "suggest") || strings.Contains(s, "recommend") || strings.Contains(s, "improvement")
 	explicitChange := strings.Contains(s, "fix") || strings.Contains(s, "change") || strings.Contains(s, "edit") || strings.Contains(s, "update") || strings.Contains(s, "implement") || strings.Contains(s, "apply") || strings.Contains(s, "build") || strings.Contains(s, "create") || strings.Contains(s, "add") || strings.Contains(s, "remove") || strings.Contains(s, "refactor") || strings.Contains(s, "rewrite") || strings.Contains(s, "replace") || strings.Contains(s, "go ahead")
-	return !analysisOnly || explicitChange
+	if analysisOnly && !explicitChange {
+		return false
+	}
+	return explicitChange
 }
 
 func (a *App) terminalStream(ctx context.Context, prompt, providerName, model, billingMode string, attachments map[string]string) error {
