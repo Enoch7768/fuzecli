@@ -73,3 +73,38 @@ func TestRegistryStructuredJSONFallbackKeepsSchemaBeforeObjectMode(t *testing.T)
 		t.Fatalf("schema calls = %d, want 2", p.schemaCalls)
 	}
 }
+
+
+type jsonModeFallbackProvider struct {
+	calls int
+}
+
+func (p *jsonModeFallbackProvider) Name() string { return "json-mode-test" }
+func (p *jsonModeFallbackProvider) ListModels(context.Context) ([]string, error) {
+	return []string{"test-model"}, nil
+}
+func (p *jsonModeFallbackProvider) Stream(context.Context, []Message, RequestOptions) (<-chan StreamChunk, error) {
+	return nil, &ProviderError{Kind: ErrorBadRequest, Provider: p.Name(), Message: "JSON not accepted by this model"}
+}
+func (p *jsonModeFallbackProvider) Send(_ context.Context, _ []Message, opts RequestOptions) (*Response, error) {
+	p.calls++
+	if opts.JSONMode {
+		return nil, &ProviderError{Kind: ErrorBadRequest, Provider: p.Name(), Message: "JSON not accepted by this model"}
+	}
+	return &Response{Content: "Plain text response", Model: "test-model", ProviderName: p.Name()}, nil
+}
+
+func TestRegistryFallsBackWhenProviderRejectsJSONMode(t *testing.T) {
+	p := &jsonModeFallbackProvider{}
+	r := NewRegistry([]string{"json-mode-test"}, map[string]string{"json-mode-test": "test-model"}, p)
+	got, err := r.Send(context.Background(), "json-mode-test", []Message{{Role: "user", Content: "hello"}}, RequestOptions{Model: "test-model", JSONMode: true})
+	if err != nil {
+		t.Fatalf("Send returned error: %v", err)
+	}
+	if got == nil || got.Content != "Plain text response" {
+		t.Fatalf("unexpected fallback response: %#v", got)
+	}
+	if p.calls != 2 {
+		t.Fatalf("provider calls = %d, want 2", p.calls)
+	}
+}
