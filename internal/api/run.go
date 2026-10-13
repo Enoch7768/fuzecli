@@ -165,7 +165,7 @@ func runSpec(root, source, ext string) (string, []string, string, func() (*exec.
 		build := func() (*exec.Cmd, []string) { c := exec.Command("kotlinc", source, "-include-runtime", "-d", jar); return c, []string{"java", "-jar", jar} }
 		return "kotlinc", []string{source, "-include-runtime", "-d", jar}, "Kotlin compiler + Java", build, nil
 	case ".cs":
-		if _, err := os.Stat(filepath.Join(root, ".*.csproj")); err == nil { return noBuild("dotnet", "run") }
+		if projects, _ := filepath.Glob(filepath.Join(root, "*.csproj")); len(projects) > 0 { return noBuild("dotnet", "run", "--project", projects[0]) }
 		return "", nil, ".NET SDK (open a project containing a .csproj file)", nil, nil
 	case ".rb":
 		return noBuild("ruby", source)
