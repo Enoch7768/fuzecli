@@ -32,7 +32,8 @@ type VerificationConfig struct {
 }
 
 type GitHubConfig struct {
-	Token string `yaml:"token,omitempty"`
+	Token           string `yaml:"token,omitempty"`
+	TokenConfigured bool   `yaml:"token_configured,omitempty"`
 }
 
 func Default() Config {
@@ -173,6 +174,7 @@ func SetGitHubToken(token string) error {
 		return err
 	}
 	c.GitHub.Token = strings.TrimSpace(token)
+	c.GitHub.TokenConfigured = true
 	return Save(c)
 }
 
@@ -181,15 +183,18 @@ func ClearGitHubToken() error {
 }
 
 func GitHubToken() (string, error) {
+	c, err := Load()
+	if err != nil {
+		return "", err
+	}
+	if c.GitHub.TokenConfigured {
+		return strings.TrimSpace(c.GitHub.Token), nil
+	}
 	if token := strings.TrimSpace(os.Getenv("GITHUB_TOKEN")); token != "" {
 		return token, nil
 	}
 	if token := strings.TrimSpace(os.Getenv("GH_TOKEN")); token != "" {
 		return token, nil
-	}
-	c, err := Load()
-	if err != nil {
-		return "", err
 	}
 	return strings.TrimSpace(c.GitHub.Token), nil
 }
@@ -254,8 +259,14 @@ func renderYAML(c Config) string {
 	}
 	fmt.Fprintf(&b, "fallback_order: [%s]\n", strings.Join(order, ", "))
 	fmt.Fprintf(&b, "verification:\n  self_correction_attempts: %d\n", c.Verification.SelfCorrectionAttempts)
-	if c.GitHub.Token != "" {
-		fmt.Fprintf(&b, "github:\n  token: %s\n", yamlScalar(c.GitHub.Token))
+	if c.GitHub.Token != "" || c.GitHub.TokenConfigured {
+		b.WriteString("github:\n")
+		if c.GitHub.Token != "" {
+			fmt.Fprintf(&b, "  token: %s\n", yamlScalar(c.GitHub.Token))
+		}
+		if c.GitHub.TokenConfigured {
+			b.WriteString("  token_configured: true\n")
+		}
 	}
 	return b.String()
 }
@@ -321,6 +332,9 @@ func parseYAML(text string, c *Config) error {
 			key, value := splitKV(trimmed)
 			if key == "token" {
 				c.GitHub.Token = unquote(value)
+			}
+			if key == "token_configured" {
+				c.GitHub.TokenConfigured = strings.EqualFold(unquote(value), "true")
 			}
 			continue
 		}
