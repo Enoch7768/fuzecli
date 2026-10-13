@@ -182,6 +182,14 @@ func ClearGitHubToken() error {
 	return SetGitHubToken("")
 }
 
+func GitHubTokenConfigured() (bool, error) {
+	c, err := Load()
+	if err != nil {
+		return false, err
+	}
+	return c.GitHub.TokenConfigured, nil
+}
+
 func GitHubToken() (string, error) {
 	c, err := Load()
 	if err != nil {
