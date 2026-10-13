@@ -139,12 +139,33 @@ async function githubStatus(){
     el.className="github-status";el.textContent="Not connected";return false;
   }catch(e){$("#githubStatus").className="github-status error";$("#githubStatus").textContent=e.message;return false}
 }
+function githubRemoteName(remote){
+  const value=String(remote||"").trim();
+  const match=value.match(/github\\.com[:/]([^/]+\\/[^/]+?)(?:\\.git)?(?:[?#].*)?$/i);
+  return match?match[1].replace(/\\.git$/i,""):"";
+}
 async function githubRepos(){
   try{
     const d=await api("/v1/github/repos"),items=d.repositories||[],select=$("#githubRepoSelect");
-    if(select){select.innerHTML='<option value="">Repository</option>'+items.map(r=>'<option value="'+esc(r.full_name)+'">'+esc(r.full_name)+'</option>').join("");}
+    const previous=select?.value||"";
+    const remoteName=githubRemoteName($("#githubRemote")?.textContent||"");
+    if(select){
+      select.innerHTML='<option value="">Choose repository…</option>'+items.map(r=>'<option value="'+esc(r.full_name)+'">'+esc(r.full_name)+'</option>').join("");
+      const preferred=items.find(r=>r.full_name.toLowerCase()===remoteName.toLowerCase())?.full_name;
+      const retained=items.find(r=>r.full_name===previous)?.full_name;
+      select.value=preferred||retained||"";
+    }
     $("#githubRepoList").innerHTML=items.map(r=>'<div class="github-item"><div><b>'+esc(r.full_name)+'</b><span>'+esc(r.description||"No description")+'</span></div><a href="'+esc(r.html_url||"#")+'" target="_blank" rel="noopener">Open</a></div>').join("")||'<div class="ide-panel-empty">No repositories found.</div>';
-    if(items[0]&&select&&!select.value){select.value=items[0].full_name;$("#githubContextRepo").textContent=items[0].full_name;await githubBranches(items[0].full_name)}
+    const selected=select?.value||"";
+    if(selected){
+      $("#githubContextRepo").textContent=selected;
+      $("#githubContextMeta").textContent=selected===remoteName?"Matches this workspace’s GitHub origin.":"Selected repository context.";
+      await githubBranches(selected);
+    }else{
+      $("#githubContextRepo").textContent="No repository selected";
+      $("#githubContextMeta").textContent=items.length?"Choose the repository you want FuzeCLI to work with.":"No repositories found for this account.";
+      $("#githubBranchSelect").innerHTML='<option value="">Branch</option>';
+    }
   }catch(e){$("#githubRepoList").innerHTML='<div class="ide-panel-empty">'+esc(e.message)+'</div>'}
 }
 async function githubBranches(full){
