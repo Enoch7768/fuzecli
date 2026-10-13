@@ -104,3 +104,43 @@ func TestSetFallbackOrder(t *testing.T) {
 		t.Fatalf("unexpected fallback order: %#v", got.FallbackOrder)
 	}
 }
+
+
+func TestGitHubTokenConfiguredOverridesEnvironment(t *testing.T) {
+	tmp := t.TempDir()
+	oldAppData := os.Getenv("APPDATA")
+	oldXDG := os.Getenv("XDG_CONFIG_HOME")
+	oldGitHub := os.Getenv("GITHUB_TOKEN")
+	oldGH := os.Getenv("GH_TOKEN")
+	_ = os.Setenv("APPDATA", tmp)
+	_ = os.Setenv("XDG_CONFIG_HOME", tmp)
+	_ = os.Setenv("GITHUB_TOKEN", "old-environment-token")
+	_ = os.Setenv("GH_TOKEN", "older-environment-token")
+	defer func() {
+		_ = os.Setenv("APPDATA", oldAppData)
+		_ = os.Setenv("XDG_CONFIG_HOME", oldXDG)
+		_ = os.Setenv("GITHUB_TOKEN", oldGitHub)
+		_ = os.Setenv("GH_TOKEN", oldGH)
+	}()
+
+	if err := SetGitHubToken("new-ui-token"); err != nil {
+		t.Fatal(err)
+	}
+	got, err := GitHubToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "new-ui-token" {
+		t.Fatalf("configured token should override environment token, got %q", got)
+	}
+	if err := ClearGitHubToken(); err != nil {
+		t.Fatal(err)
+	}
+	got, err = GitHubToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "" {
+		t.Fatalf("explicit disconnect should not fall back to environment tokens, got %q", got)
+	}
+}
