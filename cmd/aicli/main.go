@@ -465,6 +465,7 @@ func githubCommand(args []string) error {
 			setupGit := exec.Command("gh", "auth", "setup-git", "--hostname", "github.com")
 			setupGit.Stdin, setupGit.Stdout, setupGit.Stderr = os.Stdin, os.Stdout, os.Stderr
 			if err := setupGit.Run(); err != nil { return fmt.Errorf("configure GitHub CLI for Git operations: %w", err) }
+			if err := config.ClearGitHubToken(); err != nil { return fmt.Errorf("remove legacy saved GitHub token: %w", err) }
 			client = github.New("")
 			user, err := client.Profile(ctx)
 			if err != nil { return fmt.Errorf("verify GitHub sign-in: %w", err) }
