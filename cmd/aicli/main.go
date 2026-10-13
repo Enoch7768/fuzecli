@@ -477,7 +477,8 @@ func githubCommand(args []string) error {
 			return nil
 		case "clear":
 			if err := config.ClearGitHubToken(); err != nil { return err }
-			fmt.Println("GitHub token cleared.")
+			fmt.Println("FuzeCLI stored GitHub token cleared. GitHub CLI browser login, if configured, remains active.")
+			fmt.Println("To sign out of GitHub CLI too, run: gh auth logout --hostname github.com")
 			return nil
 		case "status":
 			if !client.Authenticated() { fmt.Println("GitHub: not authenticated"); return nil }
@@ -856,6 +857,7 @@ Integration:
   aicli app [--addr host:port]       Start the polished local web app
   aicli api [--addr host:port]       Start the local API server
   aicli apikey set <provider> <key>  Save a provider API key
+  aicli github auth login            Connect GitHub through your browser
   aicli github ...                   GitHub repos, Git sync, pull requests, issues, comments, and Actions
   aicli apikey status                Show provider key status
   aicli apikey clear <provider>      Remove a provider API key
