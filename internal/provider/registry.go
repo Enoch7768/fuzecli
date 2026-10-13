@@ -175,7 +175,7 @@ func (r *Registry) sendWithRetry(ctx context.Context, name string, messages []Me
 			plain.JSONSchemaStrict = false
 			response, err = p.Send(ctx, messages, plain)
 		}
-		if err == nil && response != nil && strings.TrimSpace(response.Content) == "" {
+		if err == nil && (response == nil || strings.TrimSpace(response.Content) == "") {
 			err = &ProviderError{Kind: ErrorProviderUnavailable, Provider: name, Message: "model returned an empty response"}
 		}
 		r.observe(name, err)
