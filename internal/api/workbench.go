@@ -43,9 +43,19 @@ func (m *terminalManager) start(root string) (*terminalSession, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	var cmd *exec.Cmd
 	if runtime.GOOS == "windows" {
-		cmd = exec.CommandContext(ctx, "cmd.exe", "/d", "/s", "/c", "cmd.exe")
+		if shell, err := exec.LookPath("pwsh.exe"); err == nil {
+			cmd = exec.CommandContext(ctx, shell, "-NoLogo", "-NoProfile", "-NoExit")
+		} else if shell, err := exec.LookPath("powershell.exe"); err == nil {
+			cmd = exec.CommandContext(ctx, shell, "-NoLogo", "-NoProfile", "-NoExit")
+		} else {
+			cmd = exec.CommandContext(ctx, "cmd.exe", "/Q")
+		}
 	} else {
-		cmd = exec.CommandContext(ctx, "/bin/sh", "-lc", "exec $SHELL -i")
+		shell := strings.TrimSpace(os.Getenv("SHELL"))
+		if shell == "" || !filepath.IsAbs(shell) {
+			if candidate, err := exec.LookPath("bash"); err == nil { shell = candidate } else { shell = "/bin/sh" }
+		}
+		cmd = exec.CommandContext(ctx, shell, "-i")
 	}
 	cmd.Dir = root
 	cmd.Env = os.Environ()
