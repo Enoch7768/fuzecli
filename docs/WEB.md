@@ -34,6 +34,10 @@ Activity shows the persisted local conversation history so a session can be insp
 
 Settings controls the default provider and model. API-key values are intentionally never sent to the browser. Use `aicli apikey set <provider> <key>` for direct key management.
 
+### GitHub context
+
+The selected repository drives branch, pull-request, Actions, comments, and issue requests. Workspace Pull and Push remain local Git operations against the workspace origin. An explicitly connected token in the web UI takes precedence over inherited `GITHUB_TOKEN` and `GH_TOKEN` values; disconnecting clears that explicit connection so the app does not silently fall back to stale `gh` CLI credentials.
+
 ## Security
 
 The web UI is intended for loopback use. It receives an HttpOnly SameSite session cookie and state-changing requests are restricted to local browser origins. The server sends CSP, frame, MIME, referrer, and permissions headers.
@@ -42,4 +46,6 @@ If the API is intentionally bound to a non-loopback address, a bearer token is m
 
 ## Design
 
-The interface deliberately avoids a generic dashboard template. It uses a restrained developer-tool layout: compact navigation, a dark editor-like surface, narrow typography, quiet borders, workspace-first information density, and responsive behavior that keeps the command composer central.
+The interface uses a distinctive developer-studio visual system: deep ink surfaces, luminous lime and violet accents, layered glass panels, higher-contrast typography, subtle slide-in transitions, and responsive navigation. Motion respects `prefers-reduced-motion`.
+
+The HTML, JavaScript, and stylesheets are embedded in the Go executable. When changing web assets, rebuild the executable and restart the running `aicli app` process; refreshing a browser tab cannot update assets embedded in an older binary.
