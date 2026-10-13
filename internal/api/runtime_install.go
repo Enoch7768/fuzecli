@@ -73,8 +73,13 @@ func (s *Server) installRuntime(w http.ResponseWriter, r *http.Request) {
 	command, args, err := installCommand(pkg)
 	if key == "node.js + tsx" {
 		npm := "npm"
-		if runtime.GOOS == "windows" { npm = "npm.cmd" }
-		if _, lookupErr := exec.LookPath(npm); lookupErr != nil {
+		if runtime.GOOS == "windows" {
+			if _, lookupErr := exec.LookPath("npm"); lookupErr != nil {
+				err = fmt.Errorf("Node.js/npm is required before installing the TypeScript runner")
+			} else {
+				command, args, err = "cmd.exe", []string{"/d", "/s", "/c", "npm install --global tsx"}, nil
+			}
+		} else if _, lookupErr := exec.LookPath(npm); lookupErr != nil {
 			err = fmt.Errorf("Node.js/npm is required before installing the TypeScript runner")
 		} else {
 			command, args, err = npm, []string{"install", "--global", "tsx"}, nil
