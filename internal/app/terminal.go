@@ -421,7 +421,8 @@ func (a *App) terminalStream(ctx context.Context, prompt, providerName, model, b
 	if streamErr == nil {
 		for chunk := range stream {
 			if chunk.Error != nil {
-				return fmt.Errorf("provider stream failed: %w", chunk.Error)
+				streamErr = chunk.Error
+				break
 			}
 			if chunk.Delta != "" {
 				response.WriteString(chunk.Delta)
