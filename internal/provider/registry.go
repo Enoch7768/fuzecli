@@ -374,7 +374,7 @@ func isJSONModeCompatibilityError(err error) bool {
 }
 
 func isRetryableProviderError(err error) bool {
-	return errors.Is(err, ErrRateLimited) || errors.Is(err, ErrProviderUnavailable)
+	return errors.Is(err, ErrRateLimited) || errors.Is(err, ErrProviderUnavailable) || errors.Is(err, context.DeadlineExceeded)
 }
 
 func shouldFallbackProviderError(err error) bool {
@@ -383,6 +383,7 @@ func shouldFallbackProviderError(err error) bool {
 	}
 	return errors.Is(err, ErrRateLimited) ||
 		errors.Is(err, ErrProviderUnavailable) ||
+		errors.Is(err, context.DeadlineExceeded) ||
 		errors.Is(err, ErrRequestTooLarge) ||
 		errors.Is(err, ErrModelNotFound) ||
 		isModelAvailabilityError(err)
