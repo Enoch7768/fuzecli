@@ -291,8 +291,15 @@ func bridgeDAP(ws *websocket.Conn, root, language string) error {
 		br := bufio.NewReader(conn)
 		for {
 			msg, err := readLSPMessage(br)
-			if err != nil { return }
-			_ = ws.WriteMessage(websocket.TextMessage, msg)
+			if err != nil {
+				_ = ws.WriteJSON(map[string]any{"type": "error", "message": fmt.Sprintf("%s debugger adapter closed its output before responding: %v. Check that its runtime and adapter dependencies are installed.", language, err)})
+				_ = ws.Close()
+				return
+			}
+			if err := ws.WriteMessage(websocket.TextMessage, msg); err != nil {
+				_ = ws.Close()
+				return
+			}
 		}
 	}()
 	for {
