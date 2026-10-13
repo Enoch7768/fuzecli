@@ -13,6 +13,7 @@ import (
 
 	"github.com/Enoch7768/fuzecli/internal/generation"
 	"github.com/Enoch7768/fuzecli/internal/provider"
+	"github.com/Enoch7768/fuzecli/internal/verify"
 )
 
 const terminalAttachmentLimit = 65536
@@ -353,9 +354,17 @@ func formatTerminalError(err error) string {
 
 func terminalPromptNeedsApproval(prompt string) bool {
 	s := strings.ToLower(strings.TrimSpace(prompt))
+	for _, prefix := range []string{"how do i ", "how can i ", "how do you ", "what is ", "what are ", "why does ", "why is ", "can you explain ", "tell me how "} {
+		if strings.HasPrefix(s, prefix) {
+			return false
+		}
+	}
 	analysisOnly := strings.Contains(s, "analyze") || strings.Contains(s, "analyse") || strings.Contains(s, "audit") || strings.Contains(s, "review") || strings.Contains(s, "inspect") || strings.Contains(s, "assess") || strings.Contains(s, "suggest") || strings.Contains(s, "recommend") || strings.Contains(s, "improvement")
 	explicitChange := strings.Contains(s, "fix") || strings.Contains(s, "change") || strings.Contains(s, "edit") || strings.Contains(s, "update") || strings.Contains(s, "implement") || strings.Contains(s, "apply") || strings.Contains(s, "build") || strings.Contains(s, "create") || strings.Contains(s, "add") || strings.Contains(s, "remove") || strings.Contains(s, "refactor") || strings.Contains(s, "rewrite") || strings.Contains(s, "replace") || strings.Contains(s, "go ahead")
-	return !analysisOnly || explicitChange
+	if analysisOnly && !explicitChange {
+		return false
+	}
+	return explicitChange
 }
 
 func (a *App) terminalStream(ctx context.Context, prompt, providerName, model, billingMode string, attachments map[string]string) error {
@@ -375,7 +384,13 @@ func (a *App) terminalStream(ctx context.Context, prompt, providerName, model, b
 	if err != nil {
 		return fmt.Errorf("read workspace context: %w", err)
 	}
-	system := generation.SessionSystemPrompt() + "\n\nSTRUCTURED RESPONSE CONTRACT: Return one JSON object for every request. For conversation use type=chat with response (or compatible message/content/text). For workspace changes use type=edit with plan.files containing path, action, and complete content; include explanation when useful. Never truncate file content. The parser accepts compatible field aliases, but prefer the canonical contract.\n\nYou are FuzeCLI, a practical coding assistant for developers. The workspace context was read directly from the user's local workspace. Never ask the user to paste a file that exists there. Never return a request asking the user to provide source files that FuzeCLI already supplied. Generated commands are informational only and are never executed automatically."
+	applyChanges := terminalPromptNeedsApproval(prompt)
+	var system string
+	if applyChanges {
+		system = generation.SessionSystemPrompt() + "\n\nSTRUCTURED RESPONSE CONTRACT: Return one JSON object for file changes only. Use type=edit with files containing relative path, action, and complete content. Never truncate file content. Generated commands are informational only and are never executed automatically."
+	} else {
+		system = "You are FuzeCLI, a practical coding assistant for developers. Reply in clear natural language, not JSON. Do not propose or apply file changes unless the user explicitly asks for them. The workspace context was read directly from the user's local workspace. Never ask the user to paste a file that FuzeCLI already supplied. Generated commands are informational only and are never executed automatically."
+	}
 	if profileText := a.Profile.Condensed(); profileText != "" {
 		system += "\nDeveloper profile:\n" + profileText
 	}
@@ -395,23 +410,28 @@ func (a *App) terminalStream(ctx context.Context, prompt, providerName, model, b
 		return fmt.Errorf("save user message: %w", err)
 	}
 
-	applyChanges := terminalPromptNeedsApproval(prompt)
 	if !applyChanges {
-		system += "\nThis is an analysis-only request. Do not modify files; report findings and exactly three high-value improvements."
+		system += "\nThis is a conversation or analysis request. Do not modify files. Answer the user's actual question naturally and concisely."
+		msgs[0].Content = system
 	}
 	fmt.Printf("\n%sYou%s\n%s\n\n%sFuze%s\n", uiBold, uiReset, prompt, uiAccent, uiReset)
 	progress := newTerminalProgress()
 	progress.update(8, "Connecting")
 	defer progress.finish()
 
-	opts := provider.RequestOptions{Model: mdl, Temperature: 0.3, MaxTokens: 32768, JSONMode: true, JSONSchema: generation.ChatResponseSchema(), BillingMode: billingMode}
+	opts := provider.RequestOptions{Model: mdl, Temperature: 0.3, MaxTokens: 32768, BillingMode: billingMode}
+	if applyChanges {
+		opts.JSONMode = true
+		opts.JSONSchema = generation.ChatResponseSchema()
+	}
 	stream, streamErr := a.Registry.Stream(ctx, name, msgs, opts)
 	var response strings.Builder
 	var usage provider.Usage
 	if streamErr == nil {
 		for chunk := range stream {
 			if chunk.Error != nil {
-				return fmt.Errorf("provider stream failed: %w", chunk.Error)
+				streamErr = chunk.Error
+				break
 			}
 			if chunk.Delta != "" {
 				response.WriteString(chunk.Delta)
@@ -424,6 +444,19 @@ func (a *App) terminalStream(ctx context.Context, prompt, providerName, model, b
 			if response.Len() > 8192 { percent = 45 }
 			if response.Len() > 32768 { percent = 68 }
 			progress.update(percent, "Generating response")
+		}
+		if streamErr != nil {
+			progress.update(45, "Recovering interrupted stream")
+			retry, retryErr := a.Registry.Send(ctx, name, msgs, opts)
+			if retryErr != nil {
+				return fmt.Errorf("the AI stream was interrupted and the retry also failed; check your connection or provider quota: %w", retryErr)
+			}
+			if retry == nil {
+				return fmt.Errorf("the AI stream was interrupted and the retry returned no response; try again or switch providers with /provider")
+			}
+			response.Reset()
+			response.WriteString(retry.Content)
+			usage = retry.Usage
 		}
 	} else {
 		progress.update(45, "Retrying request")
@@ -438,11 +471,60 @@ func (a *App) terminalStream(ctx context.Context, prompt, providerName, model, b
 	progress.update(82, "Validating response")
 	raw := strings.TrimSpace(response.String())
 	if raw == "" {
-		return fmt.Errorf("provider returned an empty response; no assistant content was received")
+		progress.update(88, "Recovering empty response")
+		retry, retryErr := a.Registry.Send(ctx, name, msgs, opts)
+		if retryErr == nil && retry != nil {
+			raw = strings.TrimSpace(retry.Content)
+			usage = retry.Usage
+		}
+		if raw == "" {
+			if retryErr != nil {
+				return fmt.Errorf("the AI provider returned no content after retry; check your connection, quota, or choose another provider with /provider: %w", retryErr)
+			}
+			return fmt.Errorf("the AI provider returned no content after retry; check your connection or quota, then try again")
+		}
 	}
-	parsed, parseErr := generation.ParseChatResponse(raw)
-	if parseErr != nil {
-		return fmt.Errorf("complete assistant response could not be validated: %w", parseErr)
+	var parsed generation.ChatResponse
+	var parseErr error
+	if applyChanges {
+		parsed, parseErr = generation.ParseChatResponse(raw)
+		if parseErr == nil && (parsed.Type != "edit" || parsed.Plan == nil) {
+			parseErr = fmt.Errorf("the response did not contain a validated file-edit plan")
+		}
+		var repairMessages []provider.Message
+		repairOpts := opts
+		if parseErr != nil {
+			progress.update(90, "Repairing structured response")
+			repairMessages = append([]provider.Message(nil), msgs...)
+			repairMessages = append(repairMessages,
+				provider.Message{Role: "assistant", Content: raw},
+				provider.Message{Role: "user", Content: "The previous response was not valid for the required file-edit format. Return one complete, valid JSON object matching the required schema. Preserve every intended file change, use complete file contents, use only create/modify/delete actions, and do not include markdown fences or commentary."},
+			)
+			repairOpts = opts
+			repairOpts.JSONMode = true
+			repairOpts.JSONSchema = generation.ChatResponseSchema()
+			repaired, repairErr := a.Registry.Send(ctx, name, repairMessages, repairOpts)
+			if repairErr == nil && repaired != nil {
+				raw = strings.TrimSpace(repaired.Content)
+				usage = repaired.Usage
+				parsed, parseErr = generation.ParseChatResponse(raw)
+			} else if repairErr != nil {
+				parseErr = fmt.Errorf("%v; repair attempt failed: %w", parseErr, repairErr)
+			}
+		}
+		if parseErr != nil {
+			fallback, fallbackErr := a.Registry.Send(ctx, "auto", repairMessages, repairOpts)
+			if fallbackErr == nil && fallback != nil {
+				raw = strings.TrimSpace(fallback.Content)
+				usage = fallback.Usage
+				parsed, parseErr = generation.ParseChatResponse(raw)
+			}
+		}
+		if parseErr != nil {
+			return fmt.Errorf("FuzeCLI could not safely validate the AI's proposed file changes. No files were applied. Try again, reduce the request size, or switch providers with /provider: %w", parseErr)
+		}
+	} else {
+		parsed = generation.ChatResponse{Type: "chat", Response: raw, Message: raw}
 	}
 
 	if parsed.Type == "chat" {
@@ -469,21 +551,39 @@ func (a *App) terminalStream(ctx context.Context, prompt, providerName, model, b
 		fmt.Printf("%s%s%s\n", uiBold, content, uiReset)
 		return a.Store.AddMessage(provider.Message{Role: "assistant", Content: content})
 	}
+	snapshot, snapshotErr := generation.CreatePlanSnapshot(a.Store.Root, *parsed.Plan)
+	if snapshotErr != nil {
+		return fmt.Errorf("could not protect workspace before applying edits: %w", snapshotErr)
+	}
 	written, applyErr := generation.ApplyChatPlan(a.Store.Root, *parsed.Plan)
 	if applyErr != nil {
+		_ = generation.RestorePlanSnapshot(a.Store.Root, snapshot)
 		return fmt.Errorf("validated edit could not be applied: %w", applyErr)
 	}
+	rollback := func(cause error) error {
+		if rollbackErr := generation.RestorePlanSnapshot(a.Store.Root, snapshot); rollbackErr != nil {
+			return fmt.Errorf("%w; automatic rollback also failed: %v", cause, rollbackErr)
+		}
+		return cause
+	}
+	verification, verifyErr := verify.Detect(a.Store.Root, written)
+	if verifyErr != nil {
+		return rollback(fmt.Errorf("could not verify generated changes: %w", verifyErr))
+	}
+	if !verification.Passed {
+		return rollback(fmt.Errorf("verification failed; workspace changes were rolled back\n%s", verify.Format(verification)))
+	}
 	if err := a.Store.MarkTouched(written); err != nil {
-		return fmt.Errorf("record changed files: %w", err)
+		return rollback(fmt.Errorf("record changed files: %w", err))
 	}
 	st, _ := a.Store.LoadState()
 	st.ActiveProvider = name
 	st.ActiveModel = mdl
 	if err := a.Store.SaveState(st); err != nil {
-		return fmt.Errorf("save session state: %w", err)
+		return rollback(fmt.Errorf("save session state: %w", err))
 	}
 	if err := a.Store.RefreshHashes(written); err != nil {
-		return fmt.Errorf("refresh workspace hashes: %w", err)
+		return rollback(fmt.Errorf("refresh workspace hashes: %w", err))
 	}
 	if len(written) == 1 {
 		fmt.Printf("%s✓ Applied%s %s\n", uiGreen, uiReset, written[0])

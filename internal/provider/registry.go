@@ -168,7 +168,14 @@ func (r *Registry) sendWithRetry(ctx context.Context, name string, messages []Me
 				response, err = p.Send(ctx, messages, objectMode)
 			}
 		}
-		if err == nil && response != nil && strings.TrimSpace(response.Content) == "" {
+		if err != nil && opts.JSONMode && isJSONModeCompatibilityError(err) {
+			plain := opts
+			plain.JSONMode = false
+			plain.JSONSchema = nil
+			plain.JSONSchemaStrict = false
+			response, err = p.Send(ctx, messages, plain)
+		}
+		if err == nil && (response == nil || strings.TrimSpace(response.Content) == "") {
 			err = &ProviderError{Kind: ErrorProviderUnavailable, Provider: name, Message: "model returned an empty response"}
 		}
 		r.observe(name, err)
@@ -299,6 +306,13 @@ func (r *Registry) streamWithRetry(ctx context.Context, name string, messages []
 				stream, err = p.Stream(ctx, messages, objectMode)
 			}
 		}
+		if err != nil && opts.JSONMode && isJSONModeCompatibilityError(err) {
+			plain := opts
+			plain.JSONMode = false
+			plain.JSONSchema = nil
+			plain.JSONSchemaStrict = false
+			stream, err = p.Stream(ctx, messages, plain)
+		}
 		r.observe(name, err)
 		if err != nil {
 			r.recordTelemetry(TelemetryEvent{RequestID: opts.RequestID, Time: time.Now(), Provider: name, Model: opts.Model, LatencyMs: time.Since(started).Milliseconds(), Streaming: true, Success: err == nil, Error: errorString(err), ErrorKind: errorKind(err)}, err)
@@ -345,8 +359,22 @@ func isStructuredJSONCompatibilityError(err error) bool {
 	return false
 }
 
+func isJSONModeCompatibilityError(err error) bool {
+	var providerErr *ProviderError
+	if !errors.As(err, &providerErr) || providerErr.Kind != ErrorBadRequest {
+		return false
+	}
+	message := strings.ToLower(providerErr.Error())
+	for _, marker := range []string{"json not accepted", "json mode", "json_object", "application/json", "response format", "response_format", "does not support json"} {
+		if strings.Contains(message, marker) {
+			return true
+		}
+	}
+	return isStructuredJSONCompatibilityError(err)
+}
+
 func isRetryableProviderError(err error) bool {
-	return errors.Is(err, ErrRateLimited) || errors.Is(err, ErrProviderUnavailable)
+	return errors.Is(err, ErrRateLimited) || errors.Is(err, ErrProviderUnavailable) || errors.Is(err, context.DeadlineExceeded)
 }
 
 func shouldFallbackProviderError(err error) bool {
@@ -355,6 +383,7 @@ func shouldFallbackProviderError(err error) bool {
 	}
 	return errors.Is(err, ErrRateLimited) ||
 		errors.Is(err, ErrProviderUnavailable) ||
+		errors.Is(err, context.DeadlineExceeded) ||
 		errors.Is(err, ErrRequestTooLarge) ||
 		errors.Is(err, ErrModelNotFound) ||
 		isModelAvailabilityError(err)
@@ -875,6 +904,20 @@ func (r *Registry) continueStream(ctx context.Context, name string, messages []M
 				}
 			}
 			partial := strings.TrimSpace(combined.String())
+			if finished && partial == "" {
+				recovered, recoverErr := r.sendWithRetry(ctx, name, messages, opts)
+				if recoverErr != nil {
+					out <- StreamChunk{Error: recoverErr}
+					return
+				}
+				if recovered == nil || strings.TrimSpace(recovered.Content) == "" {
+					out <- StreamChunk{Error: &ProviderError{Kind: ErrorProviderUnavailable, Provider: name, Message: "model returned no content after retry"}}
+					return
+				}
+				out <- StreamChunk{Delta: recovered.Content, Usage: recovered.Usage}
+				out <- StreamChunk{Done: true, Usage: recovered.Usage}
+				return
+			}
 			if !finished || continuations >= 16 || !responseNeedsContinuation(partial) {
 				event := TelemetryEvent{RequestID: opts.RequestID, Time: time.Now(), Provider: name, Model: opts.Model, PromptTokens: uint64(nonNegativeInt(usage.PromptTokens)), CompletionTokens: uint64(nonNegativeInt(usage.CompletionTokens)), TotalTokens: uint64(nonNegativeInt(usage.TotalTokens)), LatencyMs: time.Since(started).Milliseconds(), Streaming: true, Success: true}
 				r.recordTelemetry(event, nil)

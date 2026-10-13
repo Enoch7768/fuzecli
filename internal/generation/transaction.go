@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -144,4 +145,85 @@ func createAutomaticSnapshot(root string, plan Plan) (string, error) {
 		return "", err
 	}
 	return target, nil
+}
+
+
+// CreatePlanSnapshot captures every path a plan may change, including paths that do not exist yet.
+func CreatePlanSnapshot(root string, plan Plan) (string, error) {
+	return createAutomaticSnapshot(root, plan)
+}
+
+// RestorePlanSnapshot restores original file contents and removes files created by the failed plan.
+func RestorePlanSnapshot(root, snapshot string) error {
+	archive, err := zip.OpenReader(snapshot)
+	if err != nil {
+		return fmt.Errorf("open rollback snapshot: %w", err)
+	}
+	defer archive.Close()
+
+	var manifest snapshotManifest
+	for _, entry := range archive.File {
+		if entry.Name != ".aicli-manifest.json" {
+			continue
+		}
+		reader, openErr := entry.Open()
+		if openErr != nil {
+			return openErr
+		}
+		data, readErr := io.ReadAll(reader)
+		_ = reader.Close()
+		if readErr != nil {
+			return readErr
+		}
+		if err := json.Unmarshal(data, &manifest); err != nil {
+			return fmt.Errorf("read rollback manifest: %w", err)
+		}
+		break
+	}
+	if manifest.Version != 1 || len(manifest.Files) == 0 {
+		return fmt.Errorf("rollback snapshot has an invalid manifest")
+	}
+
+	entries := make(map[string]*zip.File, len(archive.File))
+	for _, entry := range archive.File {
+		entries[filepath.ToSlash(entry.Name)] = entry
+	}
+	for _, ref := range manifest.Files {
+		target, err := Resolve(root, ref.Path)
+		if err != nil {
+			return err
+		}
+		if !ref.Exists {
+			if err := os.Remove(target); err != nil && !os.IsNotExist(err) {
+				return fmt.Errorf("remove newly created %s during rollback: %w", ref.Path, err)
+			}
+			continue
+		}
+		entry, ok := entries[filepath.ToSlash(ref.Path)]
+		if !ok {
+			return fmt.Errorf("rollback snapshot is missing %s", ref.Path)
+		}
+		reader, err := entry.Open()
+		if err != nil {
+			return err
+		}
+		data, readErr := io.ReadAll(reader)
+		_ = reader.Close()
+		if readErr != nil {
+			return readErr
+		}
+		if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
+			return err
+		}
+		tmp := target + ".fuzerollback"
+		if err := os.WriteFile(tmp, data, 0644); err != nil {
+			_ = os.Remove(tmp)
+			return err
+		}
+		if err := os.Rename(tmp, target); err != nil {
+			_ = os.Remove(tmp)
+			return err
+		}
+	}
+	return nil
 }
