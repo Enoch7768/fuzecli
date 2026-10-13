@@ -482,6 +482,9 @@ func (a *App) terminalStream(ctx context.Context, prompt, providerName, model, b
 	var parseErr error
 	if applyChanges {
 		parsed, parseErr = generation.ParseChatResponse(raw)
+		if parseErr == nil && (parsed.Type != "edit" || parsed.Plan == nil) {
+			parseErr = fmt.Errorf("the response did not contain a validated file-edit plan")
+		}
 		if parseErr != nil {
 			progress.update(90, "Repairing structured response")
 			repairMessages := append([]provider.Message(nil), msgs...)
