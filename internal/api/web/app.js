@@ -451,6 +451,31 @@ function ideRenderCommandResults(){const overlay=$("#ideCommandOverlay"),input=$
 function ideRunCommandIndex(index){const out=$("#ideCommandResults"),item=out?.__items?.[index];if(item){ideCommandClose();item.run()}}
 const IDE_DEBUG_LANGUAGES=[["javascript","JavaScript"],["typescript","TypeScript"],["php","PHP"],["ruby","Ruby"],["html","HTML/CSS"],["python","Python"],["r","R"],["julia","Julia"],["matlab","MATLAB"],["java","Java"],["csharp","C#"],["cobol","COBOL"],["abap","ABAP"],["c","C"],["cpp","C++"],["rust","Rust"],["go","Go"],["assembly","Assembly"],["swift","Swift"],["kotlin","Kotlin"],["dart","Dart"],["sql","SQL"],["shell","Bash / Shell"],["perl","Perl"],["scala","Scala"]];
 function populateDebugLanguages(){const s=$("#ideDebugLanguage");if(!s)return;if(s.options.length<=1){for(const [v,l] of IDE_DEBUG_LANGUAGES){const o=document.createElement("option");o.value=v;o.textContent=l;s.appendChild(o)}}if(!s.dataset.userSelected){const inferred=ideLang(ideActive);if(IDE_DEBUG_LANGUAGES.some(([v])=>v===inferred))s.value=inferred;else s.value=""}}
+async function ideRunFile(){
+  if(!ideActive){toast("Open a source file first");return}
+  try{
+    if($(".ide-tab.active")?.classList.contains("dirty"))await ideSaveFile();
+    ideBottom("output");
+    const body=$("#ideBottomBody");
+    body.innerHTML='<div class="ide-terminal-line"><span class="terminal-prompt">▶</span><span>Running '+esc(ideActive)+'</span></div><pre id="ideRunOutput" class="ide-run-output">Preparing runtime…</pre>';
+    const output=$("#ideRunOutput");
+    const render=d=>{output.textContent=[d.message||"",d.output||""].filter(Boolean).join("\n");if(d.duration_ms!==undefined)output.textContent+="\n\nExited "+d.exit_code+" · "+d.duration_ms+" ms";};
+    let result=await api("/v1/run",{method:"POST",timeoutMs:150000,body:JSON.stringify({path:ideActive})});
+    if(result.runtime_missing){
+      const runtime=result.runtime||"required runtime";
+      if(!window.confirm(runtime+" is missing. Allow FuzeCLI to install it using this computer's package manager? This may download software and change your system.")){render({...result,message:"Run cancelled. Install "+runtime+" yourself, then retry."});return}
+      output.textContent="Installing "+runtime+"…";
+      const installed=await api("/v1/runtime/install",{method:"POST",timeoutMs:10*60*1000,body:JSON.stringify({runtime})});
+      if(!installed.ok){render(installed);return}
+      output.textContent="Installation finished. Checking runtime…";
+      result=await api("/v1/run",{method:"POST",timeoutMs:150000,body:JSON.stringify({path:ideActive})});
+      if(result.runtime_missing)result.message=(result.message||"Runtime still unavailable.")+" Restart FuzeCLI so the updated PATH can be detected.";
+    }
+    render(result);
+    if(result.ok)toast("Finished "+ideActive);
+    else toast(result.message||"Run failed");
+  }catch(e){const body=$("#ideBottomBody");body.textContent="Run failed: "+e.message;toast(e.message)}
+}
 function initIDEEvents(){
 $("#ideDebugLanguage")?.addEventListener("change",()=>{$("#ideDebugLanguage").dataset.userSelected="true"});
 document.querySelectorAll("[data-ide-panel]").forEach(b=>b.onclick=async()=>{
@@ -486,7 +511,7 @@ $("#ideOutlineResults").onclick=e=>{const b=e.target.closest("[data-outline-line
 document.querySelectorAll("[data-bottom]").forEach(b=>b.onclick=()=>{document.querySelectorAll("[data-bottom]").forEach(x=>x.classList.toggle("active",x===b));ideBottom(b.dataset.bottom);if(b.dataset.bottom==="terminal")ideTerminalConnect()});
 document.querySelectorAll("[data-ide-action]").forEach(b=>b.onclick=()=>askIDE({explain:"Explain this file and point out risky code.",fix:"Find correctness bugs and propose a minimal safe fix.",refactor:"Refactor this file for clarity without changing behavior.",tests:"Design focused tests for this file."}[b.dataset.ideAction]));
 $("#ideAsk").onclick=()=>askIDE();$("#idePrompt").onkeydown=e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();askIDE()}};
-$("#ideDebugStart").onclick=ideDebugStart;
+$("#ideDebugStart").onclick=ideDebugStart;$("#ideRunFile")?.addEventListener("click",ideRunFile);
 $("#ideDebugStop").onclick=async()=>{try{if(ideDebugSocket?.readyState===WebSocket.OPEN)await ideDebugRequest("disconnect",{restart:false,terminateDebuggee:true})}catch(e){}ideDebugRunning=false;ideUpdateDebugStatus("Debugger stopped")};
 $("#ideDebugContinue").onclick=()=>ideDebugCommand("continue");$("#ideDebugPause").onclick=()=>ideDebugCommand("pause");$("#ideDebugStepOver").onclick=()=>ideDebugCommand("next");$("#ideDebugStepInto").onclick=()=>ideDebugCommand("stepIn");$("#ideDebugStepOut").onclick=()=>ideDebugCommand("stepOut");
 }
