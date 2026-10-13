@@ -2,13 +2,14 @@ package api
 
 import "embed"
 
-//go:embed web/index.html web/app.js web/styles.css
+//go:embed web/index.html web/app.js web/styles.css web/premium.css
 var webFiles embed.FS
 
 var (
 	webIndex = mustWebFile("web/index.html")
 	webJS    = mustWebFile("web/app.js")
 	webCSS   = mustWebFile("web/styles.css")
+	webPremiumCSS = mustWebFile("web/premium.css")
 )
 
 func mustWebFile(name string) []byte {
