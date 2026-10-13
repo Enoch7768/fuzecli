@@ -141,8 +141,8 @@ async function githubStatus(){
 }
 function githubRemoteName(remote){
   const value=String(remote||"").trim();
-  const match=value.match(/github\.com[:/]([^/]+\/[^/]+?)(?:\\.git)?(?:[?#].*)?$/i);
-  return match?match[1].replace(/\\.git$/i,""):"";
+  const match=value.match(/github\.com[:/]([^/]+\/[^/]+?)(?:\.git)?(?:[?#].*)?$/i);
+  return match?match[1].replace(/\.git$/i,""):"";
 }
 async function githubRepos(){
   try{
