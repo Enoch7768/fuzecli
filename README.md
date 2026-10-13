@@ -44,7 +44,7 @@ go mod tidy
 go test ./...
 go vet ./...
 $env:CGO_ENABLED="0"
-go build -trimpath -ldflags="-s -w -X main.version=v0.1.0" -o dist/aicli.exe ./cmd/aicli
+go build -trimpath -o dist/aicli.exe ./cmd/aicli
 .\\dist\\aicli.exe version
 .\\dist\\aicli.exe --help
 ```
