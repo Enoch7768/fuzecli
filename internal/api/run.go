@@ -153,6 +153,7 @@ func temporaryBuildDirectory(args []string) string {
 		for _, prefix := range []string{"-FE", "-FU", "-o"} {
 			if strings.HasPrefix(output, prefix) && len(output) > len(prefix) { output = strings.TrimPrefix(output, prefix); break }
 		}
+		if strings.HasPrefix(filepath.Base(output), "fuzecli-") { return output }
 		dir := filepath.Dir(output)
 		if strings.HasPrefix(filepath.Base(dir), "fuzecli-") { return dir }
 	}
