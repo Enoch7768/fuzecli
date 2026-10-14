@@ -4,87 +4,33 @@ FuzeCLI (`aicli.exe`) is a Windows-native Go CLI for chatting with multiple AI p
 
 ## What FuzeCLI does
 
-* Unified provider interface with native providers plus 40+ OpenAI-compatible and local inference backends, including OpenAI, Gemini, Groq, Anthropic, OpenRouter, DeepSeek, Mistral, Together, Fireworks, Cerebras, xAI, Ollama, vLLM, LM Studio, LiteLLM, and custom OpenAI-compatible endpoints.
-
-
-* Configurable provider API keys and models from the local web Settings screen or CLI configuration.
-
-
-* `--provider auto` fallback across configured providers on rate limits and provider outages.
-
-
-* Structured JSON code generation with automatic application in interactive chat.
-
-
-* Immediate generation handling: a complete valid file JSON document is applied as soon as it is detected during streaming, and that response ends immediately.
-
-
-* Workspace-bound path validation that rejects traversal, absolute paths, and symlink escapes.
-
-
-* Interactive Windows file picker for chat attachments with multi-select support.
-
-
-* UTF-8 text attachment validation with a 64 KiB per-file limit and 256 KiB total web-message limit.
-
-
-* Automatic verification for Go, TypeScript/JavaScript, PHP, and Python projects, with bounded command authorization and structured diagnostics.
-
-
-* Verification-driven self-correction with configurable attempts.
-
-
-* SQLite conversation history and touched-file context in `.aicli/`.
-
-
-* Global developer profile in `%APPDATA%\\aicli\\profile.json`.
-
-
-* Streaming chat output with an explicit response-end event for the web interface and immediate next-message availability.
-
-
-* Local HTTP API for applications and integrations.
-
-
-* MCP server over stdio for MCP-compatible AI clients.
-
-
-* Repository intelligence with Go AST analysis, source indexing, symbol search, relevance-ranked context, and secret-aware file exclusion.
-
-
-* Project memory, workspace context graphs, project rules, and reusable skills.
-
-
-* Background job tracking, local diff review, proof-of-work artifacts, and provider benchmarking.
-
-
-* Local-only browser inspection and inline code completion through authenticated API endpoints.
-
-
-* Structured diagnostics for verification failures, including stage and severity.
-
-
-* Versioned Fuze response protocol with compatibility normalization.
-
-
-* Explicit agent capability boundaries and a bounded task trace.
-
-
-* Relevance-ranked workspace search over indexed source and symbols.
-
-
-* Workspace snapshots and restoration for recoverable changes.
-
-
-* Git status and diff inspection without modifying the repository.
-
-
-* Model-provided shell commands are informational only and are never executed automatically; verification commands pass through an explicit security policy.
-
-
-* No API keys are printed or returned by the web settings API; local API requests are rate-limited and protected by loopback/origin/authentication boundaries.
-
-
+- Unified provider interface with native providers plus 40+ OpenAI-compatible and local inference backends, including OpenAI, Gemini, Groq, Anthropic, OpenRouter, DeepSeek, Mistral, Together, Fireworks, Cerebras, xAI, Ollama, vLLM, LM Studio, LiteLLM, and custom OpenAI-compatible endpoints.
+- Configurable provider API keys and models from the local web Settings screen or CLI configuration.
+- `--provider auto` fallback across configured providers on rate limits and provider outages.
+- Structured JSON code generation with automatic application in interactive chat.
+- Immediate generation handling: a complete valid file JSON document is applied as soon as it is detected during streaming, and that response ends immediately.
+- Workspace-bound path validation that rejects traversal, absolute paths, and symlink escapes.
+- Interactive Windows file picker for chat attachments with multi-select support.
+- UTF-8 text attachment validation with a 64 KiB per-file limit and 256 KiB total web-message limit.
+- Automatic verification for Go, TypeScript/JavaScript, PHP, and Python projects, with bounded command authorization and structured diagnostics.
+- Verification-driven self-correction with configurable attempts.
+- SQLite conversation history and touched-file context in `.aicli/`.
+- Global developer profile in `%APPDATA%\\aicli\\profile.json`.
+- Streaming chat output with an explicit response-end event for the web interface and immediate next-message availability.
+- Local HTTP API for applications and integrations.
+- MCP server over stdio for MCP-compatible AI clients.
+- Repository intelligence with Go AST analysis, source indexing, symbol search, relevance-ranked context, and secret-aware file exclusion.
+- Project memory, workspace context graphs, project rules, and reusable skills.
+- Background job tracking, local diff review, proof-of-work artifacts, and provider benchmarking.
+- Local-only browser inspection and inline code completion through authenticated API endpoints.
+- Structured diagnostics for verification failures, including stage and severity.
+- Versioned Fuze response protocol with compatibility normalization.
+- Explicit agent capability boundaries and a bounded task trace.
+- Relevance-ranked workspace search over indexed source and symbols.
+- Workspace snapshots and restoration for recoverable changes.
+- Git status and diff inspection without modifying the repository.
+- Model-provided shell commands are informational only and are never executed automatically; verification commands pass through an explicit security policy.
+- No API keys are printed or returned by the web settings API; local API requests are rate-limited and protected by loopback/origin/authentication boundaries.
 
 ## Build
 
