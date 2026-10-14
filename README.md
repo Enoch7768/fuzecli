@@ -176,32 +176,27 @@ aicli config set default_provider gemini
 
 ## GitHub sign-in
 
-To use GitHub features, the official **GitHub CLI** (`gh`) must be installed on your computer.
+The Studio GitHub panel uses GitHub OAuth device authorization instead of asking you to paste a Personal Access Token.
 
-Connect your GitHub account without creating or pasting a Personal Access Token:
-
-1. Install the official [GitHub CLI](https://cli.github.com) once.
-
-
-2. Run:
-
-
+1. Create a GitHub OAuth App in GitHub Developer Settings and enable **Device Flow**.
+2. Set its Client ID in the environment before starting FuzeCLI:
 
 ```powershell
-aicli github auth login
-
+$env:FUZECLI_GITHUB_CLIENT_ID="YOUR_OAUTH_APP_CLIENT_ID"
+aicli app
 ```
 
-FuzeCLI launches GitHub CLI's browser-based sign-in flow. Your default browser opens the official GitHub authorization page (Chrome if it is your default browser). After approval, FuzeCLI uses GitHub CLI's local authentication for repository, pull request, issue, and Actions operations. The credential stays managed by GitHub CLI instead of being copied into FuzeCLI's config file.
+3. In Studio, open **GitHub → Connect with GitHub**.
+4. Open the official GitHub device page, enter the one-time code shown in Studio, and approve access.
 
-To verify the connection:
+The OAuth flow requests repository, workflow, and basic profile access for the GitHub features shown in Studio. The resulting access token is stored in FuzeCLI's local config and is cleared when you disconnect. Do not commit the Client ID environment setting or local config file into a repository. The Client ID is public application metadata; never put an OAuth client secret in the browser or embed it in source code.
+
+The command-line workflow remains available through the official GitHub CLI:
 
 ```powershell
+gh auth login --hostname github.com --web
 aicli github auth status
-
 ```
-
-To sign out of the GitHub CLI account, run `gh auth logout --hostname github.com`. The advanced `aicli github auth set <token>` command remains available for existing setups, but browser login is recommended.
 
 ## Workspace safety
 
