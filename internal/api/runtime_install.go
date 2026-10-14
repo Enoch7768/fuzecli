@@ -35,7 +35,7 @@ var runtimePackages = map[string]runtimePackage{
 	"rustc": {"Rustlang.Rustup", "rust", "rustc", "rust", "rust"},
 	"rust (rustc)": {"Rustlang.Rustup", "rust", "rustc", "rust", "rust"},
 	"node.js + tsx": {"OpenJS.NodeJS.LTS", "node", "nodejs", "nodejs", "nodejs"},
-	"c/c++ compiler": {"MSYS2.MSYS2", "gcc", "build-essential", "gcc-c++", "base-devel"},
+	"c/c++ compiler": {"LLVM.LLVM", "llvm", "build-essential", "gcc-c++", "base-devel"},
 	"java": {"EclipseAdoptium.Temurin.21.JDK", "openjdk", "default-jdk", "java-21-openjdk-devel", "jdk-openjdk"},
 	"kotlinc": {"JetBrains.Kotlin.Compiler", "kotlin", "kotlin", "kotlin", "kotlin"},
 	"kotlin compiler + java": {"JetBrains.Kotlin.Compiler", "kotlin", "kotlin", "kotlin", "kotlin"},
@@ -52,6 +52,16 @@ var runtimePackages = map[string]runtimePackage{
 	"scala": {"Scala.Scala", "scala", "scala", "scala", "scala"},
 	"powershell": {"Microsoft.PowerShell", "powershell", "powershell", "powershell", "powershell"},
 	"bash": {"Git.Git", "bash", "bash", "bash", "bash"},
+	"fortran compiler": {"", "gcc", "gfortran", "gcc-gfortran", "gcc-fortran"},
+	"pascal compiler": {"", "fpc", "fpc", "fpc", "fpc"},
+	"d compiler": {"Dlang.DMD", "dmd", "gdc", "gdc", "dmd"},
+	"dmd": {"Dlang.DMD", "dmd", "gdc", "gdc", "dmd"},
+	"zig": {"", "zig", "zig", "zig", "zig"},
+	"nim": {"", "nim", "nim", "nim", "nim"},
+	"clojure": {"", "clojure", "clojure", "clojure", "clojure"},
+	"groovy": {"", "groovy", "groovy", "groovy", "groovy"},
+	"crystal": {"", "crystal", "crystal", "crystal", "crystal"},
+	"racket": {"", "racket", "racket", "racket", "racket"},
 }
 
 func (s *Server) installRuntime(w http.ResponseWriter, r *http.Request) {

@@ -103,17 +103,22 @@ func (s *Server) runFile(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"ok": false, "message": err.Error()})
 		return
 	}
+	if tempDir := temporaryBuildDirectory(args); tempDir != "" { defer os.RemoveAll(tempDir) }
 	if _, err := exec.LookPath(command); err != nil {
 		writeJSON(w, http.StatusOK, map[string]any{"ok": false, "runtime_missing": true, "runtime": runtimeName, "message": runtimeName + " is not installed or is not available on PATH."})
 		return
 	}
 	if build != nil {
 		buildCmd, buildArgs := build()
+		buildCmd = exec.CommandContext(ctx, buildCmd.Path, buildCmd.Args[1:]...)
 		buildCmd.Dir = root
+		buildCmd.Env = os.Environ()
 		buildCmd.Stdout = out
 		buildCmd.Stderr = errOut
 		if err := buildCmd.Run(); err != nil {
-			writeJSON(w, http.StatusOK, map[string]any{"ok": false, "runtime": runtimeName, "output": out.String() + errOut.String(), "message": "Build failed: " + err.Error()})
+			message := "Build failed: " + err.Error()
+			if ctx.Err() == context.DeadlineExceeded { message = "Build exceeded the 2-minute execution limit." }
+			writeJSON(w, http.StatusOK, map[string]any{"ok": false, "runtime": runtimeName, "output": out.String() + errOut.String(), "message": message})
 			return
 		}
 		command, args = buildArgs[0], buildArgs[1:]
@@ -142,6 +147,67 @@ func (s *Server) runFile(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "runtime": runtimeName, "exit_code": 0, "duration_ms": time.Since(start).Milliseconds(), "output": output})
 }
 
+func temporaryBuildDirectory(args []string) string {
+	if len(args) >= 4 && strings.HasPrefix(args[0], "-FE") && strings.HasPrefix(args[1], "-FU") {
+		dir := strings.TrimPrefix(args[0], "-FE")
+		if isFuzeTemporaryDirectory(dir, "fuzecli-pascal-") { return dir }
+		return ""
+	}
+	var output, requiredPrefix string
+	switch {
+	case len(args) >= 3 && args[1] == "-o":
+		output = args[2]
+	case len(args) >= 4 && args[1] == "-include-runtime" && args[2] == "-d":
+		output, requiredPrefix = args[3], "fuzecli-kotlin-"
+	case len(args) >= 3 && args[0] == "run" && args[1] == "--project":
+		output, requiredPrefix = args[2], "fuzecli-csharp-"
+	default:
+		return ""
+	}
+	dir := filepath.Dir(output)
+	if requiredPrefix != "" {
+		if !isFuzeTemporaryDirectory(dir, requiredPrefix) { return "" }
+		if requiredPrefix == "fuzecli-csharp-" {
+			if _, err := os.Stat(filepath.Join(dir, ".fuzecli-generated")); err != nil { return "" }
+		}
+		return dir
+	}
+	if isFuzeTemporaryDirectory(dir, "fuzecli-rust-") || isFuzeTemporaryDirectory(dir, "fuzecli-native-") || isFuzeTemporaryDirectory(dir, "fuzecli-compile-") { return dir }
+	return ""
+}
+
+func isFuzeTemporaryDirectory(dir, prefix string) bool {
+	if !strings.HasPrefix(filepath.Base(dir), prefix) { return false }
+	tempRoot, err := filepath.Abs(os.TempDir())
+	if err != nil { return false }
+	absolute, err := filepath.Abs(dir)
+	if err != nil { return false }
+	relative, err := filepath.Rel(tempRoot, absolute)
+	return err == nil && relative != ".." && !strings.HasPrefix(relative, ".."+string(os.PathSeparator))
+}
+
+func compiledSpec(root, source, compiler, runtimeName, outputFlag string) (string, []string, string, func() (*exec.Cmd, []string), error) {
+	tmp, err := os.MkdirTemp("", "fuzecli-compile-*")
+	if err != nil { return "", nil, "", nil, err }
+	bin := filepath.Join(tmp, strings.TrimSuffix(filepath.Base(source), filepath.Ext(source)))
+	if runtime.GOOS == "windows" { bin += ".exe" }
+	build := func() (*exec.Cmd, []string) {
+		cmd := exec.Command(compiler, source, outputFlag, bin)
+		return cmd, []string{bin}
+	}
+	return compiler, []string{source, outputFlag, bin}, runtimeName, build, nil
+}
+
+func pascalSpec(source string) (string, []string, string, func() (*exec.Cmd, []string), error) {
+	tmp, err := os.MkdirTemp("", "fuzecli-pascal-*")
+	if err != nil { return "", nil, "", nil, err }
+	bin := filepath.Join(tmp, strings.TrimSuffix(filepath.Base(source), filepath.Ext(source)))
+	if runtime.GOOS == "windows" { bin += ".exe" }
+	args := []string{"-FE" + tmp, "-FU" + tmp, "-o" + bin, source}
+	build := func() (*exec.Cmd, []string) { return exec.Command("fpc", args...), []string{bin} }
+	return "fpc", args, "Pascal compiler", build, nil
+}
+
 func runSpec(root, source, ext string) (string, []string, string, func() (*exec.Cmd, []string), error) {
 	noBuild := func(command string, args ...string) (string, []string, string, func() (*exec.Cmd, []string), error) {
 		return command, args, command, nil, nil
@@ -149,8 +215,8 @@ func runSpec(root, source, ext string) (string, []string, string, func() (*exec.
 	switch ext {
 	case ".js", ".mjs", ".cjs":
 		return noBuild("node", source)
-	case ".ts", ".tsx":
-		if _, err := exec.LookPath("tsx"); err == nil { return noBuild("tsx", source) }
+	case ".ts", ".tsx", ".jsx", ".mts", ".cts":
+		if _, err := exec.LookPath("tsx"); err == nil { return "tsx", []string{source}, "Node.js + tsx", nil, nil }
 		return "", nil, "Node.js + tsx", nil, nil
 	case ".py", ".pyw":
 		cmd := "python"
@@ -167,9 +233,9 @@ func runSpec(root, source, ext string) (string, []string, string, func() (*exec.
 		if runtime.GOOS == "windows" { bin += ".exe" }
 		build := func() (*exec.Cmd, []string) { c := exec.Command("rustc", source, "-o", bin); return c, []string{bin} }
 		return "rustc", []string{source, "-o", bin}, "Rust (rustc)", build, nil
-	case ".c", ".cc", ".cpp", ".cxx":
+	case ".c", ".cc", ".cpp", ".cxx", ".c++":
 		compiler := "cc"
-		cpp := ext == ".cc" || ext == ".cpp" || ext == ".cxx" || ext == ".hpp"
+		cpp := ext == ".cc" || ext == ".cpp" || ext == ".cxx" || ext == ".c++" || ext == ".hpp"
 		candidates := []string{"cc", "clang", "gcc"}
 		if cpp { candidates = []string{"g++", "clang++", "c++"} }
 		if runtime.GOOS == "windows" && !cpp { candidates = []string{"gcc", "clang", "cc"} }
@@ -192,9 +258,42 @@ func runSpec(root, source, ext string) (string, []string, string, func() (*exec.
 		return "kotlinc", []string{source, "-include-runtime", "-d", jar}, "Kotlin compiler + Java", build, nil
 	case ".cs":
 		if projects, _ := filepath.Glob(filepath.Join(root, "*.csproj")); len(projects) > 0 { return noBuild("dotnet", "run", "--project", projects[0]) }
-		return "", nil, "", nil, errors.New("C# execution requires a .csproj project in the workspace")
+		tmp, err := os.MkdirTemp("", "fuzecli-csharp-*")
+		if err != nil { return "", nil, "", nil, err }
+		data, err := os.ReadFile(source)
+		if err != nil { _ = os.RemoveAll(tmp); return "", nil, "", nil, fmt.Errorf("read C# source: %w", err) }
+		program := filepath.Join(tmp, "Program.cs")
+		project := filepath.Join(tmp, "Program.csproj")
+		if err := os.WriteFile(program, data, 0600); err != nil { _ = os.RemoveAll(tmp); return "", nil, "", nil, fmt.Errorf("prepare C# source: %w", err) }
+		projectData := []byte("<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net8.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable></PropertyGroup></Project>")
+		if err := os.WriteFile(project, projectData, 0600); err != nil { _ = os.RemoveAll(tmp); return "", nil, "", nil, fmt.Errorf("prepare C# project: %w", err) }
+		if err := os.WriteFile(filepath.Join(tmp, ".fuzecli-generated"), []byte("temporary standalone C# project"), 0600); err != nil { _ = os.RemoveAll(tmp); return "", nil, "", nil, fmt.Errorf("mark temporary C# project: %w", err) }
+		return noBuild("dotnet", "run", "--project", project, "--no-launch-profile")
 	case ".rb":
 		return noBuild("ruby", source)
+	case ".fsx":
+		return noBuild("dotnet", "fsi", source)
+	case ".f", ".for", ".f90", ".f95", ".f03", ".f08":
+		return compiledSpec(root, source, "gfortran", "Fortran compiler", "-o")
+	case ".pas", ".pp":
+		return pascalSpec(source)
+	case ".d":
+		if _, err := exec.LookPath("dmd"); err == nil { return "dmd", []string{"-run", source}, "D compiler", nil, nil }
+		if _, err := exec.LookPath("ldc2"); err == nil { return "ldc2", []string{"-run", source}, "D compiler", nil, nil }
+		if _, err := exec.LookPath("gdc"); err == nil { return compiledSpec(root, source, "gdc", "D compiler", "-o") }
+		return "", nil, "D compiler", nil, nil
+	case ".zig":
+		return noBuild("zig", "run", source)
+	case ".nim":
+		return noBuild("nim", "r", "--hints:off", source)
+	case ".clj":
+		return noBuild("clojure", source)
+	case ".groovy":
+		return noBuild("groovy", source)
+	case ".cr":
+		return noBuild("crystal", "run", source)
+	case ".rkt":
+		return noBuild("racket", source)
 	case ".pl", ".pm":
 		return noBuild("perl", source)
 	case ".lua":

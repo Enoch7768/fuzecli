@@ -197,7 +197,36 @@ func(s *Server) githubAuth(w http.ResponseWriter,r *http.Request){
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 		return
 	}
-	writeError(w, http.StatusGone, "Personal access token authentication has been removed. Use /v1/github/auth/device/start to connect through GitHub OAuth.")
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 16<<10)
+	var body struct { Token string `json:"token"` }
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid GitHub token request")
+		return
+	}
+	token := strings.TrimSpace(body.Token)
+	if token == "" || len(token) > 4096 {
+		writeError(w, http.StatusBadRequest, "paste a valid GitHub personal access token")
+		return
+	}
+	client := github.New(token)
+	ctx, cancel := context.WithTimeout(r.Context(), 12*time.Second)
+	defer cancel()
+	user, err := client.Profile(ctx)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "GitHub rejected this token. Check that it is valid and has the repository permissions FuzeCLI needs.")
+		return
+	}
+	if err := config.SetGitHubToken(token); err != nil {
+		writeError(w, http.StatusInternalServerError, "could not securely save GitHub authorization")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "login": user.Login, "profile_url": user.HTMLURL})
 }
 func(s *Server) githubRepos(w http.ResponseWriter,r *http.Request){
  if r.Method!=http.MethodGet{writeError(w,405,"method not allowed");return};c,err:=s.githubClient();if err!=nil{writeError(w,500,err.Error());return};ctx,cancel:=context.WithTimeout(r.Context(),20*time.Second);defer cancel();v,err:=c.Repositories(ctx,1,100);if err!=nil{writeError(w,502,err.Error());return};writeJSON(w,200,map[string]any{"repositories":v})

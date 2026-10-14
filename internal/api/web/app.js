@@ -1,5 +1,5 @@
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
-let cfg=null,currentPreview="index.html",selected=null,previewHTML="",attachedFiles=[],chatAbort=null,previewHTMLWaiter=null;
+let cfg=null,currentPreview="index.html",selected=null,previewHTML="",attachedFiles=[],chatAbort=null,previewHTMLWaiter=null,runtimePreviewActive=false;
 async function api(path,opt={}){const externalSignal=opt.signal||null;const controller=externalSignal?null:new AbortController();const signal=externalSignal||controller.signal;const timeoutMs=Number.isFinite(opt.timeoutMs)?Math.max(0,opt.timeoutMs):30000;const timeout=controller&&timeoutMs>0?setTimeout(()=>controller.abort(),timeoutMs):null;const requestOptions={...opt};delete requestOptions.timeoutMs;try{const r=await fetch(path,{credentials:"same-origin",...requestOptions,signal,headers:{"Content-Type":"application/json",...(opt.headers||{})}});const d=await r.json().catch(()=>({}));if(!r.ok)throw Error(d.error||`Request failed (${r.status})`);return d}catch(e){if(e.name==="AbortError"){if(externalSignal?.aborted)throw e;const timeoutError=Error(`Request timed out after ${Math.round(timeoutMs/1000)} seconds`);timeoutError.name="TimeoutError";throw timeoutError}throw e}finally{if(timeout)clearTimeout(timeout)}}
 function esc(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
 function toast(t){const e=$("#toast");e.textContent=t;e.classList.add("show");clearTimeout(window.__toast);window.__toast=setTimeout(()=>e.classList.remove("show"),2400)}
@@ -111,21 +111,43 @@ async function send(){
     setProgress(96,"Finalizing workspace");
     msg("assistant",d.content+(d.written_files?.length?"\n\nChanged:\n"+d.written_files.join("\n"):""));
     attachedFiles=[];renderAttachments();finishProgress();
-    if(d.written_files?.some(x=>/\\.(html?|css|js)$/i.test(x)))loadBuilder(currentPreview);
+    if(d.written_files?.some(x=>/\.(html?|php|css|scss|less|js|mjs|cjs|jsx|ts|tsx|vue|svelte|py|pyw)$/i.test(x))){if(runtimePreviewActive)refreshRuntimePreview();else if(d.written_files.some(x=>/\.(html?|css|scss|less|js|mjs|cjs)$/i.test(x)))loadBuilder(currentPreview);}
   }catch(e){
     if(e.name==="AbortError"){setProgress(100,"Stopped");msg("assistant","Request stopped.");setTimeout(()=>$("#generationProgress").hidden=true,900)}
     else{setProgress(100,"Failed");msg("assistant","Request failed: "+e.message);setTimeout(()=>$("#generationProgress").hidden=true,1200)}
   }finally{$("#sendBtn").disabled=false;$("#stopBtn").disabled=true;$("#chatState").textContent="Ready";chatAbort=null;studioRequestID="";b.focus()}
 }
 async function files(){const d=await api("/v1/files");return d.files}
-function isSiteFile(f){return /\.(html?|php|css|scss|less|js|mjs|cjs|jsx|ts|tsx|vue|svelte|json|xml|svg|md|mdx|ya?ml|toml|png|jpe?g|webp|gif|ico|woff2?|ttf|otf|py|pyw|go|rs|java|kt|kts|c|h|cc|cpp|cxx|hpp|cs|fs|fsx|swift|dart|rb|lua|pl|r|jl|ex|exs|erl|hs|lhs|scala|sc|clj|cljs|groovy|gradle|sql|sh|bash|zsh|ps1|bat|cmd|proto|graphql|gql|ipynb)$/i.test(f)||/(?:^|\/)(dockerfile|makefile|cmakelists\.txt)$/i.test(f)}
+function isSiteFile(f){return /\.(html?|php|css|scss|less|js|mjs|cjs|jsx|ts|mts|cts|tsx|vue|svelte|json|xml|svg|md|mdx|ya?ml|toml|png|jpe?g|webp|gif|ico|woff2?|ttf|otf|py|pyw|go|rs|java|kt|kts|c|h|cc|cpp|cxx|c\+\+|hpp|h\+\+|cs|fs|fsx|swift|dart|rb|lua|pl|pm|r|jl|ex|exs|erl|hs|lhs|scala|sc|clj|cljs|groovy|gradle|sql|sh|bash|zsh|ps1|bat|cmd|proto|graphql|gql|ipynb|f|for|f90|f95|f03|f08|pas|pp|d|zig|nim|cr|rkt|ml|mli|v|odin)$/i.test(f)||/(?:^|\/)(dockerfile|makefile|cmakelists\.txt)$/i.test(f)}
 async function loadBuilder(preferred){const all=await files();const site=all.filter(isSiteFile);$("#fileCount").textContent=site.length;$("#builderFileList").innerHTML=site.map(f=>'<button class="file-row '+(f===currentPreview?"selected":"")+'" data-file="'+encodeURIComponent(f)+'">'+esc(f)+"</button>").join("");const htmls=site.filter(f=>/\.html?$/i.test(f));const target=htmls.includes(preferred)?preferred:(htmls[0]||"");$("#previewFile").innerHTML=htmls.length?htmls.map(f=>'<option value="'+esc(f)+'">'+esc(f)+"</option>").join(""):'<option value="">No HTML page</option>';if(target){$("#previewFile").value=target;currentPreview=target;openSite(target)}document.querySelectorAll(".builder-files .file-row").forEach(e=>e.onclick=()=>{const f=decodeURIComponent(e.dataset.file);if(/\.html?$/i.test(f))openSite(f);else editRawFile(f)})}
-async function runRuntimePreview(){try{$("#runRuntimePreview").disabled=true;$("#previewStatus").textContent="Starting local runtime…";const runtime=$("#runtimeSelect").value;const d=await api("/v1/preview/runtime?runtime="+encodeURIComponent(runtime),{method:"POST"});$("#sitePreview").sandbox="allow-scripts allow-forms";$("#sitePreview").src=d.url+"?fuzecli="+Date.now();$("#previewStatus").textContent="Live "+d.kind+" runtime · "+d.url;toast(d.kind.toUpperCase()+" preview running")}catch(e){$("#previewStatus").textContent="Runtime preview unavailable";toast(e.message)}finally{$("#runRuntimePreview").disabled=false}}
-function openSite(file=currentPreview){if(!file)return;currentPreview=file;selected=null;previewHTML="";$("#applyInspector").textContent="Apply live";$("#requestSavePreview").style.display="block";$("#sitePreview").sandbox="allow-scripts allow-forms";$("#inspectorForm").hidden=true;$("#inspectorEmpty").hidden=false;$("#selectedPath").textContent="Nothing selected";$("#sitePreview").src="/preview/"+encodeURI(file)+"?t="+Date.now();document.querySelectorAll(".builder-files .file-row").forEach(e=>e.classList.toggle("selected",decodeURIComponent(e.dataset.file)===file))}
+async function runRuntimePreview(){try{$("#runRuntimePreview").disabled=true;$("#previewStatus").textContent="Starting local runtime…";const runtime=$("#runtimeSelect").value;const d=await api("/v1/preview/runtime?runtime="+encodeURIComponent(runtime),{method:"POST"});runtimePreviewActive=true;$("#sitePreview").sandbox="allow-scripts allow-forms";$("#sitePreview").src=d.url+"?fuzecli="+Date.now();$("#previewStatus").textContent="Live "+d.kind+" runtime · "+d.url;$("#builderSaveState").textContent="Runtime preview";toast(d.kind.toUpperCase()+" preview running")}catch(e){runtimePreviewActive=false;$("#previewStatus").textContent="Runtime preview unavailable";toast(e.message)}finally{$("#runRuntimePreview").disabled=false}}
+function refreshRuntimePreview(){if(!runtimePreviewActive)return;const frame=$("#sitePreview");if(frame?.src)frame.src=frame.src.split("?")[0]+"?fuzecli="+Date.now()}
+function openSite(file=currentPreview){if(!file)return;if(runtimePreviewActive){api("/v1/preview/runtime",{method:"DELETE"}).catch(()=>{});runtimePreviewActive=false}currentPreview=file;selected=null;previewHTML="";$("#applyInspector").textContent="Apply live";$("#requestSavePreview").style.display="block";$("#sitePreview").sandbox="allow-scripts allow-forms";$("#inspectorForm").hidden=true;$("#inspectorEmpty").hidden=false;$("#selectedPath").textContent="Nothing selected";$("#sitePreview").src="/preview/"+encodeURI(file)+"?t="+Date.now();document.querySelectorAll(".builder-files .file-row").forEach(e=>e.classList.toggle("selected",decodeURIComponent(e.dataset.file)===file))}
 async function editRawFile(file){try{const d=await api("/v1/file?path="+encodeURIComponent(file));$("#selectedPath").textContent=file;$("#inspectorEmpty").hidden=true;$("#inspectorForm").hidden=false;$("#selectedTag").textContent="SOURCE FILE";$("#editText").value=d.content;selected={source:"file",path:file};$("#applyInspector").textContent="Save file";$("#requestSavePreview").style.display="none";toast(file+" opened for editing")}catch(e){toast(e.message)}}
 function postEditor(type,payload={}){$("#sitePreview").contentWindow?.postMessage({source:"fuzecli-editor",type,...payload},"*")}
-async function applyInspector(){if(!selected)return;if(selected.source==="file"){try{await api("/v1/file",{method:"POST",body:JSON.stringify({path:selected.path,content:$("#editText").value})});toast("Saved "+selected.path);await workspace()}catch(e){toast(e.message)}return}const styles={color:$("#editColor").value.trim(),backgroundColor:$("#editBackground").value.trim(),fontSize:$("#editFontSize").value.trim(),padding:$("#editPadding").value.trim(),borderRadius:$("#editRadius").value.trim()};Object.keys(styles).forEach(k=>{if(!styles[k])delete styles[k]});postEditor("text",{value:$("#editText").value});postEditor("style",{styles});if($("#imageInspector").hidden===false)postEditor("attr",{src:$("#editSrc").value.trim(),alt:$("#editAlt").value.trim()});if($("#linkInspector").hidden===false)postEditor("attr",{href:$("#editHref").value.trim()});$("#builderSaveState").textContent="Unsaved";toast("Change applied live")}
-async function savePreview(){if(!currentPreview)return;if(!previewHTML){postEditor("request-html");try{await new Promise((resolve,reject)=>{const timer=setTimeout(()=>{previewHTMLWaiter=null;reject(Error("Preview did not return its current HTML"))},5000);previewHTMLWaiter={resolve:()=>{clearTimeout(timer);previewHTMLWaiter=null;resolve()}}})}catch(e){toast(e.message);return}}try{const cleanHTML=String(previewHTML||"").replace(/<script[^>]*data-fuzecli-preview-editor=["']true["'][\\s\\S]*?<\/script>/gi,"");await api("/v1/file",{method:"POST",body:JSON.stringify({path:currentPreview,content:cleanHTML})});$("#builderSaveState").textContent="Saved";toast("Saved "+currentPreview);await loadBuilder(currentPreview)}catch(e){toast("Save failed: "+e.message)}}
+async function applyInspector(){if(!selected)return;if(selected.source==="file"){try{await api("/v1/file",{method:"POST",body:JSON.stringify({path:selected.path,content:$("#editText").value})});toast("Saved "+selected.path);await workspace();if(runtimePreviewActive)refreshRuntimePreview();else if(/\.(html?|css|js|mjs|cjs)$/i.test(selected.path)&&currentPreview)openSite(currentPreview)}catch(e){toast(e.message)}return}const styles={color:$("#editColor").value.trim(),backgroundColor:$("#editBackground").value.trim(),fontSize:$("#editFontSize").value.trim(),padding:$("#editPadding").value.trim(),borderRadius:$("#editRadius").value.trim()};Object.keys(styles).forEach(k=>{if(!styles[k])delete styles[k]});postEditor("text",{value:$("#editText").value});postEditor("style",{styles});if($("#imageInspector").hidden===false)postEditor("attr",{src:$("#editSrc").value.trim(),alt:$("#editAlt").value.trim()});if($("#linkInspector").hidden===false)postEditor("attr",{href:$("#editHref").value.trim()});$("#builderSaveState").textContent="Unsaved";toast("Change applied live")}
+async function savePreview(){
+  if(!currentPreview)return;
+  if(runtimePreviewActive){toast("Visual save is available for static HTML previews. Edit and save runtime source files from the file editor.");return;}
+  let timer;
+  try{
+    const htmlReady=new Promise((resolve,reject)=>{
+      timer=setTimeout(()=>{previewHTMLWaiter=null;reject(Error("Preview did not return its current HTML"))},5000);
+      previewHTMLWaiter={resolve:()=>{clearTimeout(timer);previewHTMLWaiter=null;resolve()}};
+    });
+    postEditor("request-html");
+    await htmlReady;
+    const cleanHTML=String(previewHTML||"").replace(/<script[^>]*data-fuzecli-preview-editor=["']true["'][\s\S]*?<\/script>/gi,"");
+    if(!cleanHTML.trim())throw Error("The preview returned an empty document; nothing was saved.");
+    await api("/v1/file",{method:"POST",body:JSON.stringify({path:currentPreview,content:cleanHTML})});
+    $("#builderSaveState").textContent="Saved";
+    toast("Saved "+currentPreview);
+    await loadBuilder(currentPreview);
+  }catch(e){
+    $("#builderSaveState").textContent="Save failed";
+    toast("Save failed: "+e.message);
+  }finally{if(timer)clearTimeout(timer);previewHTMLWaiter=null}
+}
 function builderMessage(e){const d=e.data;if(e.source!==$("#sitePreview")?.contentWindow||!d||d.source!=="fuzecli-preview")return;if(d.type==="ready"){$("#previewStatus").textContent="Live · click an element to inspect";$("#builderSaveState").textContent="Saved"}if(d.type==="select"){selected=d;$("#applyInspector").textContent="Apply live";$("#requestSavePreview").style.display="block";$("#previewStatus").textContent=d.tag?"Selected "+d.tag:"Nothing selected";$("#selectedPath").textContent=d.path||"Nothing selected";$("#inspectorEmpty").hidden=!d.tag;$("#inspectorForm").hidden=!d.tag;$("#selectedTag").textContent=(d.tag||"ELEMENT").toUpperCase();$("#editText").value=d.text||"";$("#editColor").value=d.color||"";$("#editBackground").value=d.background||"";$("#editFontSize").value=d.fontSize||"";$("#editPadding").value=d.padding||"";$("#editRadius").value=d.radius||"";$("#imageInspector").hidden=d.tag!=="img";$("#linkInspector").hidden=d.tag!=="a";$("#editSrc").value=d.src||"";$("#editAlt").value=d.alt||"";$("#editHref").value=d.href||""}if(d.type==="changed"){previewHTML=d.html;$("#previewStatus").textContent="Unsaved changes";$("#builderSaveState").textContent="Unsaved";if(previewHTMLWaiter)previewHTMLWaiter.resolve()}}
 async function workspace(){const d=await api("/v1/files");$("#workspaceFileCount").textContent=d.files.length;$("#fileList").innerHTML=d.files.map(f=>'<button class="file-row" data-f="'+encodeURIComponent(f)+'">'+esc(f)+"</button>").join("");document.querySelectorAll(".file-panel .file-row").forEach(e=>e.onclick=async()=>{try{const d=await api("/v1/file?path="+e.dataset.f);$("#fileName").textContent=d.path;$("#fileContent").textContent=d.content}catch(x){toast(x.message)}})}
 async function activity(){const d=await api("/v1/history");$("#activityList").innerHTML=d.messages.length?d.messages.map(m=>'<div class="activity-row"><div class="activity-role">'+esc(m.role)+"</div><div>"+esc(m.content)+"</div></div>").join(""):'<div class="activity-row">No activity yet.</div>'}
@@ -202,53 +224,25 @@ async function save(){try{await api("/v1/config",{method:"POST",body:JSON.string
 document.querySelectorAll(".nav-item").forEach(b=>b.onclick=()=>view(b.dataset.view));$("#runtimeBtn")?.addEventListener("click",()=>view("settings"));
 document.querySelectorAll(".quick-actions button").forEach(b=>b.onclick=()=>{$("#prompt").value=b.dataset.prompt;$("#prompt").focus();$("#prompt").dispatchEvent(new Event("input"))});
 $("#githubRefresh").onclick=loadGithub;
-let githubAuthCancelled=false;
-let githubAuthTask=null;
-const githubAuthDelay=ms=>new Promise(resolve=>window.setTimeout(resolve,ms));
 $("#githubConnect").onclick=async()=>{
-  if(githubAuthTask)return;
-  githubAuthCancelled=false;
-  const flow=$("#githubOAuthFlow"),status=$("#githubOAuthStatus"),code=$("#githubDeviceCode"),link=$("#githubAuthorizeLink");
-  $("#githubConnect").disabled=true;
-  status.textContent="Starting secure GitHub authorization…";
-  flow.hidden=false;code.textContent="";
+  const input=$("#githubPAT"),button=$("#githubConnect"),token=input.value.trim();
+  if(!token){toast("Paste a GitHub personal access token first");input.focus();return}
+  button.disabled=true;button.textContent="Validating…";
   try{
-    const start=await api("/v1/github/auth/device/start",{method:"POST",body:"{}"});
-    code.textContent=start.user_code;
-    link.href=start.verification_uri||"https://github.com/login/device";
-    status.textContent="Open GitHub, enter the code above, and approve FuzeCLI. Keep this window open.";
-    githubAuthTask=(async()=>{
-      const deadline=Date.now()+Math.max(60,start.expires_in||900)*1000;
-      let interval=Math.max(3,start.interval||5)*1000;
-      while(!githubAuthCancelled&&Date.now()<deadline){
-        await githubAuthDelay(interval);
-        if(githubAuthCancelled)return;
-        try{
-          const result=await api("/v1/github/auth/device/poll",{method:"POST",body:JSON.stringify({device_code:start.device_code})});
-          if(result.pending){if(result.slow_down)interval=Math.max(interval,10000);continue}
-          if(result.ok){
-            flow.hidden=true;code.textContent="";status.textContent="";
-            toast("Connected as "+result.login);
-            await loadGithub();
-            return;
-          }
-        }catch(error){
-          if(error.status===202)continue;
-          throw error;
-        }
-      }
-      if(!githubAuthCancelled)status.textContent="Authorization expired. Select Connect with GitHub to try again.";
-    })();
-    await githubAuthTask;
-  }catch(e){
-    if(!githubAuthCancelled){status.textContent="GitHub authorization failed: "+e.message;toast(status.textContent)}
+    const result=await api("/v1/github/auth",{method:"POST",body:JSON.stringify({token})});
+    input.value="";
+    toast("Connected as "+result.login);
+    await loadGithub();
+  }catch(error){
+    input.value="";
+    toast("GitHub connection failed: "+error.message);
+    input.focus();
   }finally{
-    githubAuthTask=null;
-    $("#githubConnect").disabled=false;
+    button.disabled=false;button.textContent="Connect with token";
   }
 };
-$("#githubCancelAuth").onclick=()=>{githubAuthCancelled=true;$("#githubOAuthStatus").textContent="Authorization cancelled.";$("#githubOAuthFlow").hidden=true;$("#githubConnect").disabled=false};
-$("#githubDisconnect").onclick=async()=>{githubAuthCancelled=true;try{await api("/v1/github/auth",{method:"DELETE"});$("#githubOAuthFlow").hidden=true;toast("GitHub disconnected");await loadGithub()}catch(e){toast(e.message)}};
+$("#githubPAT").onkeydown=e=>{if(e.key==="Enter"){e.preventDefault();$("#githubConnect").click()}};
+$("#githubDisconnect").onclick=async()=>{try{await api("/v1/github/auth",{method:"DELETE"});$("#githubPAT").value="";toast("GitHub disconnected");await loadGithub()}catch(e){toast(e.message)}};
 $("#githubPull").onclick=()=>githubSync("pull");$("#githubPush").onclick=()=>githubSync("push");$("#githubRefreshActions").onclick=githubActions;$("#githubLoadComments").onclick=githubLoadComments;
 $("#githubCreateRepo").onclick=async()=>{const name=prompt("Repository name");if(!name)return;const description=prompt("Description (optional)")||"";const privateRepo=confirm("Make this repository private?");try{const d=await api("/v1/github/repo",{method:"POST",body:JSON.stringify({name,description,private:privateRepo,auto_init:false})});toast("Created "+d.repository.full_name);await githubRepos()}catch(e){toast(e.message)}};
 $("#githubCreatePR").onclick=async()=>{const repo=githubSelectedRepo();if(!repo)return toast("Choose a repository first");const head=prompt("Head branch");if(!head)return;const base=prompt("Base branch","main")||"main";const title=prompt("Pull request title");if(!title)return;const body=prompt("Pull request description (optional)")||"";try{const d=await api("/v1/github/prs?repo="+encodeURIComponent(repo),{method:"POST",body:JSON.stringify({head,base,title,body,draft:false})});$("#githubPRNumber").value=d.pull_request.number;toast("Created PR #"+d.pull_request.number);await githubPRs()}catch(e){toast(e.message)}};
@@ -267,9 +261,9 @@ $("#prompt").onkeydown=e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();s
 (async()=>{try{await loadConfig();await activity();await refreshLiveTelemetry();liveTelemetryTimer=setInterval(refreshLiveTelemetry,1000);const h=await api("/v1/history");(h.messages||[]).slice(-80).forEach(m=>msg(m.role,m.content))}catch(e){$("#statusText").textContent="Offline";toast(e.message)}})();
 let ideEditor=null,ideFiles=[],ideOpen=[],ideActive="",ideSaveTimer=null,ideWorkspaceRoots=[];
 let ideLSPSocket=null,ideLSPSeq=100,ideLSPPending=new Map(),ideLSPVersion=0,ideLSPPath="",ideLSPProvidersRegistered=false;
-let ideDebugSocket=null,ideDebugSeq=1,ideDebugPending=new Map(),ideDebugInitialized=false,ideDebugRunning=false,ideDebugConnectTimer=null,ideDebugFrameId=0;
+let ideDebugSocket=null,ideDebugSeq=1,ideDebugPending=new Map(),ideDebugInitialized=false,ideDebugTargetInitialized=false,ideDebugRunning=false,ideDebugConnectTimer=null,ideDebugFrameId=0;
 
-function ideLang(path){const e=(path.split(".").pop()||"").toLowerCase();return ({js:"javascript",mjs:"javascript",cjs:"javascript",ts:"typescript",tsx:"typescript",jsx:"javascript",vue:"html",svelte:"html",go:"go",py:"python",pyw:"python",json:"json",css:"css",scss:"scss",less:"less",html:"html",htm:"html",md:"markdown",mdx:"markdown",yaml:"yaml",yml:"yaml",toml:"ini",ini:"ini",sql:"sql",sh:"shell",bash:"shell",zsh:"shell",ps1:"powershell",bat:"bat",cmd:"bat",xml:"xml",svg:"xml",php:"php",rb:"ruby",rs:"rust",java:"java",kt:"kotlin",kts:"kotlin",c:"c",h:"c",cc:"cpp",cpp:"cpp",cxx:"cpp",hpp:"cpp",cs:"csharp",fs:"fsharp",fsx:"fsharp",swift:"swift",dart:"dart",lua:"lua",pl:"perl",r:"r",jl:"julia",ex:"elixir",exs:"elixir",erl:"erlang",hs:"haskell",lhs:"haskell",scala:"scala",sc:"scala",clj:"clojure",cljs:"clojure",groovy:"groovy",gradle:"groovy",dockerfile:"dockerfile",makefile:"makefile",mk:"makefile",proto:"protobuf",graphql:"graphql",gql:"graphql",ipynb:"json"})[e]||"plaintext"}
+function ideLang(path){const e=(path.split(".").pop()||"").toLowerCase();return ({js:"javascript",mjs:"javascript",cjs:"javascript",ts:"typescript",mts:"typescript",cts:"typescript",tsx:"typescript",jsx:"javascript",vue:"html",svelte:"html",go:"go",py:"python",pyw:"python",json:"json",css:"css",scss:"scss",less:"less",html:"html",htm:"html",md:"markdown",mdx:"markdown",yaml:"yaml",yml:"yaml",toml:"ini",ini:"ini",sql:"sql",sh:"shell",bash:"shell",zsh:"shell",ps1:"powershell",bat:"bat",cmd:"bat",xml:"xml",svg:"xml",php:"php",rb:"ruby",rs:"rust",java:"java",kt:"kotlin",kts:"kotlin",c:"c",h:"c",cc:"cpp",cpp:"cpp",cxx:"cpp","c++":"cpp",hpp:"cpp","h++":"cpp",cs:"csharp",fs:"fsharp",fsx:"fsharp",swift:"swift",dart:"dart",lua:"lua",pl:"perl",pm:"perl",r:"r",jl:"julia",ex:"elixir",exs:"elixir",erl:"erlang",hs:"haskell",lhs:"haskell",scala:"scala",sc:"scala",clj:"clojure",cljs:"clojure",groovy:"groovy",gradle:"groovy",dockerfile:"dockerfile",makefile:"makefile",mk:"makefile",proto:"protobuf",graphql:"graphql",gql:"graphql",ipynb:"json",f:"fortran",for:"fortran",f90:"fortran",f95:"fortran",f03:"fortran",f08:"fortran",pas:"pascal",pp:"pascal",d:"d",zig:"zig",nim:"nim",cr:"crystal",rkt:"scheme",ml:"ocaml",mli:"ocaml",v:"vlang",odin:"odin"})[e]||"plaintext"}
 function ideTree(files){const root={children:{},files:[]};files.forEach(path=>{const parts=path.split("/").filter(Boolean);let n=root;parts.forEach((part,i)=>{if(i===parts.length-1)n.files.push({name:part,path});else{n.children[part]??={children:{},files:[]};n=n.children[part]}})});const render=n=>{let out="";Object.keys(n.children).sort().forEach(name=>{out+='<div class="ide-folder" data-folder="'+esc(name)+'"><span>›</span><b>▱</b>'+esc(name)+'</div><div class="ide-folder-children">'+render(n.children[name])+"</div>"});n.files.sort((a,b)=>a.name.localeCompare(b.name)).forEach(f=>out+='<button class="ide-file '+(f.path===ideActive?"active":"")+'" data-ide-file="'+encodeURIComponent(f.path)+'"><span class="file-dot '+ideLang(f.path)+'"></span>'+esc(f.name)+"</button>");return out};$("#ideExplorerTree").innerHTML=render(root)}
 
 function ideURI(path){let clean=String(path||"").replace(/\\/g,"/");if(!/^[A-Za-z]:\//.test(clean)&&cfg?.workspace){const root=String(cfg.workspace).replace(/\\/g,"/").replace(/\/$/,"");clean=root+"/"+clean.replace(/^\/+/,"")}return encodeURI("file:///"+clean.replace(/^\/+/, ""))}
@@ -302,7 +296,7 @@ async function ideOpenFile(path){try{const d=await api("/v1/file?path="+encodeUR
 function renderIdeTabs(){const el=$("#ideTabs");el.innerHTML=ideOpen.map(p=>'<button class="ide-tab '+(p===ideActive?"active":"")+'" data-ide-tab="'+encodeURIComponent(p)+'"><span class="file-dot '+ideLang(p)+'"></span>'+esc(p.split("/").pop())+'<i data-ide-close="'+encodeURIComponent(p)+'">×</i></button>').join("")}
 function renderIdeEditor(content,path){const host=$("#ideEditor");if(!host)return;if(ideEditor){ideEditor.dispose();ideEditor=null}host.innerHTML="";if(!window.monaco){const ta=document.createElement("textarea");ta.id="ideFallbackEditor";ta.className="ide-fallback-editor";ta.value=content;ta.spellcheck=false;ta.addEventListener("input",()=>{$(".ide-tab.active")?.classList.add("dirty")});ta.addEventListener("keydown",e=>{if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==="s"){e.preventDefault();ideSaveFallback(path)}});host.appendChild(ta);$("#ideBreadcrumbs").textContent="Workspace / "+path+" · text editor";return}registerLSPProviders();const model=monaco.editor.createModel(content,ideLang(path),monaco.Uri.parse(ideURI(path)));ideEditor=monaco.editor.create(host,{model,theme:"vs-dark",automaticLayout:true,minimap:{enabled:true},fontFamily:"Cascadia Code, Consolas, monospace",fontSize:13,lineHeight:21,wordWrap:"off",smoothScrolling:true,scrollBeyondLastLine:false,bracketPairColorization:{enabled:true},padding:{top:14,bottom:18},stickyScroll:{enabled:true},quickSuggestions:true,glyphMargin:true});ideEditor.addCommand(monaco.KeyMod.CtrlCmd|monaco.KeyCode.KeyS,ideSaveFile);ideEditor.onDidSaveModel(()=>ideLSPNotify("textDocument/didSave",{textDocument:{uri:model.uri.toString(),text:model.getValue()}}));ideEditor.onDidChangeModelContent(()=>{ideLSPChange(path,ideEditor.getValue());clearTimeout(ideSaveTimer);ideSaveTimer=setTimeout(()=>$(".ide-tab.active")?.classList.add("dirty"),500);ideRenderOutline()});ideEditor.onMouseDown(e=>{if(e.target.type===monaco.editor.MouseTargetType.GUTTER_GLYPH_MARGIN)ideToggleBreakpoint(e.target.position.lineNumber)});if(ideLSPSocket?.readyState===WebSocket.OPEN&&ideLSPPath===path)ideLSPOpen(path);else ideLSPConnect(path)}
 async function ideSaveFallback(path){const ta=$("#ideFallbackEditor");if(!ta)return;try{await api("/v1/file",{method:"POST",body:JSON.stringify({path,content:ta.value})});$(".ide-tab.active")?.classList.remove("dirty");toast("Saved "+path);await loadIDE()}catch(e){toast("Save failed: "+e.message)}}
-async function ideSaveFile(){if(!ideActive)return;const content=ideEditor?ideEditor.getValue():$("#ideFallbackEditor")?.value;if(content===undefined)return;try{await api("/v1/file",{method:"POST",body:JSON.stringify({path:ideActive,content})});$(".ide-tab.active")?.classList.remove("dirty");toast("Saved "+ideActive);await workspace()}catch(e){toast("Save failed: "+e.message)}}
+async function ideSaveFile(){if(!ideActive)return false;const content=ideEditor?ideEditor.getValue():$("#ideFallbackEditor")?.value;if(content===undefined)return false;try{await api("/v1/file",{method:"POST",body:JSON.stringify({path:ideActive,content})});$(".ide-tab.active")?.classList.remove("dirty");await workspace();if(runtimePreviewActive)refreshRuntimePreview();toast("Saved "+ideActive);return true}catch(e){toast("Save failed: "+e.message);return false}}
 async function loadIDE(){try{const roots=await api("/v1/workspace/roots");ideWorkspaceRoots=roots.roots||[];const primary=ideWorkspaceRoots[0]||cfg?.workspace||"";ideFiles=await files();for(const root of ideWorkspaceRoots.slice(1)){try{const extra=await api("/v1/files?root="+encodeURIComponent(root));ideFiles.push(...(extra.files||[]))}catch(_){}}ideFiles=[...new Set(ideFiles)];ideTree(ideFiles);$("#ideWorkspaceName").textContent=(primary||"WORKSPACE").split(/[\/]/).pop().toUpperCase();if(window.monaco){registerLSPProviders();if(ideActive)ideOpenFile(ideActive)}else if(window.require){window.require.config({paths:{vs:"https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs"}});window.require(["vs/editor/editor.main"],()=>{registerLSPProviders();if(ideActive)ideOpenFile(ideActive)})}}catch(e){toast(e.message)}}
 async function askIDE(extra){const p=(extra||$("#idePrompt").value).trim();if(!p)return;const context=ideActive&&ideEditor?"\n\nCURRENT FILE: "+ideActive+"\n\n"+ideEditor.getValue():"";const applyChanges=!promptNeedsApproval(p);$("#ideAIMessages").innerHTML+='<div class="ide-ai-msg user">'+esc(p)+'</div>';$("#idePrompt").value="";try{const d=await api("/v1/chat",{method:"POST",body:JSON.stringify({prompt:p+context,provider:$("#providerSelect").value,model:$("#modelSelect").value,files:ideActive?[ideActive]:[],apply:applyChanges,billing_mode:$("#billingMode").value})});$("#ideAIMessages").innerHTML+='<div class="ide-ai-msg assistant">'+esc(d.content||"No response.")+'</div>';if(applyChanges&&d.written_files?.length){for(const path of d.written_files){if(path===ideActive)await ideOpenFile(path)}await loadIDE()}}catch(e){$("#ideAIMessages").innerHTML+='<div class="ide-ai-msg error">'+esc(e.message)+'</div>'}$("#ideAIMessages").scrollTop=$("#ideAIMessages").scrollHeight}
 
@@ -339,10 +333,10 @@ function ideDebugConnect(){
   if(ideDebugConnectTimer)return ideDebugConnectTimer;
   const proto=location.protocol==="https:"?"wss":"ws";
   const debugLanguage=$("#ideDebugLanguage")?.value||ideLang(ideActive);const ws=new WebSocket(proto+"://"+location.host+"/v1/debug?language="+encodeURIComponent(debugLanguage));
-  ideDebugSocket=ws;ideDebugInitialized=false;
+  ideDebugSocket=ws;ideDebugInitialized=false;ideDebugTargetInitialized=false;
   ideUpdateDebugStatus("Connecting to debugger…");
   ideDebugConnectTimer=new Promise((resolve,reject)=>{
-    let settled=false,initializedEvent=false;
+    let settled=false;
     const finish=(ok,err)=>{
       if(settled)return;settled=true;clearTimeout(timer);ideDebugConnectTimer=null;
       if(ok)resolve();else reject(err||Error("Debugger connection failed"));
@@ -367,8 +361,8 @@ function ideDebugConnect(){
         }
         if(d.type==="event"){
           if(d.event==="initialized"){
-            initializedEvent=true;
-            if(ideDebugInitialized){ideUpdateDebugStatus("Debugger ready");finish(true)}
+            ideDebugTargetInitialized=true;
+            ideUpdateDebugStatus("Debugger ready");finish(true)
           }else if(d.event==="stopped"){
             ideDebugRunning=false;ideUpdateDebugStatus("Paused · "+(d.body?.reason||"breakpoint"));ideDebugStack(d.body?.threadId);
           }else if(d.event==="continued"){
@@ -385,7 +379,7 @@ function ideDebugConnect(){
     };
     ws.onclose=()=>{
       if(ideDebugSocket===ws)ideDebugSocket=null;
-      ideDebugInitialized=false;ideDebugConnectTimer=null;
+      ideDebugInitialized=false;ideDebugTargetInitialized=false;ideDebugConnectTimer=null;
       ideUpdateDebugStatus("Debugger disconnected");
       for(const p of ideDebugPending.values())p.reject(Error("Debugger disconnected"));
       ideDebugPending.clear();
@@ -396,7 +390,7 @@ function ideDebugConnect(){
   return ideDebugConnectTimer;
 }
 async function ideSendBreakpoints(){if(!ideDebugSocket||ideDebugSocket.readyState!==WebSocket.OPEN||!ideActive)return;const bp=window.__fuzeBreakpoints||new Map();const lines=[];for(const [key,value] of bp){if(key.startsWith(ideActive+":"))lines.push({line:Number(value.line),column:1})}const workspace=String(cfg?.workspace||"").replace(/[\/]+$/,"");const absoluteSource=workspace?workspace+"/"+ideActive.replace(/^[/\\]+/,""):ideActive;await ideDebugRequest("setBreakpoints",{source:{path:absoluteSource,name:ideActive,sourceReference:0},breakpoints:lines});}
-async function ideWaitForInitialized(timeoutMs=10000){if(ideDebugInitialized)return;return new Promise((resolve,reject)=>{const started=Date.now();const poll=()=>{if(ideDebugInitialized){resolve();return}if(Date.now()-started>timeoutMs){reject(Error("Debugger did not send initialized event"))}else setTimeout(poll,50)};poll()})}
+async function ideWaitForInitialized(timeoutMs=10000){if(ideDebugTargetInitialized)return;return new Promise((resolve,reject)=>{const started=Date.now();const poll=()=>{if(ideDebugTargetInitialized){resolve();return}if(Date.now()-started>timeoutMs){reject(Error("Debugger did not send initialized event after launch"))}else setTimeout(poll,50)};poll()})}
 async function ideDebugStart(){
   populateDebugLanguages();
   try{
@@ -405,7 +399,7 @@ async function ideDebugStart(){
     const supported=["javascript","typescript","php","ruby","html","python","r","julia","matlab","java","csharp","cobol","abap","c","cpp","rust","go","assembly","swift","kotlin","dart","sql","shell","perl","scala"];
     if(!supported.includes(language))throw Error("Studio cannot infer a debugger for "+language+"; configure FUZECLI_DEBUG_ADAPTER_"+language.toUpperCase().replace(/-/g,"_")+" for a DAP adapter");
     const dirty=$(".ide-tab.active")?.classList.contains("dirty");
-    if(dirty)await ideSaveFile();
+    if(dirty&&!(await ideSaveFile()))throw Error("The active file could not be saved. Fix the save error before debugging it.");
     await ideDebugConnect();
     const workspace=String(cfg?.workspace||"").replace(/[\/]+$/,"");
     if(!workspace)throw Error("Workspace root is unavailable");
@@ -424,7 +418,7 @@ async function ideDebugStart(){
     else if(language==="java")launch.type="java";
     else if(language==="kotlin")launch.type="kotlin";
     else if(language==="go")launch.mode="debug";
-    await ideDebugRequest("launch",launch);
+    ideDebugTargetInitialized=false;await ideDebugRequest("launch",launch);
     await ideWaitForInitialized();
     await ideSendBreakpoints();
     try{await ideDebugRequest("setExceptionBreakpoints",{filters:[]})}catch(_){}
@@ -453,7 +447,7 @@ function ideToggleBreakpoint(line){if(!ideEditor||!ideActive)return;const key=id
 let ideTerminalSocket=null,ideTerminalConnectPromise=null;
 function ideAppendTerminalOutput(value){const out=$("#ideTerminalOutput");if(!out)return;const text=String(value||"").replace(/\u001b\[[0-?]*[ -/]*[@-~]/g,"");out.append(document.createTextNode(text));if(out.textContent.length>180000)out.textContent=out.textContent.slice(-140000);out.scrollTop=out.scrollHeight}
 let ideTerminalHistory=[],ideTerminalHistoryIndex=0;
-function ideTerminalConnect(){if(ideTerminalSocket?.readyState===WebSocket.OPEN)return Promise.resolve();if(ideTerminalConnectPromise)return ideTerminalConnectPromise;ideBottom("terminal");const proto=location.protocol==="https:"?"wss":"ws";const ws=new WebSocket(proto+"://"+location.host+"/v1/terminal");ideTerminalSocket=ws;const box=$("#ideBottomBody");ideTerminalConnectPromise=new Promise((resolve,reject)=>{let settled=false;const timer=setTimeout(()=>{if(!settled){settled=true;try{ws.close()}catch(e){}ideTerminalConnectPromise=null;reject(Error("Terminal connection timed out"))}},8000);ws.onopen=()=>{if(settled)return;settled=true;clearTimeout(timer);ideTerminalConnectPromise=null;ideAppendTerminalOutput("Terminal connected · "+(cfg?.workspace||"workspace")+"\n");$("#ideTerminalInput")?.focus();resolve()};ws.onmessage=e=>{try{const d=JSON.parse(e.data);if(d.type==="output"){ideAppendTerminalOutput(d.data||"")}else if(d.type==="ready"){ideAppendTerminalOutput("Shell ready\n")}else if(d.type==="error"){ideAppendTerminalOutput("Terminal error: "+(d.message||"unknown error")+"\n");toast(d.message||"Terminal error")}}catch(err){toast("Terminal message error: "+err.message)}};ws.onerror=()=>{if(!settled){settled=true;clearTimeout(timer);ideTerminalConnectPromise=null;reject(Error("Terminal connection failed"))}toast("Terminal connection failed")};ws.onclose=()=>{if(ideTerminalSocket===ws)ideTerminalSocket=null;ideTerminalConnectPromise=null;const input=$("#ideTerminalInput");if(input)input.disabled=true}});return ideTerminalConnectPromise}
+function ideTerminalConnect(){if(ideTerminalSocket?.readyState===WebSocket.OPEN)return Promise.resolve();if(ideTerminalConnectPromise)return ideTerminalConnectPromise;ideBottom("terminal");const proto=location.protocol==="https:"?"wss":"ws";const ws=new WebSocket(proto+"://"+location.host+"/v1/terminal");ideTerminalSocket=ws;const box=$("#ideBottomBody");ideTerminalConnectPromise=new Promise((resolve,reject)=>{let settled=false;const timer=setTimeout(()=>{if(!settled){settled=true;try{ws.close()}catch(e){}ideTerminalConnectPromise=null;reject(Error("Terminal connection timed out"))}},8000);ws.onopen=()=>{if(settled)return;settled=true;clearTimeout(timer);ideTerminalConnectPromise=null;ideAppendTerminalOutput("Terminal connected · "+(cfg?.workspace||"workspace")+"\n");const terminalInput=$("#ideTerminalInput");if(terminalInput){terminalInput.disabled=false;terminalInput.placeholder="Type a command and press Enter…";terminalInput.focus()}resolve()};ws.onmessage=e=>{try{const d=JSON.parse(e.data);if(d.type==="output"){ideAppendTerminalOutput(d.data||"")}else if(d.type==="ready"){ideAppendTerminalOutput("Shell ready\n")}else if(d.type==="error"){ideAppendTerminalOutput("Terminal error: "+(d.message||"unknown error")+"\n");toast(d.message||"Terminal error")}}catch(err){toast("Terminal message error: "+err.message)}};ws.onerror=()=>{if(!settled){settled=true;clearTimeout(timer);ideTerminalConnectPromise=null;reject(Error("Terminal connection failed"))}toast("Terminal connection failed")};ws.onclose=()=>{if(ideTerminalSocket===ws)ideTerminalSocket=null;ideTerminalConnectPromise=null;const input=$("#ideTerminalInput");if(input){input.disabled=false;input.placeholder="Terminal disconnected — press Enter to reconnect"}}});return ideTerminalConnectPromise}
 async function ideTerminalInput(value){if(!value)return;try{await ideTerminalConnect();if(ideTerminalSocket?.readyState===WebSocket.OPEN)ideTerminalSocket.send(JSON.stringify({type:"input",data:value}))}catch(e){toast(e.message)}}
 
 async function ideRenderSourcePanel(){
@@ -500,7 +494,7 @@ function populateDebugLanguages(){const s=$("#ideDebugLanguage");if(!s)return;if
 async function ideRunFile(){
   if(!ideActive){toast("Open a source file first");return}
   try{
-    if($(".ide-tab.active")?.classList.contains("dirty"))await ideSaveFile();
+    if($(".ide-tab.active")?.classList.contains("dirty")&&!(await ideSaveFile()))throw Error("The active file could not be saved. Fix the save error before running it.");
     ideBottom("output");
     const body=$("#ideBottomBody");
     body.innerHTML='<div class="ide-terminal-line"><span class="terminal-prompt">▶</span><span>Running '+esc(ideActive)+'</span></div><pre id="ideRunOutput" class="ide-run-output">Preparing runtime…</pre>';
@@ -558,7 +552,7 @@ document.querySelectorAll("[data-bottom]").forEach(b=>b.onclick=()=>{document.qu
 document.querySelectorAll("[data-ide-action]").forEach(b=>b.onclick=()=>askIDE({explain:"Explain this file and point out risky code.",fix:"Find correctness bugs and propose a minimal safe fix.",refactor:"Refactor this file for clarity without changing behavior.",tests:"Design focused tests for this file."}[b.dataset.ideAction]));
 $("#ideAsk").onclick=()=>askIDE();$("#idePrompt").onkeydown=e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();askIDE()}};
 $("#ideDebugStart").onclick=ideDebugStart;$("#ideRunFile")?.addEventListener("click",ideRunFile);
-$("#ideDebugStop").onclick=async()=>{try{if(ideDebugSocket?.readyState===WebSocket.OPEN)await ideDebugRequest("disconnect",{restart:false,terminateDebuggee:true})}catch(e){}ideDebugRunning=false;ideUpdateDebugStatus("Debugger stopped")};
+$("#ideDebugStop").onclick=async()=>{try{if(ideDebugSocket?.readyState===WebSocket.OPEN)await ideDebugRequest("disconnect",{restart:false,terminateDebuggee:true})}catch(e){}ideDebugRunning=false;ideDebugTargetInitialized=false;ideDebugInitialized=false;try{ideDebugSocket?.close()}catch(e){}ideUpdateDebugStatus("Debugger stopped")};
 $("#ideDebugContinue").onclick=()=>ideDebugCommand("continue");$("#ideDebugPause").onclick=()=>ideDebugCommand("pause");$("#ideDebugStepOver").onclick=()=>ideDebugCommand("next");$("#ideDebugStepInto").onclick=()=>ideDebugCommand("stepIn");$("#ideDebugStepOut").onclick=()=>ideDebugCommand("stepOut");
 }
 window.addEventListener("error",e=>{const message=e.error?.message||e.message||"Unexpected browser error";toast("Studio error: "+message);});

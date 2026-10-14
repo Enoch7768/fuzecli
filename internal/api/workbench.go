@@ -45,18 +45,22 @@ func (m *terminalManager) start(root string) (*terminalSession, error) {
 	var cmd *exec.Cmd
 	if runtime.GOOS == "windows" {
 		if shell, err := exec.LookPath("pwsh.exe"); err == nil {
-			cmd = exec.CommandContext(ctx, shell, "-NoLogo", "-NoProfile", "-NoExit")
+			cmd = exec.CommandContext(ctx, shell, "-NoLogo", "-NoProfile", "-NoExit", "-Command", "function prompt { [string]::Empty }")
 		} else if shell, err := exec.LookPath("powershell.exe"); err == nil {
-			cmd = exec.CommandContext(ctx, shell, "-NoLogo", "-NoProfile", "-NoExit")
+			cmd = exec.CommandContext(ctx, shell, "-NoLogo", "-NoProfile", "-NoExit", "-Command", "function prompt { [string]::Empty }")
 		} else {
-			cmd = exec.CommandContext(ctx, "cmd.exe", "/Q")
+			cmd = exec.CommandContext(ctx, "cmd.exe", "/Q", "/K", "prompt $G")
 		}
 	} else {
 		shell := strings.TrimSpace(os.Getenv("SHELL"))
 		if shell == "" || !filepath.IsAbs(shell) {
 			if candidate, err := exec.LookPath("bash"); err == nil { shell = candidate } else { shell = "/bin/sh" }
 		}
-		cmd = exec.CommandContext(ctx, shell, "-i")
+		if strings.Contains(strings.ToLower(filepath.Base(shell)), "bash") {
+			cmd = exec.CommandContext(ctx, shell, "--noprofile", "--norc", "-s")
+		} else {
+			cmd = exec.CommandContext(ctx, shell)
+		}
 	}
 	cmd.Dir = root
 	cmd.Env = os.Environ()
@@ -72,13 +76,6 @@ func (m *terminalManager) start(root string) (*terminalSession, error) {
 	m.mu.Lock()
 	m.sessions[id] = s
 	m.mu.Unlock()
-	go func() {
-		_ = cmd.Wait()
-		cancel()
-		m.mu.Lock()
-		delete(m.sessions, id)
-		m.mu.Unlock()
-	}()
 	return s, nil
 }
 
@@ -245,7 +242,9 @@ func startDAP(root, language string) (io.ReadWriteCloser, *exec.Cmd, error) {
 		if err != nil { return nil, nil, err }
 		out, err := cmd.StdoutPipe()
 		if err != nil { _ = in.Close(); return nil, nil, err }
-		if err := cmd.Start(); err != nil { _ = in.Close(); _ = out.Close(); return nil, nil, fmt.Errorf("start %s debugger: %w", spec.Command, err) }
+		stderr := &boundedBuffer{limit: 32 << 10}
+		cmd.Stderr = stderr
+		if err := cmd.Start(); err != nil { _ = in.Close(); _ = out.Close(); return nil, nil, fmt.Errorf("start %s debugger: %w: %s", spec.Command, err, strings.TrimSpace(stderr.String())) }
 		return &dapPipe{Reader: out, Writer: in, closeFn: func() error { _ = in.Close(); _ = out.Close(); return nil }}, cmd, nil
 	}
 	stderr, err := cmd.StderrPipe()
@@ -285,14 +284,22 @@ func startDAP(root, language string) (io.ReadWriteCloser, *exec.Cmd, error) {
 func bridgeDAP(ws *websocket.Conn, root, language string) error {
 	conn, cmd, err := startDAP(root, language)
 	if err != nil { return err }
-	defer cmd.Process.Kill()
-	defer conn.Close()
+	defer func() {
+		_ = conn.Close()
+		if cmd.Process != nil { _ = cmd.Process.Kill() }
+		_ = cmd.Wait()
+	}()
 	go func() {
 		br := bufio.NewReader(conn)
 		for {
 			msg, err := readLSPMessage(br)
 			if err != nil {
-				_ = ws.WriteJSON(map[string]any{"type": "error", "message": fmt.Sprintf("%s debugger adapter closed its output before responding: %v. Check that its runtime and adapter dependencies are installed.", language, err)})
+				message := fmt.Sprintf("%s debugger adapter closed its output before responding: %v.", language, err)
+				if captured, ok := cmd.Stderr.(*boundedBuffer); ok {
+					if detail := strings.TrimSpace(captured.String()); detail != "" { message += " Adapter output: " + detail }
+				}
+				message += " Check that the runtime and debugger adapter are installed and compatible."
+				_ = ws.WriteJSON(map[string]any{"type": "error", "message": message})
 				_ = ws.Close()
 				return
 			}
@@ -334,7 +341,15 @@ func (m *terminalManager) handleWS(ws *websocket.Conn, root string) {
 		_ = ws.WriteJSON(map[string]any{"type":"error","message":err.Error()})
 		return
 	}
-	defer m.stop(s.id)
+	var readers sync.WaitGroup
+	defer func() {
+		m.stop(s.id)
+		readers.Wait()
+		_ = s.cmd.Wait()
+		m.mu.Lock()
+		delete(m.sessions, s.id)
+		m.mu.Unlock()
+	}()
 	var writeMu sync.Mutex
 	send := func(v any) {
 		writeMu.Lock()
@@ -343,6 +358,7 @@ func (m *terminalManager) handleWS(ws *websocket.Conn, root string) {
 	}
 	send(map[string]any{"type":"ready","session":s.id,"cwd":root,"shell":runtime.GOOS})
 	copyOutput := func(stream string, reader io.Reader) {
+		defer readers.Done()
 		buf := make([]byte, 32<<10)
 		for {
 			n, readErr := reader.Read(buf)
@@ -354,8 +370,10 @@ func (m *terminalManager) handleWS(ws *websocket.Conn, root string) {
 			}
 		}
 	}
+	readers.Add(2)
 	go copyOutput("stdout", s.stdout)
 	go copyOutput("stderr", s.stderr)
+	go func() { readers.Wait(); _ = ws.Close() }()
 	for {
 		var msg struct {
 			Type string `json:"type"`
