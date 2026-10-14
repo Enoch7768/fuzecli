@@ -150,6 +150,37 @@ async function runRuntimePreview(){
     let page="";
     if(d.kind==="php"&&/\.php$/i.test(currentPreview||""))page=String(currentPreview).replace(/\\/g,"/").replace(/^public\//i,"").replace(/^\/+/,"");
     $("#sitePreview").src=d.url+(page?encodeURI(page):"")+"?fuzecli="+Date.now();
+    $("#requestSavePreview").style.display="none";
+    $("#inspectorForm").hidden=true;
+    $("#inspectorEmpty").hidden=false;
+    $("#previewStatus").textContent=d.kind==="php"?"Live PHP preview · edit source in Code":"Live "+d.kind+" runtime · "+d.url;
+    $("#builderSaveState").textContent="Runtime preview";
+    toast(d.kind.toUpperCase()+" preview running");
+  }catch(e){
+    if(/runtime is not installed|not available on PATH/i.test(e.message)&&window.confirm(e.message+"\nAllow FuzeCLI to install the required runtime using this computer's package manager? This may download software and change your system.")){
+      try{
+        const installed=await api("/v1/runtime/install",{method:"POST",timeoutMs:10*60*1000,body:JSON.stringify({runtime:$("#runtimeSelect").value})});
+        if(!installed.ok)throw Error(installed.message||"Runtime installation failed");
+        toast(installed.message||"Runtime installed");
+        return await runRuntimePreview();
+      }catch(installError){e=installError}
+    }
+    runtimePreviewActive=false;
+    $("#previewStatus").textContent="Runtime preview unavailable";
+    toast(e.message);
+  }finally{button.disabled=false}
+}
+  const button=$("#runRuntimePreview");
+  try{
+    button.disabled=true;
+    $("#previewStatus").textContent="Starting local runtime…";
+    const runtime=$("#runtimeSelect").value;
+    const d=await api("/v1/preview/runtime?runtime="+encodeURIComponent(runtime),{method:"POST",timeoutMs:150000});
+    runtimePreviewActive=true;
+    $("#sitePreview").sandbox="allow-scripts allow-forms";
+    let page="";
+    if(d.kind==="php"&&/\.php$/i.test(currentPreview||""))page=String(currentPreview).replace(/\\/g,"/").replace(/^public\//i,"").replace(/^\/+/,"");
+    $("#sitePreview").src=d.url+(page?encodeURI(page):"")+"?fuzecli="+Date.now();
     $("#previewStatus").textContent=d.kind==="php"?"Live PHP preview · edit source in Code":"Live "+d.kind+" runtime · "+d.url;
     $("#builderSaveState").textContent="Runtime preview";
     toast(d.kind.toUpperCase()+" preview running");
@@ -257,7 +288,18 @@ async function loadGithub(){
  await githubRepos();
  await Promise.all([githubPRs(),githubActions(),githubIssues()]);
 }
-function view(v){document.body.classList.toggle("command-mode",v==="chat");document.querySelectorAll(".nav-item").forEach(b=>b.classList.toggle("active",b.dataset.view===v));document.querySelectorAll(".view").forEach(x=>x.classList.toggle("active",x.id==="view-"+v));$("#pageTitle").textContent=v==="builder"?"Live Builder":v[0].toUpperCase()+v.slice(1);if(v==="ide")loadIDE();if(v==="builder")loadBuilder(currentPreview);if(v==="workspace")workspace();if(v==="activity")activity();if(v==="telemetry")telemetry();if(v==="github")loadGithub()}
+async function view(v,preferred){
+  document.body.classList.toggle("command-mode",v==="chat");
+  document.querySelectorAll(".nav-item").forEach(b=>b.classList.toggle("active",b.dataset.view===v));
+  document.querySelectorAll(".view").forEach(x=>x.classList.toggle("active",x.id==="view-"+v));
+  $("#pageTitle").textContent=v==="builder"?"Live Builder":v[0].toUpperCase()+v.slice(1);
+  if(v==="ide")loadIDE();
+  if(v==="builder")await loadBuilder(preferred??currentPreview);
+  if(v==="workspace")workspace();
+  if(v==="activity")activity();
+  if(v==="telemetry")telemetry();
+  if(v==="github")loadGithub();
+}
 async function save(){try{await api("/v1/config",{method:"POST",body:JSON.stringify({provider:$("#settingsProvider").value,model:$("#settingsModel").value.trim()})});toast("Settings saved");await loadConfig()}catch(e){toast(e.message)}}
 document.querySelectorAll(".nav-item").forEach(b=>b.onclick=()=>view(b.dataset.view));$("#runtimeBtn")?.addEventListener("click",()=>view("settings"));
 document.querySelectorAll(".quick-actions button").forEach(b=>b.onclick=()=>{$("#prompt").value=b.dataset.prompt;$("#prompt").focus();$("#prompt").dispatchEvent(new Event("input"))});
@@ -545,6 +587,20 @@ async function ideRunFile(){
   if(!ideActive){toast("Open a source file first");return}
   try{
     if($(".ide-tab.active")?.classList.contains("dirty")&&!(await ideSaveFile()))throw Error("The active file could not be saved. Fix the save error before running it.");
+    const path=ideActive.replace(/\\/g,"/"),ext=path.slice(path.lastIndexOf(".")).toLowerCase();
+    const source=ideEditor?ideEditor.getValue():$("#ideFallbackEditor")?.value||"";
+    const nodeProject=ideFiles.some(f=>/(^|\/)package\.json$/i.test(f));
+    const pythonProject=ideFiles.some(f=>/(^|\/)manage\.py$/i.test(f))||/from\s+(flask|fastapi)\s+import|FastAPI\s*\(|Flask\s*\(|uvicorn\.run\s*\(/i.test(source);
+    if([".html",".htm",".php"].includes(ext)){
+      await view("builder",ideActive);
+      return;
+    }
+    if((nodeProject&&[".js",".mjs",".cjs",".ts",".tsx",".jsx"].includes(ext))||(pythonProject&&[".py",".pyw"].includes(ext))){
+      await view("builder");
+      $("#runtimeSelect").value="auto";
+      await runRuntimePreview();
+      return;
+    }
     ideBottom("output");
     const body=$("#ideBottomBody");
     body.innerHTML='<div class="ide-terminal-line"><span class="terminal-prompt">▶</span><span>Running '+esc(ideActive)+'</span></div><pre id="ideRunOutput" class="ide-run-output">Preparing runtime…</pre>';
