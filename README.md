@@ -125,7 +125,7 @@ aicli config set default_provider gemini
 The Studio GitHub panel connects with a GitHub personal access token (PAT). It does not require a separately configured OAuth App or device-flow setup.
 
 1. Create a token in [GitHub token settings](https://github.com/settings/tokens).
-2. Grant only the repository and workflow permissions needed for the repositories and actions you intend to use. Fine-grained tokens are preferred when they cover your use case; classic tokens commonly use \`repo\` and \`workflow\` scopes.
+2. Grant only the repository and workflow permissions needed for the repositories and actions you intend to use. Fine-grained tokens are preferred when they cover your use case; classic tokens commonly use `repo` and `workflow` scopes.
 3. In Studio, open **GitHub**, paste the token into **Personal access token**, and select **Connect with token**.
 4. FuzeCLI validates the token with GitHub, stores it in the local FuzeCLI configuration, and clears the input. The token is not displayed back to the browser. Use **Disconnect** to remove the explicitly saved token.
 
@@ -133,10 +133,10 @@ The web panel sends the token only to the local FuzeCLI API. Keep the local conf
 
 The command-line workflow remains available through the official GitHub CLI:
 
-\`\`\`powershell
+```powershell
 gh auth login --hostname github.com --web
 aicli github auth status
-\`\`\`
+```
 
 ## Workspace safety
 
