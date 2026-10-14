@@ -165,7 +165,6 @@ func runtimeCommand(root, kind string, port int) (string, []string, []string, er
 		if _, ok := pkg.Scripts[script]; !ok { script = "start" }
 		if _, ok := pkg.Scripts[script]; !ok { return "", nil, nil, errors.New("package.json has neither a dev nor start script") }
 		npm := "npm"
-		if runtime.GOOS == "windows" { npm = "npm.cmd" }
 		args := []string{"run", script}
 		commandText := strings.ToLower(pkg.Scripts[script])
 		if strings.Contains(commandText, "vite") {
@@ -174,6 +173,9 @@ func runtimeCommand(root, kind string, port int) (string, []string, []string, er
 			args = append(args, "--", "--hostname", "127.0.0.1", "--port", fmt.Sprint(port))
 		} else if strings.Contains(commandText, "astro dev") {
 			args = append(args, "--", "--host", "127.0.0.1", "--port", fmt.Sprint(port))
+		}
+		if runtime.GOOS == "windows" {
+			return "cmd.exe", []string{"/d", "/s", "/c", "npm.cmd " + strings.Join(args, " ")}, []string{"HOST=127.0.0.1", "PORT=" + fmt.Sprint(port)}, nil
 		}
 		return npm, args, []string{"HOST=127.0.0.1", "PORT=" + fmt.Sprint(port)}, nil
 	case "python":
