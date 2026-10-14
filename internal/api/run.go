@@ -103,9 +103,7 @@ func (s *Server) runFile(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"ok": false, "message": err.Error()})
 		return
 	}
-	if build != nil {
-		if tempDir := temporaryBuildDirectory(args); tempDir != "" { defer os.RemoveAll(tempDir) }
-	}
+	if tempDir := temporaryBuildDirectory(args); tempDir != "" { defer os.RemoveAll(tempDir) }
 	if _, err := exec.LookPath(command); err != nil {
 		writeJSON(w, http.StatusOK, map[string]any{"ok": false, "runtime_missing": true, "runtime": runtimeName, "message": runtimeName + " is not installed or is not available on PATH."})
 		return
