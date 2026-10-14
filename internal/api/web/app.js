@@ -118,7 +118,7 @@ async function send(){
   }finally{$("#sendBtn").disabled=false;$("#stopBtn").disabled=true;$("#chatState").textContent="Ready";chatAbort=null;studioRequestID="";b.focus()}
 }
 async function files(){const d=await api("/v1/files");return d.files}
-function isSiteFile(f){return /\.(html?|php|css|scss|less|js|mjs|cjs|jsx|ts|mts|cts|tsx|vue|svelte|json|xml|svg|md|mdx|ya?ml|toml|png|jpe?g|webp|gif|ico|woff2?|ttf|otf|py|pyw|go|rs|java|kt|kts|c|h|cc|cpp|cxx|c\+\+|hpp|h\+\+|cs|fs|fsx|swift|dart|rb|lua|pl|pm|r|jl|ex|exs|erl|hs|lhs|scala|sc|clj|cljs|groovy|gradle|sql|sh|bash|zsh|ps1|bat|cmd|proto|graphql|gql|ipynb|f|for|f90|f95|f03|f08|pas|pp|d|zig|nim|cr|rkt|ml|mli|v|odin)$/i.test(f)||/(?:^|\/)(dockerfile|makefile|cmakelists\.txt)$/i.test(f)}
+function isSiteFile(f){return /\.(html?|php|css|scss|less|js|mjs|cjs|jsx|ts|mts|cts|tsx|vue|svelte|json|xml|svg|md|mdx|ya?ml|toml|png|jpe?g|webp|gif|ico|woff2?|ttf|otf|py|pyw|go|rs|java|kt|kts|c|h|cc|cpp|cxx|c\+\+|hpp|h\+\+|cs|fs|fsx|swift|dart|rb|lua|pl|pm|r|jl|ex|exs|erl|hs|lhs|scala|sc|clj|cljs|groovy|gradle|sql|sh|bash|zsh|ps1|bat|cmd|proto|graphql|gql|ipynb|f|for|f90|f95|f03|f08|pas|pp|d|zig|nim|cr|rkt|ml|mli|m|cob|cbl|v|odin)$/i.test(f)||/(?:^|\/)(dockerfile|makefile|cmakelists\.txt)$/i.test(f)}
 async function loadBuilder(preferred){
   const all=await files(),site=all.filter(isSiteFile),pages=site.filter(f=>/\.(html?|php)$/i.test(f));
   $("#fileCount").textContent=site.length;
