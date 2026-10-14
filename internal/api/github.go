@@ -7,6 +7,7 @@ import (
  "io"
  "encoding/json"
  "net/http"
+ "net/url"
  "os"
  "strconv"
  "strings"
@@ -69,7 +70,7 @@ func (s *Server) githubDeviceStart(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 	defer cancel()
-	form := strings.NewReader("client_id=" + clientID + "&scope=repo%20workflow%20read%3Auser")
+	form := strings.NewReader(url.Values{"client_id": {clientID}, "scope": {"repo workflow read:user"}}.Encode())
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, githubOAuthDeviceURL, form)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not prepare GitHub authorization")
@@ -130,7 +131,7 @@ func (s *Server) githubDevicePoll(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusServiceUnavailable, "GitHub OAuth is not configured")
 		return
 	}
-	form := strings.NewReader("client_id=" + clientID + "&device_code=" + body.DeviceCode + "&grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Adevice_code")
+	form := strings.NewReader(url.Values{"client_id": {clientID}, "device_code": {body.DeviceCode}, "grant_type": {"urn:ietf:params:oauth:grant-type:device_code"}}.Encode())
 	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, githubOAuthTokenURL, form)
@@ -191,13 +192,12 @@ func (s *Server) githubDevicePoll(w http.ResponseWriter, r *http.Request) {
 }
 
 func(s *Server) githubAuth(w http.ResponseWriter,r *http.Request){
- if r.Method==http.MethodDelete{if err:=config.ClearGitHubToken();err!=nil{writeError(w,500,err.Error());return};writeJSON(w,200,map[string]any{"ok":true});return}
- if r.Method!=http.MethodPost{writeError(w,405,"method not allowed");return}
- r.Body=http.MaxBytesReader(w,r.Body,16<<10);var req struct{Token string `json:"token"`};if err:=json.NewDecoder(r.Body).Decode(&req);err!=nil{writeError(w,400,"invalid request");return}
- if strings.TrimSpace(req.Token)==""{writeError(w,400,"token is required");return}
- if err:=config.SetGitHubToken(req.Token);err!=nil{writeError(w,500,err.Error());return}
- c:=github.New(req.Token);ctx,cancel:=context.WithTimeout(r.Context(),10*time.Second);defer cancel();u,err:=c.Profile(ctx);if err!=nil{_ = config.ClearGitHubToken();writeError(w,502,err.Error());return}
- writeJSON(w,200,map[string]any{"ok":true,"login":u.Login,"profile_url":u.HTMLURL})
+	if r.Method == http.MethodDelete {
+		if err := config.ClearGitHubToken(); err != nil { writeError(w, http.StatusInternalServerError, err.Error()); return }
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+		return
+	}
+	writeError(w, http.StatusGone, "Personal access token authentication has been removed. Use /v1/github/auth/device/start to connect through GitHub OAuth.")
 }
 func(s *Server) githubRepos(w http.ResponseWriter,r *http.Request){
  if r.Method!=http.MethodGet{writeError(w,405,"method not allowed");return};c,err:=s.githubClient();if err!=nil{writeError(w,500,err.Error());return};ctx,cancel:=context.WithTimeout(r.Context(),20*time.Second);defer cancel();v,err:=c.Repositories(ctx,1,100);if err!=nil{writeError(w,502,err.Error());return};writeJSON(w,200,map[string]any{"repositories":v})
