@@ -414,7 +414,7 @@ function ideDebugConnect(){
     ws.onmessage=e=>{
       try{
         const d=JSON.parse(e.data);
-        if(d.type==="error"){const failure=Error(d.message||"Debugger adapter failed to start");ideUpdateDebugStatus(failure.message);finish(false,failure);try{ws.close()}catch(_){};return}
+        if(d.type==="error"){const failure=Error(d.message||"Debugger adapter failed to start");failure.runtimeMissing=!!d.runtime_missing;failure.runtime=d.runtime||"";ideUpdateDebugStatus(failure.message);finish(false,failure);try{ws.close()}catch(_){};return}
         if(d.type==="response"&&d.request_seq!==undefined&&ideDebugPending.has(d.request_seq)){
           const p=ideDebugPending.get(d.request_seq);ideDebugPending.delete(d.request_seq);
           if(d.success===false)p.reject(Error(d.message||"Debugger request failed"));else p.resolve(d);
@@ -452,7 +452,7 @@ function ideDebugConnect(){
 }
 async function ideSendBreakpoints(){if(!ideDebugSocket||ideDebugSocket.readyState!==WebSocket.OPEN||!ideActive)return;const bp=window.__fuzeBreakpoints||new Map();const lines=[];for(const [key,value] of bp){if(key.startsWith(ideActive+":"))lines.push({line:Number(value.line),column:1})}const workspace=String(cfg?.workspace||"").replace(/[\/]+$/,"");const absoluteSource=workspace?workspace+"/"+ideActive.replace(/^[/\\]+/,""):ideActive;await ideDebugRequest("setBreakpoints",{source:{path:absoluteSource,name:ideActive,sourceReference:0},breakpoints:lines});}
 async function ideWaitForInitialized(timeoutMs=10000){if(ideDebugTargetInitialized)return;return new Promise((resolve,reject)=>{const started=Date.now();const poll=()=>{if(ideDebugTargetInitialized){resolve();return}if(Date.now()-started>timeoutMs){reject(Error("Debugger did not send initialized event after launch"))}else setTimeout(poll,50)};poll()})}
-async function ideDebugStart(){
+async function ideDebugStart(installDepth=0){
   populateDebugLanguages();
   try{
     if(!ideActive)throw Error("Open a source file before starting the debugger");
@@ -498,9 +498,18 @@ async function ideDebugStart(){
     for(const pending of ideDebugPending.values())pending.reject(Error("Debugger session reset after launch failure"));
     ideDebugPending.clear();
     try{failedSocket?.close()}catch(_){}
+    if(installDepth<2&&e.runtimeMissing&&e.runtime&&window.confirm(e.message+"\nAllow FuzeCLI to install "+e.runtime+" using this computer's package manager? This may download software and change your system.")){
+      try{
+        const installed=await api("/v1/runtime/install",{method:"POST",timeoutMs:10*60*1000,body:JSON.stringify({runtime:e.runtime})});
+        if(!installed.ok)throw Error(installed.message||"Debugger installation failed");
+        toast(installed.message||"Debugger installed");
+        return await ideDebugStart(installDepth+1);
+      }catch(installError){e=installError}
+    }
     ideUpdateDebugStatus("Debugger error · session reset");
     ideBottom("output");
-    $("#ideBottomBody").insertAdjacentText("beforeend","\nDebugger error: "+e.message+"\nThe failed debug session was closed. Fix the adapter/runtime issue and try again.\n");
+    const message=installDepth>=2&&e.runtimeMissing?"\nDebugger adapter is still unavailable. Check PATH or install it manually.": "\nThe failed debug session was closed. Fix the adapter/runtime issue and try again.";
+    $("#ideBottomBody").insertAdjacentText("beforeend","\nDebugger error: "+e.message+message+"\n");
     toast("Debugger: "+e.message);
   }
 }
