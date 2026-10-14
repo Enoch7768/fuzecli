@@ -148,15 +148,29 @@ func (s *Server) runFile(w http.ResponseWriter, r *http.Request) {
 }
 
 func temporaryBuildDirectory(args []string) string {
-	for _, output := range args {
-		if len(args) >= 3 && args[0] == "java" && args[1] == "-jar" { output = args[2] }
-		for _, prefix := range []string{"-FE", "-FU", "-o"} {
-			if strings.HasPrefix(output, prefix) && len(output) > len(prefix) { output = strings.TrimPrefix(output, prefix); break }
-		}
-		if strings.HasPrefix(filepath.Base(output), "fuzecli-") { return output }
-		dir := filepath.Dir(output)
-		if strings.HasPrefix(filepath.Base(dir), "fuzecli-") { return dir }
+	if len(args) >= 4 && strings.HasPrefix(args[0], "-FE") && strings.HasPrefix(args[1], "-FU") {
+		dir := strings.TrimPrefix(args[0], "-FE")
+		if strings.HasPrefix(filepath.Base(dir), "fuzecli-pascal-") { return dir }
+		return ""
 	}
+	var output, requiredPrefix string
+	switch {
+	case len(args) >= 3 && args[1] == "-o":
+		output = args[2]
+	case len(args) >= 4 && args[1] == "-include-runtime" && args[2] == "-d":
+		output, requiredPrefix = args[3], "fuzecli-kotlin-"
+	case len(args) >= 3 && args[0] == "run" && args[1] == "--project":
+		output, requiredPrefix = args[2], "fuzecli-csharp-"
+	default:
+		return ""
+	}
+	dir := filepath.Dir(output)
+	prefix := filepath.Base(dir)
+	if requiredPrefix != "" {
+		if strings.HasPrefix(prefix, requiredPrefix) { return dir }
+		return ""
+	}
+	if strings.HasPrefix(prefix, "fuzecli-rust-") || strings.HasPrefix(prefix, "fuzecli-native-") || strings.HasPrefix(prefix, "fuzecli-compile-") { return dir }
 	return ""
 }
 
