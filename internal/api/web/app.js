@@ -135,7 +135,7 @@ async function savePreview(){
     });
     postEditor("request-html");
     await htmlReady;
-    const cleanHTML=String(previewHTML||"").replace(/<script[^>]*data-fuzecli-preview-editor=["']true["'][\\s\\S]*?<\\/script>/gi,"");
+    const cleanHTML=String(previewHTML||"").replace(/<script[^>]*data-fuzecli-preview-editor=["']true["'][\s\S]*?<\/script>/gi,"");
     if(!cleanHTML.trim())throw Error("The preview returned an empty document; nothing was saved.");
     await api("/v1/file",{method:"POST",body:JSON.stringify({path:currentPreview,content:cleanHTML})});
     $("#builderSaveState").textContent="Saved";
