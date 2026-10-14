@@ -218,7 +218,10 @@ func runSpec(root, source, ext string) (string, []string, string, func() (*exec.
 	case ".pas", ".pp":
 		return compiledSpec(root, source, "fpc", "Pascal compiler", "-o")
 	case ".d":
-		return noBuild("dmd", "-run", source)
+		if _, err := exec.LookPath("dmd"); err == nil { return "dmd", []string{"-run", source}, "D compiler", nil, nil }
+		if _, err := exec.LookPath("ldc2"); err == nil { return "ldc2", []string{"-run", source}, "D compiler", nil, nil }
+		if _, err := exec.LookPath("gdc"); err == nil { return compiledSpec(root, source, "gdc", "D compiler", "-o") }
+		return "", nil, "D compiler", nil, nil
 	case ".zig":
 		return noBuild("zig", "run", source)
 	case ".nim":
