@@ -7,6 +7,7 @@ import (
  "io"
  "encoding/json"
  "net/http"
+ "os"
  "strconv"
  "strings"
  "time"
@@ -53,7 +54,7 @@ const githubOAuthDeviceURL = "https://github.com/login/device/code"
 const githubOAuthTokenURL = "https://github.com/login/oauth/access_token"
 
 func githubOAuthClientID() string {
-	return strings.TrimSpace(config.GitHubOAuthClientID())
+	return strings.TrimSpace(os.Getenv("FUZECLI_GITHUB_CLIENT_ID"))
 }
 
 func (s *Server) githubDeviceStart(w http.ResponseWriter, r *http.Request) {
