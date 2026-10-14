@@ -45,9 +45,9 @@ func (m *terminalManager) start(root string) (*terminalSession, error) {
 	var cmd *exec.Cmd
 	if runtime.GOOS == "windows" {
 		if shell, err := exec.LookPath("pwsh.exe"); err == nil {
-			cmd = exec.CommandContext(ctx, shell, "-NoLogo", "-NoProfile", "-Command", "-")
+			cmd = exec.CommandContext(ctx, shell, "-NoLogo", "-NoProfile", "-NoExit", "-Command", "function prompt { [string]::Empty }")
 		} else if shell, err := exec.LookPath("powershell.exe"); err == nil {
-			cmd = exec.CommandContext(ctx, shell, "-NoLogo", "-NoProfile", "-Command", "-")
+			cmd = exec.CommandContext(ctx, shell, "-NoLogo", "-NoProfile", "-NoExit", "-Command", "function prompt { [string]::Empty }")
 		} else {
 			cmd = exec.CommandContext(ctx, "cmd.exe", "/Q", "/K", "prompt $G")
 		}
