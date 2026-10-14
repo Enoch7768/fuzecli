@@ -336,7 +336,7 @@ function ideDebugConnect(){
   ideDebugSocket=ws;ideDebugInitialized=false;ideDebugTargetInitialized=false;
   ideUpdateDebugStatus("Connecting to debugger…");
   ideDebugConnectTimer=new Promise((resolve,reject)=>{
-    let settled=false,initializedEvent=false;
+    let settled=false;
     const finish=(ok,err)=>{
       if(settled)return;settled=true;clearTimeout(timer);ideDebugConnectTimer=null;
       if(ok)resolve();else reject(err||Error("Debugger connection failed"));
@@ -361,7 +361,7 @@ function ideDebugConnect(){
         }
         if(d.type==="event"){
           if(d.event==="initialized"){
-            initializedEvent=true;ideDebugTargetInitialized=true;
+            ideDebugTargetInitialized=true;
             ideUpdateDebugStatus("Debugger ready");finish(true)
           }else if(d.event==="stopped"){
             ideDebugRunning=false;ideUpdateDebugStatus("Paused · "+(d.body?.reason||"breakpoint"));ideDebugStack(d.body?.threadId);
@@ -418,7 +418,7 @@ async function ideDebugStart(){
     else if(language==="java")launch.type="java";
     else if(language==="kotlin")launch.type="kotlin";
     else if(language==="go")launch.mode="debug";
-    await ideDebugRequest("launch",launch);
+    ideDebugTargetInitialized=false;await ideDebugRequest("launch",launch);
     await ideWaitForInitialized();
     await ideSendBreakpoints();
     try{await ideDebugRequest("setExceptionBreakpoints",{filters:[]})}catch(_){}
@@ -552,7 +552,7 @@ document.querySelectorAll("[data-bottom]").forEach(b=>b.onclick=()=>{document.qu
 document.querySelectorAll("[data-ide-action]").forEach(b=>b.onclick=()=>askIDE({explain:"Explain this file and point out risky code.",fix:"Find correctness bugs and propose a minimal safe fix.",refactor:"Refactor this file for clarity without changing behavior.",tests:"Design focused tests for this file."}[b.dataset.ideAction]));
 $("#ideAsk").onclick=()=>askIDE();$("#idePrompt").onkeydown=e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();askIDE()}};
 $("#ideDebugStart").onclick=ideDebugStart;$("#ideRunFile")?.addEventListener("click",ideRunFile);
-$("#ideDebugStop").onclick=async()=>{try{if(ideDebugSocket?.readyState===WebSocket.OPEN)await ideDebugRequest("disconnect",{restart:false,terminateDebuggee:true})}catch(e){}ideDebugRunning=false;ideUpdateDebugStatus("Debugger stopped")};
+$("#ideDebugStop").onclick=async()=>{try{if(ideDebugSocket?.readyState===WebSocket.OPEN)await ideDebugRequest("disconnect",{restart:false,terminateDebuggee:true})}catch(e){}ideDebugRunning=false;ideDebugTargetInitialized=false;ideDebugInitialized=false;try{ideDebugSocket?.close()}catch(e){}ideUpdateDebugStatus("Debugger stopped")};
 $("#ideDebugContinue").onclick=()=>ideDebugCommand("continue");$("#ideDebugPause").onclick=()=>ideDebugCommand("pause");$("#ideDebugStepOver").onclick=()=>ideDebugCommand("next");$("#ideDebugStepInto").onclick=()=>ideDebugCommand("stepIn");$("#ideDebugStepOut").onclick=()=>ideDebugCommand("stepOut");
 }
 window.addEventListener("error",e=>{const message=e.error?.message||e.message||"Unexpected browser error";toast("Studio error: "+message);});
