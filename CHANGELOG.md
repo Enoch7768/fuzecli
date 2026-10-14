@@ -5,8 +5,6 @@
 - Removed the standalone OAuth device-flow endpoints and PAT submission endpoint.
 - Separated clearing a saved legacy token from explicitly disconnecting GitHub, so CLI sign-in can be used without stale configuration blocking it.
 
-## Unreleased
-
 ### Production hardening
 
 - Documented the current multi-provider and local-provider architecture.
