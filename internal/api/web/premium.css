@@ -62,3 +62,8 @@ input::placeholder,textarea::placeholder{color:#a0a8c2}input:focus,select:focus,
 .ide-terminal-input-row{position:sticky;bottom:0;z-index:2;background:var(--panel, #111827);border-top:1px solid rgba(148,163,184,.18)}
 .ide-run-file{border:1px solid rgba(116,139,255,.5)!important;background:rgba(116,139,255,.14)!important;color:var(--text,#e5e7eb)!important}
 #ideDebugStatus{max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+.github-oauth-box{display:flex;flex-direction:column;gap:12px}
+.github-device-code{font:700 25px/1.4 ui-monospace,SFMono-Regular,Consolas,monospace;letter-spacing:.16em;padding:16px;border-radius:12px;text-align:center;background:rgba(124,140,255,.12);border:1px solid rgba(124,140,255,.35);color:var(--text,#eef2ff);user-select:all}
+#githubAuthorizeLink{color:var(--accent,#9caaff);font-weight:600;text-decoration:none}
+#githubAuthorizeLink:hover{text-decoration:underline}
