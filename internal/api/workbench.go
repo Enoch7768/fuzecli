@@ -291,8 +291,11 @@ func startDAP(root, language string) (io.ReadWriteCloser, *exec.Cmd, error) {
 func bridgeDAP(ws *websocket.Conn, root, language string) error {
 	conn, cmd, err := startDAP(root, language)
 	if err != nil { return err }
-	defer cmd.Process.Kill()
-	defer conn.Close()
+	defer func() {
+		_ = conn.Close()
+		if cmd.Process != nil { _ = cmd.Process.Kill() }
+		_ = cmd.Wait()
+	}()
 	go func() {
 		br := bufio.NewReader(conn)
 		for {
