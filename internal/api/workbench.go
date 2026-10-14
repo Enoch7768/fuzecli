@@ -245,7 +245,9 @@ func startDAP(root, language string) (io.ReadWriteCloser, *exec.Cmd, error) {
 		if err != nil { return nil, nil, err }
 		out, err := cmd.StdoutPipe()
 		if err != nil { _ = in.Close(); return nil, nil, err }
-		if err := cmd.Start(); err != nil { _ = in.Close(); _ = out.Close(); return nil, nil, fmt.Errorf("start %s debugger: %w", spec.Command, err) }
+		stderr := &boundedBuffer{limit: 32 << 10}
+		cmd.Stderr = stderr
+		if err := cmd.Start(); err != nil { _ = in.Close(); _ = out.Close(); return nil, nil, fmt.Errorf("start %s debugger: %w: %s", spec.Command, err, strings.TrimSpace(stderr.String())) }
 		return &dapPipe{Reader: out, Writer: in, closeFn: func() error { _ = in.Close(); _ = out.Close(); return nil }}, cmd, nil
 	}
 	stderr, err := cmd.StderrPipe()
@@ -292,7 +294,12 @@ func bridgeDAP(ws *websocket.Conn, root, language string) error {
 		for {
 			msg, err := readLSPMessage(br)
 			if err != nil {
-				_ = ws.WriteJSON(map[string]any{"type": "error", "message": fmt.Sprintf("%s debugger adapter closed its output before responding: %v. Check that its runtime and adapter dependencies are installed.", language, err)})
+				message := fmt.Sprintf("%s debugger adapter closed its output before responding: %v.", language, err)
+				if captured, ok := cmd.Stderr.(*boundedBuffer); ok {
+					if detail := strings.TrimSpace(captured.String()); detail != "" { message += " Adapter output: " + detail }
+				}
+				message += " Check that the runtime and debugger adapter are installed and compatible."
+				_ = ws.WriteJSON(map[string]any{"type": "error", "message": message})
 				_ = ws.Close()
 				return
 			}
