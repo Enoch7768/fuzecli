@@ -165,7 +165,6 @@ func temporaryBuildDirectory(args []string) string {
 		return ""
 	}
 	dir := filepath.Dir(output)
-	prefix := filepath.Base(dir)
 	if requiredPrefix != "" {
 		if isFuzeTemporaryDirectory(dir, requiredPrefix) { return dir }
 		return ""
