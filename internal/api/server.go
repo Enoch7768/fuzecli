@@ -692,7 +692,15 @@ func (s *Server) debug(w http.ResponseWriter, r *http.Request) {
 	if language == "" { writeError(w, http.StatusBadRequest, "debug language is required"); return }
 	conn, err := s.workbench.upgrader.Upgrade(w, r, nil)
 	if err != nil { return }
-	if err := bridgeDAP(conn, s.service.Root(), language); err != nil { _ = conn.WriteJSON(map[string]any{"type":"error","message":err.Error()}) }
+	if err := bridgeDAP(conn, s.service.Root(), language); err != nil {
+		payload := map[string]any{"type": "error", "message": err.Error()}
+		var missing *debugAdapterMissingError
+		if errors.As(err, &missing) && missing.Runtime != "" {
+			payload["runtime_missing"] = true
+			payload["runtime"] = missing.Runtime
+		}
+		_ = conn.WriteJSON(payload)
+	}
 	_ = conn.Close()
 }
 
