@@ -28,6 +28,17 @@ The web app includes:
 - Provider-key configuration status without exposing key values
 - Responsive navigation for smaller screens
 
+## GitHub authentication
+
+Studio uses the official GitHub CLI instead of collecting a personal access token in the browser.
+
+```powershell
+aicli github auth login
+aicli github auth status
+```
+
+The GitHub panel starts the same browser sign-in flow. Complete any prompts in the terminal that launched FuzeCLI. The local API exposes `POST /v1/github/auth/login` to start sign-in, `GET /v1/github/auth/login/status` to inspect its progress, `GET /v1/github/status` to check the account, and `DELETE /v1/github/auth` to disconnect GitHub access from Studio. Disconnect does not revoke or remove the GitHub CLI's own session.
+
 ## API
 
 Start the API with:

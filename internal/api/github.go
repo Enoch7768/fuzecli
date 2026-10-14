@@ -1,233 +1,228 @@
 package api
 
 import (
- "context"
- "errors"
- "fmt"
- "io"
- "encoding/json"
- "net/http"
- "net/url"
- "os"
- "strconv"
- "strings"
- "time"
+	"context"
+	"encoding/json"
+	"errors"
+	"net/http"
+	"os"
+	"os/exec"
+	"strconv"
+	"strings"
+	"time"
 
- "github.com/Enoch7768/fuzecli/internal/config"
- "github.com/Enoch7768/fuzecli/internal/github"
+	"github.com/Enoch7768/fuzecli/internal/config"
+	"github.com/Enoch7768/fuzecli/internal/github"
 )
 
-func(s *Server) githubRoutes(w http.ResponseWriter,r *http.Request){
- path:=strings.TrimPrefix(r.URL.Path,"/v1/github")
- if path==""||path=="/"{s.githubStatus(w,r);return}
- switch {
- case path=="/status":s.githubStatus(w,r)
- case path=="/auth":s.githubAuth(w,r)
- case path=="/auth/device/start":s.githubDeviceStart(w,r)
- case path=="/auth/device/poll":s.githubDevicePoll(w,r)
- case path=="/repos":s.githubRepos(w,r)
- case path=="/repo":s.githubRepo(w,r)
- case path=="/sync":s.githubSync(w,r)
- case path=="/branches":s.githubBranches(w,r)
- case path=="/prs":s.githubPRs(w,r)
- case path=="/comments":s.githubComments(w,r)
- case path=="/review":s.githubReview(w,r)
- case path=="/actions":s.githubActions(w,r)
- case path=="/issues":s.githubIssues(w,r)
- default:writeError(w,http.StatusNotFound,"GitHub endpoint not found")
- }
-}
-func(s *Server) githubClient()( *github.Client,error){token,err:=config.GitHubToken();if err!=nil{return nil,err};client:=github.New(token);configured,err:=config.GitHubTokenConfigured();if err!=nil{return nil,err};client.DisableCLI=configured&&strings.TrimSpace(token)=="";return client,nil}
-func(s *Server) githubStatus(w http.ResponseWriter,r *http.Request){
- if r.Method!=http.MethodGet{writeError(w,405,"method not allowed");return}
- c,err:=s.githubClient();if err!=nil{writeError(w,500,err.Error());return}
- out:=map[string]any{"authenticated":c.Authenticated(),"remote":""}
- if remote,e:=github.LocalRemote(s.service.Root());e==nil{out["remote"]=remote}
- if !c.Authenticated(){writeJSON(w,200,out);return}
- ctx,cancel:=context.WithTimeout(r.Context(),10*time.Second);defer cancel()
- user,e:=c.Profile(ctx);if e!=nil{writeError(w,502,e.Error());return}
- out["user"]=user.Login;out["profile_url"]=user.HTMLURL
- writeJSON(w,200,out)
-}
-
-const githubDeviceBaseURL = "https://github.com/login/device"
-const githubOAuthDeviceURL = "https://github.com/login/device/code"
-const githubOAuthTokenURL = "https://github.com/login/oauth/access_token"
-
-func githubOAuthClientID() string {
-	return strings.TrimSpace(os.Getenv("FUZECLI_GITHUB_CLIENT_ID"))
+func (s *Server) githubRoutes(w http.ResponseWriter, r *http.Request) {
+	path := strings.TrimPrefix(r.URL.Path, "/v1/github")
+	if path == "" || path == "/" {
+		s.githubStatus(w, r)
+		return
+	}
+	switch path {
+	case "/status":
+		s.githubStatus(w, r)
+	case "/auth":
+		s.githubAuth(w, r)
+	case "/auth/login":
+		s.githubAuthLogin(w, r)
+	case "/auth/login/status":
+		s.githubAuthLoginStatus(w, r)
+	case "/repos":
+		s.githubRepos(w, r)
+	case "/repo":
+		s.githubRepo(w, r)
+	case "/sync":
+		s.githubSync(w, r)
+	case "/branches":
+		s.githubBranches(w, r)
+	case "/prs":
+		s.githubPRs(w, r)
+	case "/comments":
+		s.githubComments(w, r)
+	case "/review":
+		s.githubReview(w, r)
+	case "/actions":
+		s.githubActions(w, r)
+	case "/issues":
+		s.githubIssues(w, r)
+	default:
+		writeError(w, http.StatusNotFound, "GitHub endpoint not found")
+	}
 }
 
-func (s *Server) githubDeviceStart(w http.ResponseWriter, r *http.Request) {
+func (s *Server) githubClient() (*github.Client, error) {
+	token, err := config.GitHubToken()
+	if err != nil {
+		return nil, err
+	}
+	client := github.New(token)
+	configured, err := config.GitHubTokenConfigured()
+	if err != nil {
+		return nil, err
+	}
+	client.DisableCLI = configured && strings.TrimSpace(token) == ""
+	return client, nil
+}
+
+func (s *Server) githubStatus(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	c, err := s.githubClient()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not read GitHub connection settings")
+		return
+	}
+	configured, err := config.GitHubTokenConfigured()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not read GitHub connection settings")
+		return
+	}
+authenticated := c.Authenticated()
+	out := map[string]any{"authenticated": authenticated, "remote": "", "auth_mode": "gh"}
+	if configured && strings.TrimSpace(c.Token) == "" {
+		out["auth_mode"] = "disconnected"
+	} else if strings.TrimSpace(c.Token) != "" {
+		out["auth_mode"] = "token"
+	}
+	if remote, e := github.LocalRemote(s.service.Root()); e == nil {
+		out["remote"] = remote
+	}
+	s.githubAuthMu.Lock()
+	out["login_running"] = s.githubAuthRunning
+	out["login_message"] = s.githubAuthMessage
+	out["login_error"] = s.githubAuthError
+	s.githubAuthMu.Unlock()
+	if !authenticated {
+		writeJSON(w, http.StatusOK, out)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+	user, err := c.Profile(ctx)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, "GitHub authentication exists but the profile could not be verified")
+		return
+	}
+	out["user"] = user.Login
+	out["profile_url"] = user.HTMLURL
+	writeJSON(w, http.StatusOK, out)
+}
+
+func (s *Server) githubAuthLogin(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	clientID := githubOAuthClientID()
-	if clientID == "" {
-		writeError(w, http.StatusServiceUnavailable, "GitHub OAuth is not configured. Set FUZECLI_GITHUB_CLIENT_ID to the Client ID of a GitHub OAuth App with Device Flow enabled, then restart FuzeCLI.")
+	if !isLoopbackRequest(r) {
+		writeError(w, http.StatusForbidden, "GitHub CLI sign-in is available only from the local machine")
 		return
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
-	defer cancel()
-	form := strings.NewReader(url.Values{"client_id": {clientID}, "scope": {"repo workflow read:user"}}.Encode())
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, githubOAuthDeviceURL, form)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not prepare GitHub authorization")
+	if _, err := exec.LookPath("gh"); err != nil {
+		writeError(w, http.StatusServiceUnavailable, "GitHub CLI is not installed. Install it from https://cli.github.com, reopen your terminal, and retry.")
 		return
 	}
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		writeError(w, http.StatusBadGateway, "could not contact GitHub authorization service")
+	s.githubAuthMu.Lock()
+	if s.githubAuthRunning {
+		s.githubAuthMu.Unlock()
+		writeJSON(w, http.StatusAccepted, map[string]any{"running": true, "message": "GitHub sign-in is already running."})
 		return
 	}
-	defer resp.Body.Close()
-	var result struct {
-		DeviceCode string `json:"device_code"`
-		UserCode string `json:"user_code"`
-		VerificationURI string `json:"verification_uri"`
-		ExpiresIn int `json:"expires_in"`
-		Interval int `json:"interval"`
-		Error string `json:"error"`
-		ErrorDescription string `json:"error_description"`
-	}
-	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&result); err != nil {
-		writeError(w, http.StatusBadGateway, "GitHub returned an invalid authorization response")
-		return
-	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 || result.DeviceCode == "" || result.UserCode == "" {
-		message := result.ErrorDescription
-		if message == "" { message = result.Error }
-		if message == "" { message = "GitHub could not start device authorization" }
-		writeError(w, http.StatusBadGateway, message)
-		return
-	}
-	if result.Interval < 1 { result.Interval = 5 }
-	if result.ExpiresIn < 1 { result.ExpiresIn = 900 }
-	writeJSON(w, http.StatusOK, map[string]any{
-		"device_code": result.DeviceCode,
-		"user_code": result.UserCode,
-		"verification_uri": result.VerificationURI,
-		"expires_in": result.ExpiresIn,
-		"interval": result.Interval,
+	s.githubAuthRunning = true
+	s.githubAuthMessage = "Waiting for GitHub browser sign-in. Complete the flow in the terminal running FuzeCLI."
+	s.githubAuthError = ""
+	s.githubAuthMu.Unlock()
+	go s.runGitHubCLILogin()
+	writeJSON(w, http.StatusAccepted, map[string]any{
+		"running": true,
+		"message": "GitHub sign-in started. Complete the browser flow in the terminal running FuzeCLI, then return here.",
 	})
 }
 
-func (s *Server) githubDevicePoll(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
-		return
+func (s *Server) runGitHubCLILogin() {
+	setState := func(message, failure string) {
+		s.githubAuthMu.Lock()
+		s.githubAuthRunning = false
+		s.githubAuthMessage = message
+		s.githubAuthError = failure
+		s.githubAuthMu.Unlock()
 	}
-	r.Body = http.MaxBytesReader(w, r.Body, 8<<10)
-	var body struct { DeviceCode string `json:"device_code"` }
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || strings.TrimSpace(body.DeviceCode) == "" {
-		writeError(w, http.StatusBadRequest, "device authorization code is required")
-		return
-	}
-	clientID := githubOAuthClientID()
-	if clientID == "" {
-		writeError(w, http.StatusServiceUnavailable, "GitHub OAuth is not configured")
-		return
-	}
-	form := strings.NewReader(url.Values{"client_id": {clientID}, "device_code": {body.DeviceCode}, "grant_type": {"urn:ietf:params:oauth:grant-type:device_code"}}.Encode())
-	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, githubOAuthTokenURL, form)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not prepare token exchange")
-		return
-	}
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		writeError(w, http.StatusBadGateway, "could not contact GitHub token service")
-		return
-	}
-	defer resp.Body.Close()
-	var result struct {
-		AccessToken string `json:"access_token"`
-		TokenType string `json:"token_type"`
-		Scope string `json:"scope"`
-		Error string `json:"error"`
-		ErrorDescription string `json:"error_description"`
-	}
-	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&result); err != nil {
-		writeError(w, http.StatusBadGateway, "GitHub returned an invalid token response")
-		return
-	}
-	if result.AccessToken == "" {
-		switch result.Error {
-		case "authorization_pending":
-			writeJSON(w, http.StatusAccepted, map[string]any{"pending": true, "interval": 5})
-		case "slow_down":
-			writeJSON(w, http.StatusAccepted, map[string]any{"pending": true, "slow_down": true, "interval": 10})
-		case "expired_token":
-			writeJSON(w, http.StatusGone, map[string]any{"message": "GitHub device code expired. Start authorization again."})
-		case "access_denied":
-			writeJSON(w, http.StatusForbidden, map[string]any{"message": "GitHub authorization was denied."})
-		default:
-			message := result.ErrorDescription
-			if message == "" { message = result.Error }
-			if message == "" { message = "GitHub authorization has not completed." }
-			writeJSON(w, http.StatusAccepted, map[string]any{"pending": true, "message": message})
+	cmd := exec.CommandContext(ctx, "gh", "auth", "login", "--hostname", "github.com", "--web", "--git-protocol", "https")
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		if ctx.Err() != nil {
+			setState("GitHub sign-in timed out. Start sign-in again.", "The GitHub CLI sign-in timed out.")
+		} else {
+			setState("GitHub sign-in failed. Check the terminal running FuzeCLI for details.", "GitHub CLI sign-in failed.")
 		}
 		return
 	}
-	client := github.New(result.AccessToken)
-	profileCtx, profileCancel := context.WithTimeout(r.Context(), 10*time.Second)
+	setup := exec.CommandContext(ctx, "gh", "auth", "setup-git", "--hostname", "github.com")
+	setup.Stdin = os.Stdin
+	setup.Stdout = os.Stdout
+	setup.Stderr = os.Stderr
+	if err := setup.Run(); err != nil {
+		setState("GitHub account signed in, but Git credential setup failed.", "Run 'gh auth setup-git --hostname github.com' in your terminal.")
+		return
+	}
+	if err := config.ClearGitHubToken(); err != nil {
+		setState("GitHub signed in, but FuzeCLI could not switch to GitHub CLI authentication.", "Could not update FuzeCLI GitHub settings.")
+		return
+	}
+	client := github.New("")
+	profileCtx, profileCancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer profileCancel()
 	user, err := client.Profile(profileCtx)
 	if err != nil {
-		writeError(w, http.StatusBadGateway, fmt.Sprintf("GitHub issued a token, but profile verification failed: %v", err))
+		setState("GitHub sign-in finished, but FuzeCLI could not verify the account.", "Run 'gh auth status --hostname github.com' and retry.")
 		return
 	}
-	if err := config.SetGitHubToken(result.AccessToken); err != nil {
-		writeError(w, http.StatusInternalServerError, "could not securely save GitHub authorization")
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "login": user.Login, "profile_url": user.HTMLURL})
+	setState("Connected as "+user.Login+".", "")
 }
 
-func(s *Server) githubAuth(w http.ResponseWriter,r *http.Request){
-	if r.Method == http.MethodDelete {
-		if err := config.ClearGitHubToken(); err != nil { writeError(w, http.StatusInternalServerError, err.Error()); return }
-		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
-		return
-	}
-	if r.Method != http.MethodPost {
+func (s *Server) githubAuthLoginStatus(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	r.Body = http.MaxBytesReader(w, r.Body, 16<<10)
-	var body struct { Token string `json:"token"` }
-	decoder := json.NewDecoder(r.Body)
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&body); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid GitHub token request")
-		return
+	s.githubAuthMu.Lock()
+	out := map[string]any{
+		"running": s.githubAuthRunning,
+		"message": s.githubAuthMessage,
+		"error": s.githubAuthError,
 	}
-	token := strings.TrimSpace(body.Token)
-	if token == "" || len(token) > 4096 {
-		writeError(w, http.StatusBadRequest, "paste a valid GitHub personal access token")
-		return
-	}
-	client := github.New(token)
-	ctx, cancel := context.WithTimeout(r.Context(), 12*time.Second)
-	defer cancel()
-	user, err := client.Profile(ctx)
-	if err != nil {
-		writeError(w, http.StatusUnauthorized, "GitHub rejected this token. Check that it is valid and has the repository permissions FuzeCLI needs.")
-		return
-	}
-	if err := config.SetGitHubToken(token); err != nil {
-		writeError(w, http.StatusInternalServerError, "could not securely save GitHub authorization")
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "login": user.Login, "profile_url": user.HTMLURL})
+	s.githubAuthMu.Unlock()
+	writeJSON(w, http.StatusOK, out)
 }
+
+func (s *Server) githubAuth(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodDelete {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed; use the GitHub CLI sign-in button")
+		return
+	}
+	s.githubAuthMu.Lock()
+	defer s.githubAuthMu.Unlock()
+	if s.githubAuthRunning {
+		writeError(w, http.StatusConflict, "wait for GitHub sign-in to finish before disconnecting")
+		return
+	}
+	if err := config.DisconnectGitHub(); err != nil {
+		writeError(w, http.StatusInternalServerError, "could not disconnect GitHub in FuzeCLI")
+		return
+	}
+	s.githubAuthMessage = "GitHub disconnected from Studio."
+	s.githubAuthError = ""
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
 func(s *Server) githubRepos(w http.ResponseWriter,r *http.Request){
  if r.Method!=http.MethodGet{writeError(w,405,"method not allowed");return};c,err:=s.githubClient();if err!=nil{writeError(w,500,err.Error());return};ctx,cancel:=context.WithTimeout(r.Context(),20*time.Second);defer cancel();v,err:=c.Repositories(ctx,1,100);if err!=nil{writeError(w,502,err.Error());return};writeJSON(w,200,map[string]any{"repositories":v})
 }
@@ -237,7 +232,7 @@ func(s *Server) githubRepo(w http.ResponseWriter,r *http.Request){
  if r.Method!=http.MethodGet{writeError(w,405,"method not allowed");return};full:=strings.TrimSpace(r.URL.Query().Get("name"));if full==""{writeError(w,400,"repository name is required");return};v,err:=c.Repository(ctx,full);if err!=nil{writeError(w,502,err.Error());return};writeJSON(w,200,map[string]any{"repository":v})
 }
 func(s *Server) githubSync(w http.ResponseWriter,r *http.Request){
- if r.Method!=http.MethodPost{writeError(w,405,"method not allowed");return};c,err:=s.githubClient();if err!=nil{writeError(w,500,err.Error());return};r.Body=http.MaxBytesReader(w,r.Body,16<<10);var req struct{Operation string `json:"operation"`; Remote string `json:"remote"`; Branch string `json:"branch"`};if err:=json.NewDecoder(r.Body).Decode(&req);err!=nil{writeError(w,400,"invalid request");return};if req.Operation!="pull"&&req.Operation!="push"{writeError(w,400,"operation must be pull or push");return};ctx,cancel:=context.WithTimeout(r.Context(),5*time.Minute);defer cancel();var out string;if req.Operation=="pull"{out,err=github.Pull(ctx,s.service.Root(),req.Remote,req.Branch,c.Token)}else{out,err=github.Push(ctx,s.service.Root(),req.Remote,req.Branch,c.Token)};if err!=nil{writeError(w,502,err.Error());return};writeJSON(w,200,map[string]any{"ok":true,"output":out})
+ if r.Method!=http.MethodPost{writeError(w,405,"method not allowed");return};c,err:=s.githubClient();if err!=nil{writeError(w,500,err.Error());return};if c.DisableCLI&&strings.TrimSpace(c.Token)==""{writeError(w,http.StatusUnauthorized,"GitHub is disconnected in Studio");return};r.Body=http.MaxBytesReader(w,r.Body,16<<10);var req struct{Operation string `json:"operation"`; Remote string `json:"remote"`; Branch string `json:"branch"`};if err:=json.NewDecoder(r.Body).Decode(&req);err!=nil{writeError(w,400,"invalid request");return};if req.Operation!="pull"&&req.Operation!="push"{writeError(w,400,"operation must be pull or push");return};ctx,cancel:=context.WithTimeout(r.Context(),5*time.Minute);defer cancel();var out string;if req.Operation=="pull"{out,err=github.Pull(ctx,s.service.Root(),req.Remote,req.Branch,c.Token)}else{out,err=github.Push(ctx,s.service.Root(),req.Remote,req.Branch,c.Token)};if err!=nil{writeError(w,502,err.Error());return};writeJSON(w,200,map[string]any{"ok":true,"output":out})
 }
 func(s *Server) githubBranches(w http.ResponseWriter,r *http.Request){
  c,err:=s.githubClient();if err!=nil{writeError(w,500,err.Error());return};full:=strings.TrimSpace(r.URL.Query().Get("repo"));if full==""{full,err=githubRepoFromRemote(s.service.Root());if err!=nil{writeError(w,400,err.Error());return}}

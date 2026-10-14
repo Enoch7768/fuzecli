@@ -173,13 +173,33 @@ func SetGitHubToken(token string) error {
 	if err != nil {
 		return err
 	}
-	c.GitHub.Token = strings.TrimSpace(token)
+	token = strings.TrimSpace(token)
+	if token == "" {
+		return fmt.Errorf("GitHub token cannot be empty")
+	}
+	c.GitHub.Token = token
 	c.GitHub.TokenConfigured = true
 	return Save(c)
 }
 
 func ClearGitHubToken() error {
-	return SetGitHubToken("")
+	c, err := Load()
+	if err != nil {
+		return err
+	}
+	c.GitHub.Token = ""
+	c.GitHub.TokenConfigured = false
+	return Save(c)
+}
+
+func DisconnectGitHub() error {
+	c, err := Load()
+	if err != nil {
+		return err
+	}
+	c.GitHub.Token = ""
+	c.GitHub.TokenConfigured = true
+	return Save(c)
 }
 
 func GitHubTokenConfigured() (bool, error) {
@@ -198,13 +218,10 @@ func GitHubToken() (string, error) {
 	if c.GitHub.TokenConfigured {
 		return strings.TrimSpace(c.GitHub.Token), nil
 	}
-	if token := strings.TrimSpace(os.Getenv("GITHUB_TOKEN")); token != "" {
+	if token := strings.TrimSpace(c.GitHub.Token); token != "" {
 		return token, nil
 	}
-	if token := strings.TrimSpace(os.Getenv("GH_TOKEN")); token != "" {
-		return token, nil
-	}
-	return strings.TrimSpace(c.GitHub.Token), nil
+	return "", nil
 }
 
 func MaskSecret(s string) string {

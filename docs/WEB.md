@@ -36,7 +36,7 @@ Settings controls the default provider and model. API-key values are intentional
 
 ### GitHub context
 
-The selected repository drives branch, pull-request, Actions, comments, and issue requests. Workspace Pull and Push remain local Git operations against the workspace origin. An explicitly connected token in the web UI takes precedence over inherited `GITHUB_TOKEN` and `GH_TOKEN` values; disconnecting clears that explicit connection so the app does not silently fall back to stale `gh` CLI credentials.
+The selected repository drives branch, pull-request, Actions, comments, and issue requests. Studio authenticates through the official GitHub CLI: use **Sign in with GitHub CLI** and complete the browser flow in the terminal running FuzeCLI. The backend runs `gh auth login --hostname github.com --web --git-protocol https`, configures Git with `gh auth setup-git`, and verifies the signed-in profile. Workspace Pull and Push use the Git credential helper configured by GitHub CLI. Disconnecting disables GitHub access from Studio without logging the user out of `gh`; signing in again re-enables it. Older saved PATs remain usable until replaced by a GitHub CLI sign-in.
 
 ## Security
 

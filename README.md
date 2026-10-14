@@ -122,21 +122,21 @@ aicli config set default_provider gemini
 
 ## GitHub connection
 
-The Studio GitHub panel connects with a GitHub personal access token (PAT). It does not require a separately configured OAuth App or device-flow setup.
+Studio uses the official GitHub CLI (`gh`) for browser-based sign-in. It does not ask you to paste a personal access token or require a separately configured OAuth App.
 
-1. Create a token in [GitHub token settings](https://github.com/settings/tokens).
-2. Grant only the repository and workflow permissions needed for the repositories and actions you intend to use. Fine-grained tokens are preferred when they cover your use case; classic tokens commonly use `repo` and `workflow` scopes.
-3. In Studio, open **GitHub**, paste the token into **Personal access token**, and select **Connect with token**.
-4. FuzeCLI validates the token with GitHub, stores it in the local FuzeCLI configuration, and clears the input. The token is not displayed back to the browser. Use **Disconnect** to remove the explicitly saved token.
+1. Install [GitHub CLI](https://cli.github.com/) if it is not already installed.
+2. Open Studio, select **GitHub**, and choose **Sign in with GitHub CLI**.
+3. Complete the browser sign-in flow in the terminal window running FuzeCLI. Studio will verify the session and load repositories when sign-in completes.
+4. Use **Disconnect** to disable GitHub access from Studio. This does not sign you out of GitHub CLI itself.
 
-The web panel sends the token only to the local FuzeCLI API. Keep the local configuration private, never commit it, and do not paste tokens into chat or source files. Workspace pull/push uses the connected token when available.
-
-The command-line workflow remains available through the official GitHub CLI:
+You can also sign in from a terminal:
 
 ```powershell
-gh auth login --hostname github.com --web
+aicli github auth login
 aicli github auth status
 ```
+
+FuzeCLI uses the `gh` session for GitHub API calls and `gh auth setup-git` to configure Git credential integration. Existing saved tokens from older versions remain supported until you sign in through GitHub CLI, which switches FuzeCLI to the `gh` session. Keep your local FuzeCLI configuration private and never commit it.
 
 ## Workspace safety
 
