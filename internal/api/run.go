@@ -109,11 +109,15 @@ func (s *Server) runFile(w http.ResponseWriter, r *http.Request) {
 	}
 	if build != nil {
 		buildCmd, buildArgs := build()
+		buildCmd = exec.CommandContext(ctx, buildCmd.Path, buildCmd.Args[1:]...)
 		buildCmd.Dir = root
+		buildCmd.Env = os.Environ()
 		buildCmd.Stdout = out
 		buildCmd.Stderr = errOut
 		if err := buildCmd.Run(); err != nil {
-			writeJSON(w, http.StatusOK, map[string]any{"ok": false, "runtime": runtimeName, "output": out.String() + errOut.String(), "message": "Build failed: " + err.Error()})
+			message := "Build failed: " + err.Error()
+			if ctx.Err() == context.DeadlineExceeded { message = "Build exceeded the 2-minute execution limit." }
+			writeJSON(w, http.StatusOK, map[string]any{"ok": false, "runtime": runtimeName, "output": out.String() + errOut.String(), "message": message})
 			return
 		}
 		command, args = buildArgs[0], buildArgs[1:]
@@ -142,6 +146,18 @@ func (s *Server) runFile(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "runtime": runtimeName, "exit_code": 0, "duration_ms": time.Since(start).Milliseconds(), "output": output})
 }
 
+func compiledSpec(root, source, compiler, runtimeName, outputFlag string) (string, []string, string, func() (*exec.Cmd, []string), error) {
+	tmp, err := os.MkdirTemp("", "fuzecli-compile-*")
+	if err != nil { return "", nil, "", nil, err }
+	bin := filepath.Join(tmp, strings.TrimSuffix(filepath.Base(source), filepath.Ext(source)))
+	if runtime.GOOS == "windows" { bin += ".exe" }
+	build := func() (*exec.Cmd, []string) {
+		cmd := exec.Command(compiler, source, outputFlag, bin)
+		return cmd, []string{bin}
+	}
+	return compiler, []string{source, outputFlag, bin}, runtimeName, build, nil
+}
+
 func runSpec(root, source, ext string) (string, []string, string, func() (*exec.Cmd, []string), error) {
 	noBuild := func(command string, args ...string) (string, []string, string, func() (*exec.Cmd, []string), error) {
 		return command, args, command, nil, nil
@@ -149,7 +165,7 @@ func runSpec(root, source, ext string) (string, []string, string, func() (*exec.
 	switch ext {
 	case ".js", ".mjs", ".cjs":
 		return noBuild("node", source)
-	case ".ts", ".tsx":
+	case ".ts", ".tsx", ".jsx", ".mts", ".cts":
 		if _, err := exec.LookPath("tsx"); err == nil { return noBuild("tsx", source) }
 		return "", nil, "Node.js + tsx", nil, nil
 	case ".py", ".pyw":
@@ -167,9 +183,9 @@ func runSpec(root, source, ext string) (string, []string, string, func() (*exec.
 		if runtime.GOOS == "windows" { bin += ".exe" }
 		build := func() (*exec.Cmd, []string) { c := exec.Command("rustc", source, "-o", bin); return c, []string{bin} }
 		return "rustc", []string{source, "-o", bin}, "Rust (rustc)", build, nil
-	case ".c", ".cc", ".cpp", ".cxx":
+	case ".c", ".cc", ".cpp", ".cxx", ".c++":
 		compiler := "cc"
-		cpp := ext == ".cc" || ext == ".cpp" || ext == ".cxx" || ext == ".hpp"
+		cpp := ext == ".cc" || ext == ".cpp" || ext == ".cxx" || ext == ".c++" || ext == ".hpp"
 		candidates := []string{"cc", "clang", "gcc"}
 		if cpp { candidates = []string{"g++", "clang++", "c++"} }
 		if runtime.GOOS == "windows" && !cpp { candidates = []string{"gcc", "clang", "cc"} }
@@ -195,6 +211,26 @@ func runSpec(root, source, ext string) (string, []string, string, func() (*exec.
 		return "", nil, "", nil, errors.New("C# execution requires a .csproj project in the workspace")
 	case ".rb":
 		return noBuild("ruby", source)
+	case ".fsx":
+		return noBuild("dotnet", "fsi", source)
+	case ".f", ".for", ".f90", ".f95", ".f03", ".f08":
+		return compiledSpec(root, source, "gfortran", "Fortran compiler", "-o")
+	case ".pas", ".pp":
+		return compiledSpec(root, source, "fpc", "Pascal compiler", "-o")
+	case ".d":
+		return noBuild("dmd", "-run", source)
+	case ".zig":
+		return noBuild("zig", "run", source)
+	case ".nim":
+		return noBuild("nim", "r", "--hints:off", source)
+	case ".clj":
+		return noBuild("clojure", source)
+	case ".groovy":
+		return noBuild("groovy", source)
+	case ".cr":
+		return noBuild("crystal", "run", source)
+	case ".rkt":
+		return noBuild("racket", source)
 	case ".pl", ".pm":
 		return noBuild("perl", source)
 	case ".lua":
