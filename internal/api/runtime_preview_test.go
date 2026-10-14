@@ -36,8 +36,10 @@ func TestNodePreviewDoesNotPassViteFlagsToGenericStartScript(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.HasPrefix(command, "npm") || !reflect.DeepEqual(args, []string{"run", "start"}) {
-		t.Fatalf("command/args = %q %v, want npm run start without framework flags", command, args)
+	wantCommand, wantArgs := "npm", []string{"run", "start"}
+	if runtime.GOOS == "windows" { wantCommand, wantArgs = "cmd.exe", []string{"/d", "/s", "/c", "npm.cmd run start"} }
+	if command != wantCommand || !reflect.DeepEqual(args, wantArgs) {
+		t.Fatalf("command/args = %q %v, want %q %v without framework flags", command, args, wantCommand, wantArgs)
 	}
 }
 
@@ -51,8 +53,10 @@ func TestNodePreviewAddsHostFlagsForVite(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.HasPrefix(command, "npm") || !reflect.DeepEqual(args, []string{"run", "dev", "--", "--host", "127.0.0.1", "--port", "43125"}) {
-		t.Fatalf("command/args = %q %v, want Vite host and port flags", command, args)
+	wantCommand, wantArgs := "npm", []string{"run", "dev", "--", "--host", "127.0.0.1", "--port", "43125"}
+	if runtime.GOOS == "windows" { wantCommand, wantArgs = "cmd.exe", []string{"/d", "/s", "/c", "npm.cmd run dev -- --host 127.0.0.1 --port 43125"} }
+	if command != wantCommand || !reflect.DeepEqual(args, wantArgs) {
+		t.Fatalf("command/args = %q %v, want Vite host and port flags %q %v", command, args, wantCommand, wantArgs)
 	}
 }
 
@@ -108,8 +112,8 @@ func TestRuntimePreviewUsesPlatformSpecificNPMName(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if command != "npm.cmd" {
-			t.Fatalf("command = %q, want npm.cmd on Windows", command)
+		if command != "cmd.exe" {
+			t.Fatalf("command = %q, want cmd.exe wrapper on Windows", command)
 		}
 	}
 }
