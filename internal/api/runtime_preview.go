@@ -144,6 +144,10 @@ func runtimeCommand(root, kind string, port int) (string, []string, []string, er
 	hostPort := fmt.Sprintf("127.0.0.1:%d", port)
 	switch kind {
 	case "php":
+		publicRoot := filepath.Join(root, "public")
+		if info, err := os.Stat(filepath.Join(publicRoot, "index.php")); err == nil && !info.IsDir() {
+			return "php", []string{"-S", hostPort, "-t", publicRoot, filepath.Join(publicRoot, "index.php")}, nil, nil
+		}
 		return "php", []string{"-S", hostPort, "-t", root}, nil, nil
 	case "node":
 		data, err := os.ReadFile(filepath.Join(root, "package.json"))
