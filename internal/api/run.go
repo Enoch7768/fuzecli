@@ -109,6 +109,7 @@ func (s *Server) runFile(w http.ResponseWriter, r *http.Request) {
 	}
 	if build != nil {
 		buildCmd, buildArgs := build()
+		if tempDir := temporaryBuildDirectory(buildArgs); tempDir != "" { defer os.RemoveAll(tempDir) }
 		buildCmd = exec.CommandContext(ctx, buildCmd.Path, buildCmd.Args[1:]...)
 		buildCmd.Dir = root
 		buildCmd.Env = os.Environ()
@@ -144,6 +145,15 @@ func (s *Server) runFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "runtime": runtimeName, "exit_code": 0, "duration_ms": time.Since(start).Milliseconds(), "output": output})
+}
+
+func temporaryBuildDirectory(buildArgs []string) string {
+	if len(buildArgs) == 0 { return "" }
+	output := buildArgs[0]
+	if len(buildArgs) >= 3 && buildArgs[0] == "java" && buildArgs[1] == "-jar" { output = buildArgs[2] }
+	dir := filepath.Dir(output)
+	if strings.HasPrefix(filepath.Base(dir), "fuzecli-") { return dir }
+	return ""
 }
 
 func compiledSpec(root, source, compiler, runtimeName, outputFlag string) (string, []string, string, func() (*exec.Cmd, []string), error) {
