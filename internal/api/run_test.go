@@ -59,6 +59,20 @@ func TestRunSpecRecognizesCommonLanguages(t *testing.T) {
 	}
 }
 
+func TestRunSpecSupportsStandaloneCSharpFiles(t *testing.T) {
+	root := t.TempDir()
+	source := filepath.Join(root, "Program.cs")
+	if err := os.WriteFile(source, []byte("Console.WriteLine(\"ok\");"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	command, args, runtimeName, _, err := runSpec(root, source, ".cs")
+	if err != nil { t.Fatal(err) }
+	if command != "dotnet" || runtimeName != "dotnet" || len(args) < 3 || args[0] != "run" || args[1] != "--project" {
+		t.Fatalf("runner = %q %v (%q), want dotnet run --project temporary project", command, args, runtimeName)
+	}
+	if tempDir := temporaryBuildDirectory(args); tempDir != "" { t.Cleanup(func() { _ = os.RemoveAll(tempDir) }) }
+}
+
 func TestRunSpecRejectsUnsupportedFiles(t *testing.T) {
 	_, _, _, _, err := runSpec(t.TempDir(), "/workspace/notes.txt", ".txt")
 	if err == nil {
