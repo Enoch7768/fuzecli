@@ -73,6 +73,26 @@ func TestPythonPreviewUsesStaticServerForPlainScript(t *testing.T) {
 	}
 }
 
+func TestPythonPreviewDetectsFlaskFromSource(t *testing.T) {
+	root := t.TempDir()
+	source := "from flask import Flask\napp = Flask(__name__)\napp.run()"
+	if err := os.WriteFile(filepath.Join(root, "app.py"), []byte(source), 0600); err != nil { t.Fatal(err) }
+	command, args, _, err := runtimeCommand(root, "python", 43129)
+	if err != nil { t.Fatal(err) }
+	want := []string{"-m", "flask", "--app", "app.py", "run", "--host", "127.0.0.1", "--port", "43129"}
+	if command != pythonExecutable() || !reflect.DeepEqual(args, want) { t.Fatalf("command/args = %q %v, want Flask runtime", command, args) }
+}
+
+func TestPythonPreviewDetectsFastAPIFromSource(t *testing.T) {
+	root := t.TempDir()
+	source := "from fastapi import FastAPI\napp = FastAPI()\nuvicorn.run(app)"
+	if err := os.WriteFile(filepath.Join(root, "main.py"), []byte(source), 0600); err != nil { t.Fatal(err) }
+	command, args, _, err := runtimeCommand(root, "python", 43130)
+	if err != nil { t.Fatal(err) }
+	want := []string{"-m", "uvicorn", "main:app", "--host", "127.0.0.1", "--port", "43130"}
+	if command != pythonExecutable() || !reflect.DeepEqual(args, want) { t.Fatalf("command/args = %q %v, want FastAPI runtime", command, args) }
+}
+
 func TestPHPPreviewUsesPublicIndexWhenPresent(t *testing.T) {
 	root := t.TempDir()
 	publicRoot := filepath.Join(root, "public")
