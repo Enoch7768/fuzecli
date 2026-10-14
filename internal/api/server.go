@@ -29,10 +29,10 @@ type Server struct {
 	workbench *workbenchRuntime
 	limiter        *requestLimiter
 	chatSlots      chan struct{}
-	githubAuthMu sync.Mutex
+	githubAuthMu      sync.Mutex
 	githubAuthRunning bool
 	githubAuthMessage string
-	githubAuthError string
+	githubAuthError   string
 }
 
 func NewServer(service *Service, token string) *Server {
