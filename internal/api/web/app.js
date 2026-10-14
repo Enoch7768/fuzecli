@@ -261,7 +261,7 @@ $("#prompt").onkeydown=e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();s
 (async()=>{try{await loadConfig();await activity();await refreshLiveTelemetry();liveTelemetryTimer=setInterval(refreshLiveTelemetry,1000);const h=await api("/v1/history");(h.messages||[]).slice(-80).forEach(m=>msg(m.role,m.content))}catch(e){$("#statusText").textContent="Offline";toast(e.message)}})();
 let ideEditor=null,ideFiles=[],ideOpen=[],ideActive="",ideSaveTimer=null,ideWorkspaceRoots=[];
 let ideLSPSocket=null,ideLSPSeq=100,ideLSPPending=new Map(),ideLSPVersion=0,ideLSPPath="",ideLSPProvidersRegistered=false;
-let ideDebugSocket=null,ideDebugSeq=1,ideDebugPending=new Map(),ideDebugInitialized=false,ideDebugRunning=false,ideDebugConnectTimer=null,ideDebugFrameId=0;
+let ideDebugSocket=null,ideDebugSeq=1,ideDebugPending=new Map(),ideDebugInitialized=false,ideDebugTargetInitialized=false,ideDebugRunning=false,ideDebugConnectTimer=null,ideDebugFrameId=0;
 
 function ideLang(path){const e=(path.split(".").pop()||"").toLowerCase();return ({js:"javascript",mjs:"javascript",cjs:"javascript",ts:"typescript",mts:"typescript",cts:"typescript",tsx:"typescript",jsx:"javascript",vue:"html",svelte:"html",go:"go",py:"python",pyw:"python",json:"json",css:"css",scss:"scss",less:"less",html:"html",htm:"html",md:"markdown",mdx:"markdown",yaml:"yaml",yml:"yaml",toml:"ini",ini:"ini",sql:"sql",sh:"shell",bash:"shell",zsh:"shell",ps1:"powershell",bat:"bat",cmd:"bat",xml:"xml",svg:"xml",php:"php",rb:"ruby",rs:"rust",java:"java",kt:"kotlin",kts:"kotlin",c:"c",h:"c",cc:"cpp",cpp:"cpp",cxx:"cpp","c++":"cpp",hpp:"cpp","h++":"cpp",cs:"csharp",fs:"fsharp",fsx:"fsharp",swift:"swift",dart:"dart",lua:"lua",pl:"perl",pm:"perl",r:"r",jl:"julia",ex:"elixir",exs:"elixir",erl:"erlang",hs:"haskell",lhs:"haskell",scala:"scala",sc:"scala",clj:"clojure",cljs:"clojure",groovy:"groovy",gradle:"groovy",dockerfile:"dockerfile",makefile:"makefile",mk:"makefile",proto:"protobuf",graphql:"graphql",gql:"graphql",ipynb:"json",f:"fortran",for:"fortran",f90:"fortran",f95:"fortran",f03:"fortran",f08:"fortran",pas:"pascal",pp:"pascal",d:"d",zig:"zig",nim:"nim",cr:"crystal",rkt:"scheme",ml:"ocaml",mli:"ocaml",v:"vlang",odin:"odin"})[e]||"plaintext"}
 function ideTree(files){const root={children:{},files:[]};files.forEach(path=>{const parts=path.split("/").filter(Boolean);let n=root;parts.forEach((part,i)=>{if(i===parts.length-1)n.files.push({name:part,path});else{n.children[part]??={children:{},files:[]};n=n.children[part]}})});const render=n=>{let out="";Object.keys(n.children).sort().forEach(name=>{out+='<div class="ide-folder" data-folder="'+esc(name)+'"><span>›</span><b>▱</b>'+esc(name)+'</div><div class="ide-folder-children">'+render(n.children[name])+"</div>"});n.files.sort((a,b)=>a.name.localeCompare(b.name)).forEach(f=>out+='<button class="ide-file '+(f.path===ideActive?"active":"")+'" data-ide-file="'+encodeURIComponent(f.path)+'"><span class="file-dot '+ideLang(f.path)+'"></span>'+esc(f.name)+"</button>");return out};$("#ideExplorerTree").innerHTML=render(root)}
@@ -333,7 +333,7 @@ function ideDebugConnect(){
   if(ideDebugConnectTimer)return ideDebugConnectTimer;
   const proto=location.protocol==="https:"?"wss":"ws";
   const debugLanguage=$("#ideDebugLanguage")?.value||ideLang(ideActive);const ws=new WebSocket(proto+"://"+location.host+"/v1/debug?language="+encodeURIComponent(debugLanguage));
-  ideDebugSocket=ws;ideDebugInitialized=false;
+  ideDebugSocket=ws;ideDebugInitialized=false;ideDebugTargetInitialized=false;
   ideUpdateDebugStatus("Connecting to debugger…");
   ideDebugConnectTimer=new Promise((resolve,reject)=>{
     let settled=false,initializedEvent=false;
@@ -361,8 +361,8 @@ function ideDebugConnect(){
         }
         if(d.type==="event"){
           if(d.event==="initialized"){
-            initializedEvent=true;
-            if(ideDebugInitialized){ideUpdateDebugStatus("Debugger ready");finish(true)}
+            initializedEvent=true;ideDebugTargetInitialized=true;
+            ideUpdateDebugStatus("Debugger ready");finish(true)
           }else if(d.event==="stopped"){
             ideDebugRunning=false;ideUpdateDebugStatus("Paused · "+(d.body?.reason||"breakpoint"));ideDebugStack(d.body?.threadId);
           }else if(d.event==="continued"){
@@ -379,7 +379,7 @@ function ideDebugConnect(){
     };
     ws.onclose=()=>{
       if(ideDebugSocket===ws)ideDebugSocket=null;
-      ideDebugInitialized=false;ideDebugConnectTimer=null;
+      ideDebugInitialized=false;ideDebugTargetInitialized=false;ideDebugConnectTimer=null;
       ideUpdateDebugStatus("Debugger disconnected");
       for(const p of ideDebugPending.values())p.reject(Error("Debugger disconnected"));
       ideDebugPending.clear();
@@ -390,7 +390,7 @@ function ideDebugConnect(){
   return ideDebugConnectTimer;
 }
 async function ideSendBreakpoints(){if(!ideDebugSocket||ideDebugSocket.readyState!==WebSocket.OPEN||!ideActive)return;const bp=window.__fuzeBreakpoints||new Map();const lines=[];for(const [key,value] of bp){if(key.startsWith(ideActive+":"))lines.push({line:Number(value.line),column:1})}const workspace=String(cfg?.workspace||"").replace(/[\/]+$/,"");const absoluteSource=workspace?workspace+"/"+ideActive.replace(/^[/\\]+/,""):ideActive;await ideDebugRequest("setBreakpoints",{source:{path:absoluteSource,name:ideActive,sourceReference:0},breakpoints:lines});}
-async function ideWaitForInitialized(timeoutMs=10000){if(ideDebugInitialized)return;return new Promise((resolve,reject)=>{const started=Date.now();const poll=()=>{if(ideDebugInitialized){resolve();return}if(Date.now()-started>timeoutMs){reject(Error("Debugger did not send initialized event"))}else setTimeout(poll,50)};poll()})}
+async function ideWaitForInitialized(timeoutMs=10000){if(ideDebugTargetInitialized)return;return new Promise((resolve,reject)=>{const started=Date.now();const poll=()=>{if(ideDebugTargetInitialized){resolve();return}if(Date.now()-started>timeoutMs){reject(Error("Debugger did not send initialized event after launch"))}else setTimeout(poll,50)};poll()})}
 async function ideDebugStart(){
   populateDebugLanguages();
   try{
