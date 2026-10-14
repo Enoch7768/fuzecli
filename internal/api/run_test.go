@@ -24,6 +24,20 @@ func TestRunSpecRecognizesCommonLanguages(t *testing.T) {
 		{".exs", "elixir"},
 		{".hs", "runghc"},
 		{".scala", "scala"},
+		{".jsx", "Node.js + tsx"},
+		{".mts", "Node.js + tsx"},
+		{".cts", "Node.js + tsx"},
+		{".c++", "C/C++ compiler"},
+		{".f90", "Fortran compiler"},
+		{".pas", "Pascal compiler"},
+		{".d", "dmd"},
+		{".zig", "zig"},
+		{".nim", "nim"},
+		{".clj", "clojure"},
+		{".groovy", "groovy"},
+		{".cr", "crystal"},
+		{".rkt", "racket"},
+		{".fsx", "dotnet"},
 	}
 	for _, test := range tests {
 		t.Run(test.extension, func(t *testing.T) {
