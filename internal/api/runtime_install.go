@@ -62,6 +62,10 @@ var runtimePackages = map[string]runtimePackage{
 	"groovy": {"", "groovy", "groovy", "groovy", "groovy"},
 	"crystal": {"", "crystal", "crystal", "crystal", "crystal"},
 	"racket": {"", "racket", "racket", "racket", "racket"},
+	"octave": {"GNU.Octave", "octave", "octave", "octave", "octave"},
+	"ocaml": {"", "ocaml", "ocaml", "ocaml", "ocaml"},
+	"erlang": {"Erlang.ErlangOTP", "erlang", "erlang", "erlang", "erlang"},
+	"cobol compiler": {"", "gnucobol", "gnucobol", "gnucobol", "gnucobol"},
 }
 
 func (s *Server) installRuntime(w http.ResponseWriter, r *http.Request) {
