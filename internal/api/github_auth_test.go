@@ -15,8 +15,8 @@ func TestGitHubAuthRejectsEmptyToken(t *testing.T) {
 	if response.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want %d", response.Code, http.StatusBadRequest)
 	}
-	if strings.Contains(response.Body.String(), "token") && strings.Contains(response.Body.String(), `{"token"`) {
-		t.Fatal("response must not echo submitted token data")
+	if strings.Contains(response.Body.String(), `{"token"`) {
+		t.Fatal("response must not echo request data")
 	}
 }
 
@@ -27,6 +27,9 @@ func TestGitHubAuthRejectsUnknownRequestFields(t *testing.T) {
 	server.githubAuth(response, request)
 	if response.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want %d", response.Code, http.StatusBadRequest)
+	}
+	if strings.Contains(response.Body.String(), "should-not-be-accepted") {
+		t.Fatal("response must not echo unknown request fields")
 	}
 }
 
