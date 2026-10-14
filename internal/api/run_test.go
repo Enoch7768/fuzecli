@@ -30,7 +30,7 @@ func TestRunSpecRecognizesCommonLanguages(t *testing.T) {
 		{".c++", "C/C++ compiler"},
 		{".f90", "Fortran compiler"},
 		{".pas", "Pascal compiler"},
-		{".d", "dmd"},
+		{".d", "D compiler"},
 		{".zig", "zig"},
 		{".nim", "nim"},
 		{".clj", "clojure"},
