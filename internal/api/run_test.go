@@ -2,6 +2,7 @@ package api
 
 import (
 	"strings"
+	"os"
 	"sync"
 	"testing"
 )
@@ -41,7 +42,10 @@ func TestRunSpecRecognizesCommonLanguages(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.extension, func(t *testing.T) {
-			_, _, runtimeName, _, err := runSpec(t.TempDir(), "/workspace/main"+test.extension, test.extension)
+			_, args, runtimeName, build, err := runSpec(t.TempDir(), "/workspace/main"+test.extension, test.extension)
+			if build != nil {
+				if tempDir := temporaryBuildDirectory(args); tempDir != "" { t.Cleanup(func() { _ = os.RemoveAll(tempDir) }) }
+			}
 			if err != nil {
 				t.Fatalf("runSpec returned error: %v", err)
 			}
