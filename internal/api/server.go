@@ -70,6 +70,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/v1/terminal", s.terminal)
 	mux.HandleFunc("/v1/lsp", s.lsp)
 	mux.HandleFunc("/v1/debug", s.debug)
+	mux.HandleFunc("/v1/run", s.runFile)
+	mux.HandleFunc("/v1/runtime/install", s.installRuntime)
 	mux.HandleFunc("/v1/github", s.githubRoutes)
 	mux.HandleFunc("/v1/platform", s.platformState)
 	mux.HandleFunc("/v1/graph", s.graph)

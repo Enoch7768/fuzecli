@@ -118,7 +118,7 @@ async function send(){
   }finally{$("#sendBtn").disabled=false;$("#stopBtn").disabled=true;$("#chatState").textContent="Ready";chatAbort=null;studioRequestID="";b.focus()}
 }
 async function files(){const d=await api("/v1/files");return d.files}
-function isSiteFile(f){return /\.(html?|css|js|mjs|json|svg|png|jpe?g|webp|gif|ico|woff2?|ttf|otf)$/i.test(f)}
+function isSiteFile(f){return /\.(html?|php|css|scss|less|js|mjs|cjs|jsx|ts|tsx|vue|svelte|json|xml|svg|md|mdx|ya?ml|toml|png|jpe?g|webp|gif|ico|woff2?|ttf|otf|py|pyw|go|rs|java|kt|kts|c|h|cc|cpp|cxx|hpp|cs|fs|fsx|swift|dart|rb|lua|pl|r|jl|ex|exs|erl|hs|lhs|scala|sc|clj|cljs|groovy|gradle|sql|sh|bash|zsh|ps1|bat|cmd|proto|graphql|gql|ipynb)$/i.test(f)||/(?:^|\/)(dockerfile|makefile|cmakelists\.txt)$/i.test(f)}
 async function loadBuilder(preferred){const all=await files();const site=all.filter(isSiteFile);$("#fileCount").textContent=site.length;$("#builderFileList").innerHTML=site.map(f=>'<button class="file-row '+(f===currentPreview?"selected":"")+'" data-file="'+encodeURIComponent(f)+'">'+esc(f)+"</button>").join("");const htmls=site.filter(f=>/\.html?$/i.test(f));const target=htmls.includes(preferred)?preferred:(htmls[0]||"");$("#previewFile").innerHTML=htmls.length?htmls.map(f=>'<option value="'+esc(f)+'">'+esc(f)+"</option>").join(""):'<option value="">No HTML page</option>';if(target){$("#previewFile").value=target;currentPreview=target;openSite(target)}document.querySelectorAll(".builder-files .file-row").forEach(e=>e.onclick=()=>{const f=decodeURIComponent(e.dataset.file);if(/\.html?$/i.test(f))openSite(f);else editRawFile(f)})}
 async function runRuntimePreview(){try{$("#runRuntimePreview").disabled=true;$("#previewStatus").textContent="Starting local runtime…";const runtime=$("#runtimeSelect").value;const d=await api("/v1/preview/runtime?runtime="+encodeURIComponent(runtime),{method:"POST"});$("#sitePreview").sandbox="allow-scripts allow-forms";$("#sitePreview").src=d.url+"?fuzecli="+Date.now();$("#previewStatus").textContent="Live "+d.kind+" runtime · "+d.url;toast(d.kind.toUpperCase()+" preview running")}catch(e){$("#previewStatus").textContent="Runtime preview unavailable";toast(e.message)}finally{$("#runRuntimePreview").disabled=false}}
 function openSite(file=currentPreview){if(!file)return;currentPreview=file;selected=null;previewHTML="";$("#applyInspector").textContent="Apply live";$("#requestSavePreview").style.display="block";$("#sitePreview").sandbox="allow-scripts allow-forms";$("#inspectorForm").hidden=true;$("#inspectorEmpty").hidden=false;$("#selectedPath").textContent="Nothing selected";$("#sitePreview").src="/preview/"+encodeURI(file)+"?t="+Date.now();document.querySelectorAll(".builder-files .file-row").forEach(e=>e.classList.toggle("selected",decodeURIComponent(e.dataset.file)===file))}
@@ -126,7 +126,7 @@ async function editRawFile(file){try{const d=await api("/v1/file?path="+encodeUR
 function postEditor(type,payload={}){$("#sitePreview").contentWindow?.postMessage({source:"fuzecli-editor",type,...payload},"*")}
 async function applyInspector(){if(!selected)return;if(selected.source==="file"){try{await api("/v1/file",{method:"POST",body:JSON.stringify({path:selected.path,content:$("#editText").value})});toast("Saved "+selected.path);await workspace()}catch(e){toast(e.message)}return}const styles={color:$("#editColor").value.trim(),backgroundColor:$("#editBackground").value.trim(),fontSize:$("#editFontSize").value.trim(),padding:$("#editPadding").value.trim(),borderRadius:$("#editRadius").value.trim()};Object.keys(styles).forEach(k=>{if(!styles[k])delete styles[k]});postEditor("text",{value:$("#editText").value});postEditor("style",{styles});if($("#imageInspector").hidden===false)postEditor("attr",{src:$("#editSrc").value.trim(),alt:$("#editAlt").value.trim()});if($("#linkInspector").hidden===false)postEditor("attr",{href:$("#editHref").value.trim()});$("#builderSaveState").textContent="Unsaved";toast("Change applied live")}
 async function savePreview(){if(!currentPreview)return;if(!previewHTML){postEditor("request-html");try{await new Promise((resolve,reject)=>{const timer=setTimeout(()=>{previewHTMLWaiter=null;reject(Error("Preview did not return its current HTML"))},5000);previewHTMLWaiter={resolve:()=>{clearTimeout(timer);previewHTMLWaiter=null;resolve()}}})}catch(e){toast(e.message);return}}try{const cleanHTML=String(previewHTML||"").replace(/<script[^>]*data-fuzecli-preview-editor=["']true["'][\\s\\S]*?<\/script>/gi,"");await api("/v1/file",{method:"POST",body:JSON.stringify({path:currentPreview,content:cleanHTML})});$("#builderSaveState").textContent="Saved";toast("Saved "+currentPreview);await loadBuilder(currentPreview)}catch(e){toast("Save failed: "+e.message)}}
-function builderMessage(e){const d=e.data;if(!d||d.source!=="fuzecli-preview")return;if(d.type==="ready"){$("#previewStatus").textContent="Live · click an element to inspect";$("#builderSaveState").textContent="Saved"}if(d.type==="select"){selected=d;$("#applyInspector").textContent="Apply live";$("#requestSavePreview").style.display="block";$("#previewStatus").textContent=d.tag?"Selected "+d.tag:"Nothing selected";$("#selectedPath").textContent=d.path||"Nothing selected";$("#inspectorEmpty").hidden=!d.tag;$("#inspectorForm").hidden=!d.tag;$("#selectedTag").textContent=(d.tag||"ELEMENT").toUpperCase();$("#editText").value=d.text||"";$("#editColor").value=d.color||"";$("#editBackground").value=d.background||"";$("#editFontSize").value=d.fontSize||"";$("#editPadding").value=d.padding||"";$("#editRadius").value=d.radius||"";$("#imageInspector").hidden=d.tag!=="img";$("#linkInspector").hidden=d.tag!=="a";$("#editSrc").value=d.src||"";$("#editAlt").value=d.alt||"";$("#editHref").value=d.href||""}if(d.type==="changed"){previewHTML=d.html;$("#previewStatus").textContent="Unsaved changes";$("#builderSaveState").textContent="Unsaved";if(previewHTMLWaiter)previewHTMLWaiter.resolve()}}
+function builderMessage(e){const d=e.data;if(e.source!==$("#sitePreview")?.contentWindow||!d||d.source!=="fuzecli-preview")return;if(d.type==="ready"){$("#previewStatus").textContent="Live · click an element to inspect";$("#builderSaveState").textContent="Saved"}if(d.type==="select"){selected=d;$("#applyInspector").textContent="Apply live";$("#requestSavePreview").style.display="block";$("#previewStatus").textContent=d.tag?"Selected "+d.tag:"Nothing selected";$("#selectedPath").textContent=d.path||"Nothing selected";$("#inspectorEmpty").hidden=!d.tag;$("#inspectorForm").hidden=!d.tag;$("#selectedTag").textContent=(d.tag||"ELEMENT").toUpperCase();$("#editText").value=d.text||"";$("#editColor").value=d.color||"";$("#editBackground").value=d.background||"";$("#editFontSize").value=d.fontSize||"";$("#editPadding").value=d.padding||"";$("#editRadius").value=d.radius||"";$("#imageInspector").hidden=d.tag!=="img";$("#linkInspector").hidden=d.tag!=="a";$("#editSrc").value=d.src||"";$("#editAlt").value=d.alt||"";$("#editHref").value=d.href||""}if(d.type==="changed"){previewHTML=d.html;$("#previewStatus").textContent="Unsaved changes";$("#builderSaveState").textContent="Unsaved";if(previewHTMLWaiter)previewHTMLWaiter.resolve()}}
 async function workspace(){const d=await api("/v1/files");$("#workspaceFileCount").textContent=d.files.length;$("#fileList").innerHTML=d.files.map(f=>'<button class="file-row" data-f="'+encodeURIComponent(f)+'">'+esc(f)+"</button>").join("");document.querySelectorAll(".file-panel .file-row").forEach(e=>e.onclick=async()=>{try{const d=await api("/v1/file?path="+e.dataset.f);$("#fileName").textContent=d.path;$("#fileContent").textContent=d.content}catch(x){toast(x.message)}})}
 async function activity(){const d=await api("/v1/history");$("#activityList").innerHTML=d.messages.length?d.messages.map(m=>'<div class="activity-row"><div class="activity-role">'+esc(m.role)+"</div><div>"+esc(m.content)+"</div></div>").join(""):'<div class="activity-row">No activity yet.</div>'}
 async function telemetry(){try{const d=await api("/v1/telemetry");renderTelemetrySnapshot(d)}catch(e){toast(e.message)}}
@@ -202,8 +202,53 @@ async function save(){try{await api("/v1/config",{method:"POST",body:JSON.string
 document.querySelectorAll(".nav-item").forEach(b=>b.onclick=()=>view(b.dataset.view));$("#runtimeBtn")?.addEventListener("click",()=>view("settings"));
 document.querySelectorAll(".quick-actions button").forEach(b=>b.onclick=()=>{$("#prompt").value=b.dataset.prompt;$("#prompt").focus();$("#prompt").dispatchEvent(new Event("input"))});
 $("#githubRefresh").onclick=loadGithub;
-$("#githubConnect").onclick=async()=>{const token=$("#githubToken").value.trim();if(!token)return toast("Enter a GitHub token");try{const d=await api("/v1/github/auth",{method:"POST",body:JSON.stringify({token})});$("#githubToken").value="";toast("Connected as "+d.login);await loadGithub()}catch(e){toast("GitHub connection failed: "+e.message)}};
-$("#githubDisconnect").onclick=async()=>{try{await api("/v1/github/auth",{method:"DELETE"});toast("GitHub disconnected");await loadGithub()}catch(e){toast(e.message)}};
+let githubAuthCancelled=false;
+let githubAuthTask=null;
+const githubAuthDelay=ms=>new Promise(resolve=>window.setTimeout(resolve,ms));
+$("#githubConnect").onclick=async()=>{
+  if(githubAuthTask)return;
+  githubAuthCancelled=false;
+  const flow=$("#githubOAuthFlow"),status=$("#githubOAuthStatus"),code=$("#githubDeviceCode"),link=$("#githubAuthorizeLink");
+  $("#githubConnect").disabled=true;
+  status.textContent="Starting secure GitHub authorization…";
+  flow.hidden=false;code.textContent="";
+  try{
+    const start=await api("/v1/github/auth/device/start",{method:"POST",body:"{}"});
+    code.textContent=start.user_code;
+    link.href=start.verification_uri||"https://github.com/login/device";
+    status.textContent="Open GitHub, enter the code above, and approve FuzeCLI. Keep this window open.";
+    githubAuthTask=(async()=>{
+      const deadline=Date.now()+Math.max(60,start.expires_in||900)*1000;
+      let interval=Math.max(3,start.interval||5)*1000;
+      while(!githubAuthCancelled&&Date.now()<deadline){
+        await githubAuthDelay(interval);
+        if(githubAuthCancelled)return;
+        try{
+          const result=await api("/v1/github/auth/device/poll",{method:"POST",body:JSON.stringify({device_code:start.device_code})});
+          if(result.pending){if(result.slow_down)interval=Math.max(interval,10000);continue}
+          if(result.ok){
+            flow.hidden=true;code.textContent="";status.textContent="";
+            toast("Connected as "+result.login);
+            await loadGithub();
+            return;
+          }
+        }catch(error){
+          if(error.status===202)continue;
+          throw error;
+        }
+      }
+      if(!githubAuthCancelled)status.textContent="Authorization expired. Select Connect with GitHub to try again.";
+    })();
+    await githubAuthTask;
+  }catch(e){
+    if(!githubAuthCancelled){status.textContent="GitHub authorization failed: "+e.message;toast(status.textContent)}
+  }finally{
+    githubAuthTask=null;
+    $("#githubConnect").disabled=false;
+  }
+};
+$("#githubCancelAuth").onclick=()=>{githubAuthCancelled=true;$("#githubOAuthStatus").textContent="Authorization cancelled.";$("#githubOAuthFlow").hidden=true;$("#githubConnect").disabled=false};
+$("#githubDisconnect").onclick=async()=>{githubAuthCancelled=true;try{await api("/v1/github/auth",{method:"DELETE"});$("#githubOAuthFlow").hidden=true;toast("GitHub disconnected");await loadGithub()}catch(e){toast(e.message)}};
 $("#githubPull").onclick=()=>githubSync("pull");$("#githubPush").onclick=()=>githubSync("push");$("#githubRefreshActions").onclick=githubActions;$("#githubLoadComments").onclick=githubLoadComments;
 $("#githubCreateRepo").onclick=async()=>{const name=prompt("Repository name");if(!name)return;const description=prompt("Description (optional)")||"";const privateRepo=confirm("Make this repository private?");try{const d=await api("/v1/github/repo",{method:"POST",body:JSON.stringify({name,description,private:privateRepo,auto_init:false})});toast("Created "+d.repository.full_name);await githubRepos()}catch(e){toast(e.message)}};
 $("#githubCreatePR").onclick=async()=>{const repo=githubSelectedRepo();if(!repo)return toast("Choose a repository first");const head=prompt("Head branch");if(!head)return;const base=prompt("Base branch","main")||"main";const title=prompt("Pull request title");if(!title)return;const body=prompt("Pull request description (optional)")||"";try{const d=await api("/v1/github/prs?repo="+encodeURIComponent(repo),{method:"POST",body:JSON.stringify({head,base,title,body,draft:false})});$("#githubPRNumber").value=d.pull_request.number;toast("Created PR #"+d.pull_request.number);await githubPRs()}catch(e){toast(e.message)}};
@@ -224,7 +269,7 @@ let ideEditor=null,ideFiles=[],ideOpen=[],ideActive="",ideSaveTimer=null,ideWork
 let ideLSPSocket=null,ideLSPSeq=100,ideLSPPending=new Map(),ideLSPVersion=0,ideLSPPath="",ideLSPProvidersRegistered=false;
 let ideDebugSocket=null,ideDebugSeq=1,ideDebugPending=new Map(),ideDebugInitialized=false,ideDebugRunning=false,ideDebugConnectTimer=null,ideDebugFrameId=0;
 
-function ideLang(path){const e=(path.split(".").pop()||"").toLowerCase();return ({js:"javascript",mjs:"javascript",cjs:"javascript",ts:"typescript",tsx:"typescript",jsx:"javascript",go:"go",py:"python",json:"json",css:"css",html:"html",htm:"html",md:"markdown",yaml:"yaml",yml:"yaml",sql:"sql",sh:"shell",xml:"xml",svg:"xml",php:"php"})[e]||"plaintext"}
+function ideLang(path){const e=(path.split(".").pop()||"").toLowerCase();return ({js:"javascript",mjs:"javascript",cjs:"javascript",ts:"typescript",tsx:"typescript",jsx:"javascript",vue:"html",svelte:"html",go:"go",py:"python",pyw:"python",json:"json",css:"css",scss:"scss",less:"less",html:"html",htm:"html",md:"markdown",mdx:"markdown",yaml:"yaml",yml:"yaml",toml:"ini",ini:"ini",sql:"sql",sh:"shell",bash:"shell",zsh:"shell",ps1:"powershell",bat:"bat",cmd:"bat",xml:"xml",svg:"xml",php:"php",rb:"ruby",rs:"rust",java:"java",kt:"kotlin",kts:"kotlin",c:"c",h:"c",cc:"cpp",cpp:"cpp",cxx:"cpp",hpp:"cpp",cs:"csharp",fs:"fsharp",fsx:"fsharp",swift:"swift",dart:"dart",lua:"lua",pl:"perl",r:"r",jl:"julia",ex:"elixir",exs:"elixir",erl:"erlang",hs:"haskell",lhs:"haskell",scala:"scala",sc:"scala",clj:"clojure",cljs:"clojure",groovy:"groovy",gradle:"groovy",dockerfile:"dockerfile",makefile:"makefile",mk:"makefile",proto:"protobuf",graphql:"graphql",gql:"graphql",ipynb:"json"})[e]||"plaintext"}
 function ideTree(files){const root={children:{},files:[]};files.forEach(path=>{const parts=path.split("/").filter(Boolean);let n=root;parts.forEach((part,i)=>{if(i===parts.length-1)n.files.push({name:part,path});else{n.children[part]??={children:{},files:[]};n=n.children[part]}})});const render=n=>{let out="";Object.keys(n.children).sort().forEach(name=>{out+='<div class="ide-folder" data-folder="'+esc(name)+'"><span>›</span><b>▱</b>'+esc(name)+'</div><div class="ide-folder-children">'+render(n.children[name])+"</div>"});n.files.sort((a,b)=>a.name.localeCompare(b.name)).forEach(f=>out+='<button class="ide-file '+(f.path===ideActive?"active":"")+'" data-ide-file="'+encodeURIComponent(f.path)+'"><span class="file-dot '+ideLang(f.path)+'"></span>'+esc(f.name)+"</button>");return out};$("#ideExplorerTree").innerHTML=render(root)}
 
 function ideURI(path){let clean=String(path||"").replace(/\\/g,"/");if(!/^[A-Za-z]:\//.test(clean)&&cfg?.workspace){const root=String(cfg.workspace).replace(/\\/g,"/").replace(/\/$/,"");clean=root+"/"+clean.replace(/^\/+/,"")}return encodeURI("file:///"+clean.replace(/^\/+/, ""))}
@@ -278,16 +323,17 @@ function ideBottom(kind){
   const lines={terminal:"Integrated workspace terminal.",output:"Fuze output will appear here as workspace operations complete."};
   b.innerHTML='<div class="ide-terminal-line"><span class="terminal-prompt">F</span><span>'+esc(lines[kind]||"Ready.")+"</span></div>";
   if(kind==="terminal"){
+    const output=document.createElement("pre");output.id="ideTerminalOutput";output.className="ide-terminal-output";output.setAttribute("aria-live","polite");b.appendChild(output);
     const row=document.createElement("div");row.className="ide-terminal-input-row";
     row.innerHTML='<span class="terminal-prompt">›</span><input id="ideTerminalInput" autocomplete="off" spellcheck="false" placeholder="Type a command and press Enter…">';
     b.appendChild(row);
     const input=$("#ideTerminalInput");
-    input.onkeydown=e=>{if(e.key==="Enter"){e.preventDefault();const value=input.value+"\n";input.value="";ideTerminalInput(value)}};
+    input.onkeydown=e=>{if(e.key==="Enter"){e.preventDefault();const value=input.value.trimEnd();if(value){ideTerminalHistory.push(value);if(ideTerminalHistory.length>200)ideTerminalHistory.shift();ideTerminalHistoryIndex=ideTerminalHistory.length;ideAppendTerminalOutput("› "+value+"\n");ideTerminalInput(value+"\n")}input.value=""}else if(e.key==="ArrowUp"){e.preventDefault();if(ideTerminalHistoryIndex>0)input.value=ideTerminalHistory[--ideTerminalHistoryIndex]}else if(e.key==="ArrowDown"){e.preventDefault();if(ideTerminalHistoryIndex<ideTerminalHistory.length-1)input.value=ideTerminalHistory[++ideTerminalHistoryIndex];else{ideTerminalHistoryIndex=ideTerminalHistory.length;input.value=""}}};
     input.focus();
   }
 }
 function ideUpdateDebugStatus(text){$("#ideDebugStatus").textContent=text}
-function ideDebugRequest(command,args={}){if(!ideDebugSocket||ideDebugSocket.readyState!==WebSocket.OPEN)return Promise.reject(Error("Debugger is not connected"));const seq=ideDebugSeq++;ideDebugSocket.send(JSON.stringify({seq,type:"request",command,arguments:args}));return new Promise((resolve,reject)=>ideDebugPending.set(seq,{resolve,reject}))}
+function ideDebugRequest(command,args={}){if(!ideDebugSocket||ideDebugSocket.readyState!==WebSocket.OPEN)return Promise.reject(Error("Debugger is not connected"));const seq=ideDebugSeq++;try{ideDebugSocket.send(JSON.stringify({seq,type:"request",command,arguments:args}))}catch(error){return Promise.reject(error)}return new Promise((resolve,reject)=>{const timer=setTimeout(()=>{ideDebugPending.delete(seq);reject(Error("Debugger request timed out: "+command))},15000);ideDebugPending.set(seq,{resolve:value=>{clearTimeout(timer);resolve(value)},reject:error=>{clearTimeout(timer);reject(error)}})})}
 function ideDebugConnect(){
   if(ideDebugSocket?.readyState===WebSocket.OPEN&&ideDebugInitialized)return Promise.resolve();
   if(ideDebugConnectTimer)return ideDebugConnectTimer;
@@ -313,6 +359,7 @@ function ideDebugConnect(){
     ws.onmessage=e=>{
       try{
         const d=JSON.parse(e.data);
+        if(d.type==="error"){const failure=Error(d.message||"Debugger adapter failed to start");ideUpdateDebugStatus(failure.message);finish(false,failure);try{ws.close()}catch(_){};return}
         if(d.type==="response"&&d.request_seq!==undefined&&ideDebugPending.has(d.request_seq)){
           const p=ideDebugPending.get(d.request_seq);ideDebugPending.delete(d.request_seq);
           if(d.success===false)p.reject(Error(d.message||"Debugger request failed"));else p.resolve(d);
@@ -404,7 +451,9 @@ async function ideDebugCommand(command,args={}){try{if(!ideDebugSocket||ideDebug
 async function ideDebugStack(threadId){try{const d=await ideDebugRequest("stackTrace",{threadId:threadId||1,startFrame:0,levels:50});const frames=d.body?.stackFrames||[];$("#ideDebugFrames").innerHTML=frames.map(f=>'<button class="ide-debug-frame" data-line="'+f.line+'"><span>'+esc(f.name||"frame")+'</span><small>'+esc(f.source?.path||"")+" :"+String(f.line||"")+"</small></button>").join("")||"<span>No stack frames.</span>";$("#ideDebugFrames").onclick=e=>{const b=e.target.closest("[data-line]");if(b&&ideEditor){ideEditor.revealLineInCenter(Number(b.dataset.line));ideEditor.setPosition({lineNumber:Number(b.dataset.line),column:1});ideEditor.focus()}};const top=frames[0];if(top?.id){ideDebugFrameId=top.id;try{const scopes=await ideDebugRequest("scopes",{frameId:top.id});const scope=(scopes.body?.scopes||[]).find(x=>x.variablesReference);if(scope){const vars=await ideDebugRequest("variables",{variablesReference:scope.variablesReference});const values=(vars.body?.variables||[]).slice(0,80);$("#ideBottomBody").insertAdjacentHTML("beforeend",'<div class="ide-debug-vars"><div class="ide-panel-subhead">LOCALS</div>'+values.map(v=>'<div class="ide-debug-var"><b>'+esc(v.name||"")+'</b><span>'+esc(v.value||v.type||"")+'</span></div>').join("")+"</div>")}}catch(_){}}}catch(e){$("#ideBottomBody").insertAdjacentText("beforeend","\nUnable to read debugger stack: "+e.message+"\n")}}
 function ideToggleBreakpoint(line){if(!ideEditor||!ideActive)return;const key=ideActive+":"+line;window.__fuzeBreakpoints??=new Map();const bp=window.__fuzeBreakpoints;if(bp.has(key)){const item=bp.get(key);bp.delete(key);if(item.dec)ideEditor.deltaDecorations(item.dec,[])}else{const dec=ideEditor.deltaDecorations([],[{range:new monaco.Range(line,1,line,1),options:{isWholeLine:false,glyphMarginClassName:"ide-breakpoint"}}]);bp.set(key,{line,dec})}if(ideDebugSocket?.readyState===WebSocket.OPEN)ideSendBreakpoints().catch(()=>{})}
 let ideTerminalSocket=null,ideTerminalConnectPromise=null;
-function ideTerminalConnect(){if(ideTerminalSocket?.readyState===WebSocket.OPEN)return Promise.resolve();if(ideTerminalConnectPromise)return ideTerminalConnectPromise;ideBottom("terminal");const proto=location.protocol==="https:"?"wss":"ws";const ws=new WebSocket(proto+"://"+location.host+"/v1/terminal");ideTerminalSocket=ws;const box=$("#ideBottomBody");ideTerminalConnectPromise=new Promise((resolve,reject)=>{let settled=false;const timer=setTimeout(()=>{if(!settled){settled=true;try{ws.close()}catch(e){}ideTerminalConnectPromise=null;reject(Error("Terminal connection timed out"))}},8000);ws.onopen=()=>{if(settled)return;settled=true;clearTimeout(timer);ideTerminalConnectPromise=null;box.insertAdjacentHTML("beforeend",'<div class="ide-terminal-line"><span class="terminal-prompt">F</span><span>Terminal connected · '+esc(cfg?.workspace||"workspace")+'</span></div>');$("#ideTerminalInput")?.focus();resolve()};ws.onmessage=e=>{try{const d=JSON.parse(e.data);if(d.type==="output"){box.insertAdjacentText("beforeend",d.data||"");box.scrollTop=box.scrollHeight}else if(d.type==="ready"){box.insertAdjacentHTML("beforeend",'<div class="ide-terminal-line"><span class="terminal-prompt">F</span><span>Shell ready</span></div>')}else if(d.type==="error")toast(d.message||"Terminal error")}catch(err){toast("Terminal message error: "+err.message)}};ws.onerror=()=>{if(!settled){settled=true;clearTimeout(timer);ideTerminalConnectPromise=null;reject(Error("Terminal connection failed"))}toast("Terminal connection failed")};ws.onclose=()=>{if(ideTerminalSocket===ws)ideTerminalSocket=null;ideTerminalConnectPromise=null;const input=$("#ideTerminalInput");if(input)input.disabled=true}});return ideTerminalConnectPromise}
+function ideAppendTerminalOutput(value){const out=$("#ideTerminalOutput");if(!out)return;const text=String(value||"").replace(/\u001b\[[0-?]*[ -/]*[@-~]/g,"");out.append(document.createTextNode(text));if(out.textContent.length>180000)out.textContent=out.textContent.slice(-140000);out.scrollTop=out.scrollHeight}
+let ideTerminalHistory=[],ideTerminalHistoryIndex=0;
+function ideTerminalConnect(){if(ideTerminalSocket?.readyState===WebSocket.OPEN)return Promise.resolve();if(ideTerminalConnectPromise)return ideTerminalConnectPromise;ideBottom("terminal");const proto=location.protocol==="https:"?"wss":"ws";const ws=new WebSocket(proto+"://"+location.host+"/v1/terminal");ideTerminalSocket=ws;const box=$("#ideBottomBody");ideTerminalConnectPromise=new Promise((resolve,reject)=>{let settled=false;const timer=setTimeout(()=>{if(!settled){settled=true;try{ws.close()}catch(e){}ideTerminalConnectPromise=null;reject(Error("Terminal connection timed out"))}},8000);ws.onopen=()=>{if(settled)return;settled=true;clearTimeout(timer);ideTerminalConnectPromise=null;ideAppendTerminalOutput("Terminal connected · "+(cfg?.workspace||"workspace")+"\n");$("#ideTerminalInput")?.focus();resolve()};ws.onmessage=e=>{try{const d=JSON.parse(e.data);if(d.type==="output"){ideAppendTerminalOutput(d.data||"")}else if(d.type==="ready"){ideAppendTerminalOutput("Shell ready\n")}else if(d.type==="error"){ideAppendTerminalOutput("Terminal error: "+(d.message||"unknown error")+"\n");toast(d.message||"Terminal error")}}catch(err){toast("Terminal message error: "+err.message)}};ws.onerror=()=>{if(!settled){settled=true;clearTimeout(timer);ideTerminalConnectPromise=null;reject(Error("Terminal connection failed"))}toast("Terminal connection failed")};ws.onclose=()=>{if(ideTerminalSocket===ws)ideTerminalSocket=null;ideTerminalConnectPromise=null;const input=$("#ideTerminalInput");if(input)input.disabled=true}});return ideTerminalConnectPromise}
 async function ideTerminalInput(value){if(!value)return;try{await ideTerminalConnect();if(ideTerminalSocket?.readyState===WebSocket.OPEN)ideTerminalSocket.send(JSON.stringify({type:"input",data:value}))}catch(e){toast(e.message)}}
 
 async function ideRenderSourcePanel(){
@@ -447,8 +496,34 @@ function ideCommandClose(){const overlay=$("#ideCommandOverlay");if(overlay)over
 function ideRenderCommandResults(){const overlay=$("#ideCommandOverlay"),input=$("#ideCommandInput"),out=$("#ideCommandResults");if(!overlay||!input||!out)return;const q=input.value.trim().toLowerCase(),mode=overlay.dataset.mode||"quick";const items=mode==="command"?ideCommands.filter(x=>!q||x.label.toLowerCase().includes(q)):ideFiles.filter(x=>!q||x.toLowerCase().includes(q)).slice(0,80).map(path=>({label:path,key:"",run:()=>{ideCommandClose();ideOpenFile(path)}}));out.innerHTML=items.map((x,i)=>'<button class="ide-command-row '+(i===0?"active":"")+'" data-command-index="'+i+'"><span>'+esc(x.label)+'</span><kbd>'+esc(x.key||"")+"</kbd></button>").join("")||'<div class="ide-panel-empty">No matches.</div>';out.__items=items}
 function ideRunCommandIndex(index){const out=$("#ideCommandResults"),item=out?.__items?.[index];if(item){ideCommandClose();item.run()}}
 const IDE_DEBUG_LANGUAGES=[["javascript","JavaScript"],["typescript","TypeScript"],["php","PHP"],["ruby","Ruby"],["html","HTML/CSS"],["python","Python"],["r","R"],["julia","Julia"],["matlab","MATLAB"],["java","Java"],["csharp","C#"],["cobol","COBOL"],["abap","ABAP"],["c","C"],["cpp","C++"],["rust","Rust"],["go","Go"],["assembly","Assembly"],["swift","Swift"],["kotlin","Kotlin"],["dart","Dart"],["sql","SQL"],["shell","Bash / Shell"],["perl","Perl"],["scala","Scala"]];
-function populateDebugLanguages(){const s=$("#ideDebugLanguage");if(!s||s.options.length>1)return;for(const [v,l] of IDE_DEBUG_LANGUAGES){const o=document.createElement("option");o.value=v;o.textContent=l;s.appendChild(o)}}
+function populateDebugLanguages(){const s=$("#ideDebugLanguage");if(!s)return;if(s.options.length<=1){for(const [v,l] of IDE_DEBUG_LANGUAGES){const o=document.createElement("option");o.value=v;o.textContent=l;s.appendChild(o)}}if(!s.dataset.userSelected){const inferred=ideLang(ideActive);if(IDE_DEBUG_LANGUAGES.some(([v])=>v===inferred))s.value=inferred;else s.value=""}}
+async function ideRunFile(){
+  if(!ideActive){toast("Open a source file first");return}
+  try{
+    if($(".ide-tab.active")?.classList.contains("dirty"))await ideSaveFile();
+    ideBottom("output");
+    const body=$("#ideBottomBody");
+    body.innerHTML='<div class="ide-terminal-line"><span class="terminal-prompt">▶</span><span>Running '+esc(ideActive)+'</span></div><pre id="ideRunOutput" class="ide-run-output">Preparing runtime…</pre>';
+    const output=$("#ideRunOutput");
+    const render=d=>{output.textContent=[d.message||"",d.output||""].filter(Boolean).join("\n");if(d.duration_ms!==undefined)output.textContent+="\n\nExited "+d.exit_code+" · "+d.duration_ms+" ms";};
+    let result=await api("/v1/run",{method:"POST",timeoutMs:150000,body:JSON.stringify({path:ideActive})});
+    if(result.runtime_missing){
+      const runtime=result.runtime||"required runtime";
+      if(!window.confirm(runtime+" is missing. Allow FuzeCLI to install it using this computer's package manager? This may download software and change your system.")){render({...result,message:"Run cancelled. Install "+runtime+" yourself, then retry."});return}
+      output.textContent="Installing "+runtime+"…";
+      const installed=await api("/v1/runtime/install",{method:"POST",timeoutMs:10*60*1000,body:JSON.stringify({runtime})});
+      if(!installed.ok){render(installed);return}
+      output.textContent="Installation finished. Checking runtime…";
+      result=await api("/v1/run",{method:"POST",timeoutMs:150000,body:JSON.stringify({path:ideActive})});
+      if(result.runtime_missing)result.message=(result.message||"Runtime still unavailable.")+" Restart FuzeCLI so the updated PATH can be detected.";
+    }
+    render(result);
+    if(result.ok)toast("Finished "+ideActive);
+    else toast(result.message||"Run failed");
+  }catch(e){const body=$("#ideBottomBody");body.textContent="Run failed: "+e.message;toast(e.message)}
+}
 function initIDEEvents(){
+$("#ideDebugLanguage")?.addEventListener("change",()=>{$("#ideDebugLanguage").dataset.userSelected="true"});
 document.querySelectorAll("[data-ide-panel]").forEach(b=>b.onclick=async()=>{
   document.querySelectorAll(".ide-rail-btn").forEach(x=>x.classList.toggle("active",x===b));
   const panel=b.dataset.idePanel;
@@ -482,7 +557,7 @@ $("#ideOutlineResults").onclick=e=>{const b=e.target.closest("[data-outline-line
 document.querySelectorAll("[data-bottom]").forEach(b=>b.onclick=()=>{document.querySelectorAll("[data-bottom]").forEach(x=>x.classList.toggle("active",x===b));ideBottom(b.dataset.bottom);if(b.dataset.bottom==="terminal")ideTerminalConnect()});
 document.querySelectorAll("[data-ide-action]").forEach(b=>b.onclick=()=>askIDE({explain:"Explain this file and point out risky code.",fix:"Find correctness bugs and propose a minimal safe fix.",refactor:"Refactor this file for clarity without changing behavior.",tests:"Design focused tests for this file."}[b.dataset.ideAction]));
 $("#ideAsk").onclick=()=>askIDE();$("#idePrompt").onkeydown=e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();askIDE()}};
-$("#ideDebugStart").onclick=ideDebugStart;
+$("#ideDebugStart").onclick=ideDebugStart;$("#ideRunFile")?.addEventListener("click",ideRunFile);
 $("#ideDebugStop").onclick=async()=>{try{if(ideDebugSocket?.readyState===WebSocket.OPEN)await ideDebugRequest("disconnect",{restart:false,terminateDebuggee:true})}catch(e){}ideDebugRunning=false;ideUpdateDebugStatus("Debugger stopped")};
 $("#ideDebugContinue").onclick=()=>ideDebugCommand("continue");$("#ideDebugPause").onclick=()=>ideDebugCommand("pause");$("#ideDebugStepOver").onclick=()=>ideDebugCommand("next");$("#ideDebugStepInto").onclick=()=>ideDebugCommand("stepIn");$("#ideDebugStepOut").onclick=()=>ideDebugCommand("stepOut");
 }

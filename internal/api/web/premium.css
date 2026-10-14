@@ -56,3 +56,14 @@ input::placeholder,textarea::placeholder{color:#a0a8c2}input:focus,select:focus,
 @media(min-width:1200px){body.command-mode .chat-layout{max-width:980px}body.command-mode .welcome{max-width:980px}body.command-mode .conversation{padding-left:0;padding-right:0}body.command-mode .composer-wrap{padding-left:0;padding-right:0}}
 @media(max-width:900px){.topbar{padding-left:18px;padding-right:18px}body.command-mode .welcome h2{font-size:clamp(34px,8vw,48px)}body.command-mode .welcome p{font-size:13px}body.command-mode .quick-actions button{font-size:10px;padding:9px 12px}body.command-mode .composer{border-radius:17px}.github-context-controls select{min-width:min(150px,100%)}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;scroll-behavior:auto!important;transition-duration:.01ms!important}}
+
+
+.ide-terminal-output,.ide-run-output{display:block;box-sizing:border-box;width:100%;max-height:36vh;min-height:120px;overflow:auto;margin:0;padding:12px 14px;background:#080d18;color:#dbe5f5;border:1px solid rgba(148,163,184,.14);border-radius:10px;font:12px/1.65 ui-monospace,SFMono-Regular,Consolas,"Liberation Mono",monospace;white-space:pre-wrap;overflow-wrap:anywhere;tab-size:4}
+.ide-terminal-input-row{position:sticky;bottom:0;z-index:2;background:var(--panel, #111827);border-top:1px solid rgba(148,163,184,.18)}
+.ide-run-file{border:1px solid rgba(116,139,255,.5)!important;background:rgba(116,139,255,.14)!important;color:var(--text,#e5e7eb)!important}
+#ideDebugStatus{max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+.github-oauth-box{display:flex;flex-direction:column;gap:12px}
+.github-device-code{font:700 25px/1.4 ui-monospace,SFMono-Regular,Consolas,monospace;letter-spacing:.16em;padding:16px;border-radius:12px;text-align:center;background:rgba(124,140,255,.12);border:1px solid rgba(124,140,255,.35);color:var(--text,#eef2ff);user-select:all}
+#githubAuthorizeLink{color:var(--accent,#9caaff);font-weight:600;text-decoration:none}
+#githubAuthorizeLink:hover{text-decoration:underline}
