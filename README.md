@@ -122,16 +122,21 @@ aicli config set default_provider gemini
 
 ## GitHub connection
 
-In Studio, open **GitHub** and paste a GitHub personal access token into the password field. FuzeCLI validates the token with GitHub before saving it in the local FuzeCLI configuration. The web UI clears the input after the request and never returns the token to the browser.
+The Studio GitHub panel connects with a GitHub personal access token (PAT). It does not require a separately configured OAuth App or device-flow setup.
 
-Use a fine-grained token with access to the repositories you need and the required Contents, Pull requests, Issues, Actions, and Metadata permissions. A classic token generally needs the `repo` and `workflow` scopes. Grant only the permissions needed for your workflow, and never paste the token into chat or commit it to a repository.
+1. Create a token in [GitHub token settings](https://github.com/settings/tokens).
+2. Grant only the repository and workflow permissions needed for the repositories and actions you intend to use. Fine-grained tokens are preferred when they cover your use case; classic tokens commonly use \`repo\` and \`workflow\` scopes.
+3. In Studio, open **GitHub**, paste the token into **Personal access token**, and select **Connect with token**.
+4. FuzeCLI validates the token with GitHub, stores it in the local FuzeCLI configuration, and clears the input. The token is not displayed back to the browser. Use **Disconnect** to remove the explicitly saved token.
 
-Select **Disconnect** to remove the saved token. The command-line workflow remains available through the official GitHub CLI:
+The web panel sends the token only to the local FuzeCLI API. Keep the local configuration private, never commit it, and do not paste tokens into chat or source files. Workspace pull/push uses the connected token when available.
 
-```powershell
+The command-line workflow remains available through the official GitHub CLI:
+
+\`\`\`powershell
 gh auth login --hostname github.com --web
 aicli github auth status
-```
+\`\`\`
 
 ## Workspace safety
 
