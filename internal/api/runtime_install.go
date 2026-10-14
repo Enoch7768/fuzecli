@@ -68,6 +68,20 @@ var runtimePackages = map[string]runtimePackage{
 	"cobol compiler": {"", "gnucobol", "gnucobol", "gnucobol", "gnucobol"},
 }
 
+func debuggerInstallCommand(key string) (string, []string, error) {
+	switch key {
+	case "python-debugger":
+		python := pythonExecutable()
+		if _, err := exec.LookPath(python); err != nil { return "", nil, fmt.Errorf("install Python before installing debugpy") }
+		return python, []string{"-m", "pip", "install", "debugpy"}, nil
+	case "go-debugger":
+		if _, err := exec.LookPath("go"); err != nil { return "", nil, fmt.Errorf("install Go before installing Delve") }
+		return "go", []string{"install", "github.com/go-delve/delve/cmd/dlv@latest"}, nil
+	default:
+		return "", nil, nil
+	}
+}
+
 func (s *Server) installRuntime(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
@@ -80,12 +94,19 @@ func (s *Server) installRuntime(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	key := strings.ToLower(strings.TrimSpace(req.Runtime))
-	pkg, ok := runtimePackages[key]
-	if !ok {
-		writeError(w, http.StatusBadRequest, "automatic installation is not configured for this runtime; use the official installer")
+	command, args, err := debuggerInstallCommand(key)
+	if err != nil {
+		writeJSON(w, http.StatusOK, map[string]any{"ok": false, "message": err.Error()})
 		return
 	}
-	command, args, err := installCommand(pkg)
+	if command == "" {
+		pkg, ok := runtimePackages[key]
+		if !ok {
+			writeError(w, http.StatusBadRequest, "automatic installation is not configured for this runtime; use the official installer")
+			return
+		}
+		command, args, err = installCommand(pkg)
+	}
 	if key == "node.js + tsx" {
 		npm := "npm"
 		if runtime.GOOS == "windows" {
