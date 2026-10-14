@@ -150,7 +150,7 @@ func (s *Server) runFile(w http.ResponseWriter, r *http.Request) {
 func temporaryBuildDirectory(args []string) string {
 	if len(args) >= 4 && strings.HasPrefix(args[0], "-FE") && strings.HasPrefix(args[1], "-FU") {
 		dir := strings.TrimPrefix(args[0], "-FE")
-		if strings.HasPrefix(filepath.Base(dir), "fuzecli-pascal-") { return dir }
+		if isFuzeTemporaryDirectory(dir, "fuzecli-pascal-") { return dir }
 		return ""
 	}
 	var output, requiredPrefix string
@@ -167,11 +167,21 @@ func temporaryBuildDirectory(args []string) string {
 	dir := filepath.Dir(output)
 	prefix := filepath.Base(dir)
 	if requiredPrefix != "" {
-		if strings.HasPrefix(prefix, requiredPrefix) { return dir }
+		if isFuzeTemporaryDirectory(dir, requiredPrefix) { return dir }
 		return ""
 	}
-	if strings.HasPrefix(prefix, "fuzecli-rust-") || strings.HasPrefix(prefix, "fuzecli-native-") || strings.HasPrefix(prefix, "fuzecli-compile-") { return dir }
+	if isFuzeTemporaryDirectory(dir, "fuzecli-rust-") || isFuzeTemporaryDirectory(dir, "fuzecli-native-") || isFuzeTemporaryDirectory(dir, "fuzecli-compile-") { return dir }
 	return ""
+}
+
+func isFuzeTemporaryDirectory(dir, prefix string) bool {
+	if !strings.HasPrefix(filepath.Base(dir), prefix) { return false }
+	tempRoot, err := filepath.Abs(os.TempDir())
+	if err != nil { return false }
+	absolute, err := filepath.Abs(dir)
+	if err != nil { return false }
+	relative, err := filepath.Rel(tempRoot, absolute)
+	return err == nil && relative != ".." && !strings.HasPrefix(relative, ".."+string(os.PathSeparator))
 }
 
 func compiledSpec(root, source, compiler, runtimeName, outputFlag string) (string, []string, string, func() (*exec.Cmd, []string), error) {
