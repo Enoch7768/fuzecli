@@ -49,6 +49,8 @@ jobs:
         run: |
           go mod tidy
           git diff --exit-code -- go.mod go.sum
+      - name: Validate Studio JavaScript
+        run: node --check internal/api/web/app.js
       - name: Test
         run: go test ./...
       - name: Race-sensitive package tests
