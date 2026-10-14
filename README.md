@@ -47,6 +47,7 @@ $env:CGO_ENABLED="0"
 go build -trimpath -ldflags="-s -w -X main.version=v0.1.0" -o dist/aicli.exe ./cmd/aicli
 .\\dist\\aicli.exe version
 .\\dist\\aicli.exe --help
+
 ```
 
 For memory-constrained Windows development machines:
@@ -55,7 +56,10 @@ For memory-constrained Windows development machines:
 $env:GOMAXPROCS="2"
 go test -p 1 ./...
 go build -p 1 -o dist/aicli.exe ./cmd/aicli
+
 ```
+
+It is recommended to add the app's `dist` folder to your system's PATH so you can run `aicli` from anywhere.
 
 ## Quick start
 
@@ -65,12 +69,14 @@ From an existing project:
 aicli init
 aicli config set default_provider gemini
 aicli chat
+
 ```
 
 For a one-shot request:
 
 ```powershell
 aicli ask "Explain the authentication flow"
+
 ```
 
 Before applying a risky change, inspect the repository and keep a recovery point available:
@@ -79,12 +85,14 @@ Before applying a risky change, inspect the repository and keep a recovery point
 aicli status
 aicli diff
 aicli snapshot
+
 ```
 
 If you need to recover from a change:
 
 ```powershell
 aicli restore
+
 ```
 
 Run diagnostics when something is wrong:
@@ -94,6 +102,7 @@ aicli doctor
 aicli platform
 aicli review
 aicli benchmark "Explain this repository architecture"
+
 ```
 
 ## Configuration
@@ -106,9 +115,34 @@ aicli apikey set gemini YOUR_KEY
 aicli apikey set groq gsk-...
 aicli apikey status
 aicli config set default_provider gemini
+
 ```
 
 `config show` masks API keys. The web Settings screen can replace or clear a provider key without exposing the stored value back to the browser.
+
+## GitHub sign-in
+
+The Studio GitHub panel uses GitHub OAuth device authorization instead of asking you to paste a Personal Access Token.
+
+1. Create a GitHub OAuth App in GitHub Developer Settings and enable **Device Flow**.
+2. Set its Client ID in the environment before starting FuzeCLI:
+
+```powershell
+$env:FUZECLI_GITHUB_CLIENT_ID="YOUR_OAUTH_APP_CLIENT_ID"
+aicli app
+```
+
+3. In Studio, open **GitHub → Connect with GitHub**.
+4. Open the official GitHub device page, enter the one-time code shown in Studio, and approve access.
+
+The OAuth flow requests repository, workflow, and basic profile access for the GitHub features shown in Studio. The resulting access token is stored in FuzeCLI's local config and is cleared when you disconnect. Do not commit the Client ID environment setting or local config file into a repository. The Client ID is public application metadata; never put an OAuth client secret in the browser or embed it in source code.
+
+The command-line workflow remains available through the official GitHub CLI:
+
+```powershell
+gh auth login --hostname github.com --web
+aicli github auth status
+```
 
 ## Workspace safety
 
@@ -116,6 +150,7 @@ Initialize from the project root:
 
 ```powershell
 aicli init
+
 ```
 
 This creates `.aicli/session.db` and workspace state used for history and context.
@@ -132,18 +167,20 @@ Start the polished local interface with:
 
 ```powershell
 aicli app
+
 ```
 
-Open `http://127.0.0.1:8787`. The web UI is embedded in the Go binary; no Node.js server is required.
+Open `[http://127.0.0.1:8787](http://127.0.0.1:8787)`. The web UI is embedded in the Go binary; no Node.js server is required.
 
 The web app provides provider/model selection, local provider-key management, saved chat history, file upload, workspace visibility, streaming responses, generated-file cards, and responsive mobile navigation. The interface uses the repository-root `icon.png` and `icon-mark.png` when those files are present.
 
-See [docs/WEB.md](docs/WEB.md) for the complete web workflow and [docs/API.md](docs/API.md) for API authentication.
+See [docs/WEB.md](https://www.google.com/search?q=docs/WEB.md) for the complete web workflow and [docs/API.md](https://www.google.com/search?q=docs/API.md) for API authentication.
 
 ## Interactive terminal
 
 ```powershell
 aicli chat
+
 ```
 
 Inside chat:
@@ -159,11 +196,12 @@ Inside chat:
 /clear
 /help
 /exit
+
 ```
 
 The terminal streams normal responses as they arrive. A complete generation JSON document is applied immediately, changed files are reported, and the prompt is ready for the next request when the response is complete.
 
-See [docs/TERMINAL.md](docs/TERMINAL.md).
+See [docs/TERMINAL.md](https://www.google.com/search?q=docs/TERMINAL.md).
 
 ## API
 
@@ -171,11 +209,12 @@ Start the local application API with:
 
 ```powershell
 aicli api
+
 ```
 
-Default endpoint: `http://127.0.0.1:8787`.
+Default endpoint: `[http://127.0.0.1:8787](http://127.0.0.1:8787)`.
 
-See [docs/API.md](docs/API.md) for HTTP endpoints, request formats, authentication, and workspace access.
+See [docs/API.md](https://www.google.com/search?q=docs/API.md) for HTTP endpoints, request formats, authentication, and workspace access.
 
 ## MCP
 
@@ -183,11 +222,12 @@ Start the MCP server with:
 
 ```powershell
 aicli mcp
+
 ```
 
 The server communicates over stdio and exposes FuzeCLI chat, workspace file reading, and workspace file listing tools.
 
-See [docs/MCP.md](docs/MCP.md) for MCP client configuration and tool schemas.
+See [docs/MCP.md](https://www.google.com/search?q=docs/MCP.md) for MCP client configuration and tool schemas.
 
 ## Security model
 
@@ -197,7 +237,7 @@ Generated file paths are resolved inside the active workspace with traversal and
 
 These controls reduce the execution surface but cannot make arbitrary user workspaces, third-party dependencies, or provider-generated source code mathematically or operationally guaranteed to be malware-free. Normal endpoint security, source control, dependency review, and safe execution practices still apply.
 
-See [SECURITY.md](SECURITY.md) for vulnerability reporting and [docs/SECURITY.md](docs/SECURITY.md) for the detailed security model.
+See [SECURITY.md](SECURITY.md) for vulnerability reporting and [docs/SECURITY.md](https://www.google.com/search?q=docs/SECURITY.md) for the detailed security model.
 
 ## CI and releases
 
@@ -205,7 +245,7 @@ Every supported development build is validated with formatting checks, module co
 
 Tagged Windows releases are built from a clean checkout and publish both `aicli.exe` and a SHA-256 checksum. GitHub release notes are generated automatically.
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the project quality bar, [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) for community standards, [SUPPORT.md](SUPPORT.md) for troubleshooting, [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the system boundaries and roadmap, and [evals/README.md](evals/README.md) for the coding-agent evaluation harness.
+See [CONTRIBUTING.md](https://www.google.com/search?q=CONTRIBUTING.md) for the project quality bar, [CODE_OF_CONDUCT.md](https://www.google.com/search?q=CODE_OF_CONDUCT.md) for community standards, [SUPPORT.md](SUPPORT.md) for troubleshooting, [docs/ARCHITECTURE.md](https://www.google.com/search?q=docs/ARCHITECTURE.md) for the system boundaries and roadmap, and [evals/README.md](https://www.google.com/search?q=evals/README.md) for the coding-agent evaluation harness.
 
 ## Project documentation
 
@@ -225,5 +265,5 @@ docs/SECURITY.md
 docs/ARCHITECTURE.md
 docs/AGENT_ENGINE.md
 evals/README.md
-.aicliignore.example
+
 ```

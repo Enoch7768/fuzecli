@@ -51,6 +51,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/", s.web)
 	mux.HandleFunc("/assets/app.js", s.assetJS)
 	mux.HandleFunc("/assets/styles.css", s.assetCSS)
+	mux.HandleFunc("/assets/premium.css", s.assetPremiumCSS)
 	mux.HandleFunc("/v1/health", s.health)
 	mux.HandleFunc("/v1/config", s.config)
 	mux.HandleFunc("/v1/models", s.models)
@@ -69,6 +70,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/v1/terminal", s.terminal)
 	mux.HandleFunc("/v1/lsp", s.lsp)
 	mux.HandleFunc("/v1/debug", s.debug)
+	mux.HandleFunc("/v1/run", s.runFile)
+	mux.HandleFunc("/v1/runtime/install", s.installRuntime)
 	mux.HandleFunc("/v1/github", s.githubRoutes)
 	mux.HandleFunc("/v1/platform", s.platformState)
 	mux.HandleFunc("/v1/graph", s.graph)
@@ -179,6 +182,11 @@ func (s *Server) assetJS(w http.ResponseWriter, r *http.Request) {
 func (s *Server) assetCSS(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/css; charset=utf-8")
 	_, _ = w.Write(webCSS)
+}
+
+func (s *Server) assetPremiumCSS(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/css; charset=utf-8")
+	_, _ = w.Write(webPremiumCSS)
 }
 
 func (s *Server) health(w http.ResponseWriter, r *http.Request) {

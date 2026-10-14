@@ -118,7 +118,7 @@ async function send(){
   }finally{$("#sendBtn").disabled=false;$("#stopBtn").disabled=true;$("#chatState").textContent="Ready";chatAbort=null;studioRequestID="";b.focus()}
 }
 async function files(){const d=await api("/v1/files");return d.files}
-function isSiteFile(f){return /\.(html?|css|js|mjs|json|svg|png|jpe?g|webp|gif|ico|woff2?|ttf|otf)$/i.test(f)}
+function isSiteFile(f){return /\.(html?|php|css|scss|less|js|mjs|cjs|jsx|ts|tsx|vue|svelte|json|xml|svg|md|mdx|ya?ml|toml|png|jpe?g|webp|gif|ico|woff2?|ttf|otf|py|pyw|go|rs|java|kt|kts|c|h|cc|cpp|cxx|hpp|cs|fs|fsx|swift|dart|rb|lua|pl|r|jl|ex|exs|erl|hs|lhs|scala|sc|clj|cljs|groovy|gradle|sql|sh|bash|zsh|ps1|bat|cmd|proto|graphql|gql|ipynb)$/i.test(f)||/(?:^|\/)(dockerfile|makefile|cmakelists\.txt)$/i.test(f)}
 async function loadBuilder(preferred){const all=await files();const site=all.filter(isSiteFile);$("#fileCount").textContent=site.length;$("#builderFileList").innerHTML=site.map(f=>'<button class="file-row '+(f===currentPreview?"selected":"")+'" data-file="'+encodeURIComponent(f)+'">'+esc(f)+"</button>").join("");const htmls=site.filter(f=>/\.html?$/i.test(f));const target=htmls.includes(preferred)?preferred:(htmls[0]||"");$("#previewFile").innerHTML=htmls.length?htmls.map(f=>'<option value="'+esc(f)+'">'+esc(f)+"</option>").join(""):'<option value="">No HTML page</option>';if(target){$("#previewFile").value=target;currentPreview=target;openSite(target)}document.querySelectorAll(".builder-files .file-row").forEach(e=>e.onclick=()=>{const f=decodeURIComponent(e.dataset.file);if(/\.html?$/i.test(f))openSite(f);else editRawFile(f)})}
 async function runRuntimePreview(){try{$("#runRuntimePreview").disabled=true;$("#previewStatus").textContent="Starting local runtime…";const runtime=$("#runtimeSelect").value;const d=await api("/v1/preview/runtime?runtime="+encodeURIComponent(runtime),{method:"POST"});$("#sitePreview").sandbox="allow-scripts allow-forms";$("#sitePreview").src=d.url+"?fuzecli="+Date.now();$("#previewStatus").textContent="Live "+d.kind+" runtime · "+d.url;toast(d.kind.toUpperCase()+" preview running")}catch(e){$("#previewStatus").textContent="Runtime preview unavailable";toast(e.message)}finally{$("#runRuntimePreview").disabled=false}}
 function openSite(file=currentPreview){if(!file)return;currentPreview=file;selected=null;previewHTML="";$("#applyInspector").textContent="Apply live";$("#requestSavePreview").style.display="block";$("#sitePreview").sandbox="allow-scripts allow-forms";$("#inspectorForm").hidden=true;$("#inspectorEmpty").hidden=false;$("#selectedPath").textContent="Nothing selected";$("#sitePreview").src="/preview/"+encodeURI(file)+"?t="+Date.now();document.querySelectorAll(".builder-files .file-row").forEach(e=>e.classList.toggle("selected",decodeURIComponent(e.dataset.file)===file))}
@@ -126,7 +126,7 @@ async function editRawFile(file){try{const d=await api("/v1/file?path="+encodeUR
 function postEditor(type,payload={}){$("#sitePreview").contentWindow?.postMessage({source:"fuzecli-editor",type,...payload},"*")}
 async function applyInspector(){if(!selected)return;if(selected.source==="file"){try{await api("/v1/file",{method:"POST",body:JSON.stringify({path:selected.path,content:$("#editText").value})});toast("Saved "+selected.path);await workspace()}catch(e){toast(e.message)}return}const styles={color:$("#editColor").value.trim(),backgroundColor:$("#editBackground").value.trim(),fontSize:$("#editFontSize").value.trim(),padding:$("#editPadding").value.trim(),borderRadius:$("#editRadius").value.trim()};Object.keys(styles).forEach(k=>{if(!styles[k])delete styles[k]});postEditor("text",{value:$("#editText").value});postEditor("style",{styles});if($("#imageInspector").hidden===false)postEditor("attr",{src:$("#editSrc").value.trim(),alt:$("#editAlt").value.trim()});if($("#linkInspector").hidden===false)postEditor("attr",{href:$("#editHref").value.trim()});$("#builderSaveState").textContent="Unsaved";toast("Change applied live")}
 async function savePreview(){if(!currentPreview)return;if(!previewHTML){postEditor("request-html");try{await new Promise((resolve,reject)=>{const timer=setTimeout(()=>{previewHTMLWaiter=null;reject(Error("Preview did not return its current HTML"))},5000);previewHTMLWaiter={resolve:()=>{clearTimeout(timer);previewHTMLWaiter=null;resolve()}}})}catch(e){toast(e.message);return}}try{const cleanHTML=String(previewHTML||"").replace(/<script[^>]*data-fuzecli-preview-editor=["']true["'][\\s\\S]*?<\/script>/gi,"");await api("/v1/file",{method:"POST",body:JSON.stringify({path:currentPreview,content:cleanHTML})});$("#builderSaveState").textContent="Saved";toast("Saved "+currentPreview);await loadBuilder(currentPreview)}catch(e){toast("Save failed: "+e.message)}}
-function builderMessage(e){const d=e.data;if(!d||d.source!=="fuzecli-preview")return;if(d.type==="ready"){$("#previewStatus").textContent="Live · click an element to inspect";$("#builderSaveState").textContent="Saved"}if(d.type==="select"){selected=d;$("#applyInspector").textContent="Apply live";$("#requestSavePreview").style.display="block";$("#previewStatus").textContent=d.tag?"Selected "+d.tag:"Nothing selected";$("#selectedPath").textContent=d.path||"Nothing selected";$("#inspectorEmpty").hidden=!d.tag;$("#inspectorForm").hidden=!d.tag;$("#selectedTag").textContent=(d.tag||"ELEMENT").toUpperCase();$("#editText").value=d.text||"";$("#editColor").value=d.color||"";$("#editBackground").value=d.background||"";$("#editFontSize").value=d.fontSize||"";$("#editPadding").value=d.padding||"";$("#editRadius").value=d.radius||"";$("#imageInspector").hidden=d.tag!=="img";$("#linkInspector").hidden=d.tag!=="a";$("#editSrc").value=d.src||"";$("#editAlt").value=d.alt||"";$("#editHref").value=d.href||""}if(d.type==="changed"){previewHTML=d.html;$("#previewStatus").textContent="Unsaved changes";$("#builderSaveState").textContent="Unsaved";if(previewHTMLWaiter)previewHTMLWaiter.resolve()}}
+function builderMessage(e){const d=e.data;if(e.source!==$("#sitePreview")?.contentWindow||!d||d.source!=="fuzecli-preview")return;if(d.type==="ready"){$("#previewStatus").textContent="Live · click an element to inspect";$("#builderSaveState").textContent="Saved"}if(d.type==="select"){selected=d;$("#applyInspector").textContent="Apply live";$("#requestSavePreview").style.display="block";$("#previewStatus").textContent=d.tag?"Selected "+d.tag:"Nothing selected";$("#selectedPath").textContent=d.path||"Nothing selected";$("#inspectorEmpty").hidden=!d.tag;$("#inspectorForm").hidden=!d.tag;$("#selectedTag").textContent=(d.tag||"ELEMENT").toUpperCase();$("#editText").value=d.text||"";$("#editColor").value=d.color||"";$("#editBackground").value=d.background||"";$("#editFontSize").value=d.fontSize||"";$("#editPadding").value=d.padding||"";$("#editRadius").value=d.radius||"";$("#imageInspector").hidden=d.tag!=="img";$("#linkInspector").hidden=d.tag!=="a";$("#editSrc").value=d.src||"";$("#editAlt").value=d.alt||"";$("#editHref").value=d.href||""}if(d.type==="changed"){previewHTML=d.html;$("#previewStatus").textContent="Unsaved changes";$("#builderSaveState").textContent="Unsaved";if(previewHTMLWaiter)previewHTMLWaiter.resolve()}}
 async function workspace(){const d=await api("/v1/files");$("#workspaceFileCount").textContent=d.files.length;$("#fileList").innerHTML=d.files.map(f=>'<button class="file-row" data-f="'+encodeURIComponent(f)+'">'+esc(f)+"</button>").join("");document.querySelectorAll(".file-panel .file-row").forEach(e=>e.onclick=async()=>{try{const d=await api("/v1/file?path="+e.dataset.f);$("#fileName").textContent=d.path;$("#fileContent").textContent=d.content}catch(x){toast(x.message)}})}
 async function activity(){const d=await api("/v1/history");$("#activityList").innerHTML=d.messages.length?d.messages.map(m=>'<div class="activity-row"><div class="activity-role">'+esc(m.role)+"</div><div>"+esc(m.content)+"</div></div>").join(""):'<div class="activity-row">No activity yet.</div>'}
 async function telemetry(){try{const d=await api("/v1/telemetry");renderTelemetrySnapshot(d)}catch(e){toast(e.message)}}
@@ -139,58 +139,129 @@ async function githubStatus(){
     el.className="github-status";el.textContent="Not connected";return false;
   }catch(e){$("#githubStatus").className="github-status error";$("#githubStatus").textContent=e.message;return false}
 }
+function githubSelectedRepo(){return $("#githubRepoSelect")?.value||"";}
+function githubRemoteName(remote){
+  const value=String(remote||"").trim();
+  const match=value.match(/github\.com[:/]([^/]+\/[^/]+?)(?:\.git)?(?:[?#].*)?$/i);
+  return match?match[1].replace(/\.git$/i,""):"";
+}
 async function githubRepos(){
   try{
     const d=await api("/v1/github/repos"),items=d.repositories||[],select=$("#githubRepoSelect");
-    if(select){select.innerHTML='<option value="">Repository</option>'+items.map(r=>'<option value="'+esc(r.full_name)+'">'+esc(r.full_name)+'</option>').join("");}
+    const previous=select?.value||"";
+    const remoteName=githubRemoteName($("#githubRemote")?.textContent||"");
+    if(select){
+      select.innerHTML='<option value="">Choose repository…</option>'+items.map(r=>'<option value="'+esc(r.full_name)+'">'+esc(r.full_name)+'</option>').join("");
+      const preferred=items.find(r=>r.full_name.toLowerCase()===remoteName.toLowerCase())?.full_name;
+      const retained=items.find(r=>r.full_name===previous)?.full_name;
+      select.value=preferred||retained||"";
+    }
     $("#githubRepoList").innerHTML=items.map(r=>'<div class="github-item"><div><b>'+esc(r.full_name)+'</b><span>'+esc(r.description||"No description")+'</span></div><a href="'+esc(r.html_url||"#")+'" target="_blank" rel="noopener">Open</a></div>').join("")||'<div class="ide-panel-empty">No repositories found.</div>';
-    if(items[0]&&select&&!select.value){select.value=items[0].full_name;$("#githubContextRepo").textContent=items[0].full_name;await githubBranches(items[0].full_name)}
+    const selected=select?.value||"";
+    if(selected){
+      $("#githubContextRepo").textContent=selected;
+      $("#githubContextMeta").textContent=selected===remoteName?"Matches this workspace’s GitHub origin.":"Selected repository context.";
+      await githubBranches(selected);
+    }else{
+      $("#githubContextRepo").textContent="No repository selected";
+      $("#githubContextMeta").textContent=items.length?"Choose the repository you want FuzeCLI to work with.":"No repositories found for this account.";
+      $("#githubBranchSelect").innerHTML='<option value="">Branch</option>';
+    }
   }catch(e){$("#githubRepoList").innerHTML='<div class="ide-panel-empty">'+esc(e.message)+'</div>'}
 }
 async function githubBranches(full){
   const select=$("#githubBranchSelect");if(!select||!full)return;
-  try{const d=await api("/v1/github/branches?name="+encodeURIComponent(full)),items=d.branches||[];select.innerHTML='<option value="">Branch</option>'+items.map(b=>'<option value="'+esc(b.name||b.ref||b)+'">'+esc(b.name||b.ref||b)+'</option>').join("");if(items[0])select.value=items[0].name||items[0].ref||items[0]}catch(e){select.innerHTML='<option value="">Branches unavailable</option>'}
+  try{const d=await api("/v1/github/branches?repo="+encodeURIComponent(full)),items=d.branches||[];select.innerHTML='<option value="">Branch</option>'+items.map(b=>'<option value="'+esc(b.name||b.ref||b)+'">'+esc(b.name||b.ref||b)+'</option>').join("");if(items[0])select.value=items[0].name||items[0].ref||items[0]}catch(e){select.innerHTML='<option value="">Branches unavailable</option>'}
 }
 async function githubPRs(){
-  try{const d=await api("/v1/github/prs");$("#githubPRList").innerHTML=(d.pull_requests||[]).map(p=>'<button class="github-item" data-github-pr="'+p.number+'"><div><b>#'+p.number+" "+esc(p.title)+'</b><span>'+esc(p.head?.ref||"")+" → "+esc(p.base?.ref||"")+" · "+esc(p.state)+'</span></div><span>Open</span></button>').join("")||'<div class="ide-panel-empty">No open pull requests.</div>'}catch(e){$("#githubPRList").innerHTML='<div class="ide-panel-empty">'+esc(e.message)+'</div>'}
+  const repo=githubSelectedRepo();if(!repo){$("#githubPRList").innerHTML='<div class="ide-panel-empty">Choose a repository to view pull requests.</div>';return}
+  try{const d=await api("/v1/github/prs?repo="+encodeURIComponent(repo));$("#githubPRList").innerHTML=(d.pull_requests||[]).map(p=>'<button class="github-item" data-github-pr="'+p.number+'"><div><b>#'+p.number+" "+esc(p.title)+'</b><span>'+esc(p.head?.ref||"")+" → "+esc(p.base?.ref||"")+" · "+esc(p.state)+'</span></div><span>Open</span></button>').join("")||'<div class="ide-panel-empty">No open pull requests.</div>'}catch(e){$("#githubPRList").innerHTML='<div class="ide-panel-empty">'+esc(e.message)+'</div>'}
 }
 async function githubActions(){
-  try{const d=await api("/v1/github/actions");$("#githubActionsList").innerHTML=(d.runs||[]).map(r=>'<div class="github-item"><div><b>'+esc(r.name||"Workflow")+' #'+r.run_number+'</b><span>'+esc(r.status||"")+" / "+esc(r.conclusion||"")+" · "+esc(r.head_branch||"")+'</span></div><button class="ghost small" data-github-rerun="'+r.id+'">Rerun</button></div>').join("")||'<div class="ide-panel-empty">No workflow runs found.</div>'}catch(e){$("#githubActionsList").innerHTML='<div class="ide-panel-empty">'+esc(e.message)+'</div>'}
+  const repo=githubSelectedRepo();if(!repo){$("#githubActionsList").innerHTML='<div class="ide-panel-empty">Choose a repository to view workflow runs.</div>';return}
+  try{const d=await api("/v1/github/actions?repo="+encodeURIComponent(repo));$("#githubActionsList").innerHTML=(d.runs||[]).map(r=>'<div class="github-item"><div><b>'+esc(r.name||"Workflow")+' #'+r.run_number+'</b><span>'+esc(r.status||"")+" / "+esc(r.conclusion||"")+" · "+esc(r.head_branch||"")+'</span></div><button class="ghost small" data-github-rerun="'+r.id+'">Rerun</button></div>').join("")||'<div class="ide-panel-empty">No workflow runs found.</div>'}catch(e){$("#githubActionsList").innerHTML='<div class="ide-panel-empty">'+esc(e.message)+'</div>'}
 }
 async function githubIssues(){
-  try{const d=await api("/v1/github/issues");$("#githubIssuesList").innerHTML=(d.issues||[]).map(i=>'<div class="github-item"><div><b>#'+i.number+" "+esc(i.title)+'</b><span>'+esc(i.state)+'</span></div><a href="'+esc(i.html_url||"#")+'" target="_blank" rel="noopener">Open</a></div>').join("")||'<div class="ide-panel-empty">No open issues.</div>'}catch(e){$("#githubIssuesList").innerHTML='<div class="ide-panel-empty">'+esc(e.message)+'</div>'}
+  const repo=githubSelectedRepo();if(!repo){$("#githubIssuesList").innerHTML='<div class="ide-panel-empty">Choose a repository to view issues.</div>';return}
+  try{const d=await api("/v1/github/issues?repo="+encodeURIComponent(repo));$("#githubIssuesList").innerHTML=(d.issues||[]).map(i=>'<div class="github-item"><div><b>#'+i.number+" "+esc(i.title)+'</b><span>'+esc(i.state)+'</span></div><a href="'+esc(i.html_url||"#")+'" target="_blank" rel="noopener">Open</a></div>').join("")||'<div class="ide-panel-empty">No open issues.</div>'}catch(e){$("#githubIssuesList").innerHTML='<div class="ide-panel-empty">'+esc(e.message)+'</div>'}
 }
 async function githubLoadComments(){
- const n=Number($("#githubPRNumber").value);if(!n)return toast("Enter a pull request number");
- try{const d=await api("/v1/github/comments?number="+n);$("#githubComments").innerHTML=(d.comments||[]).map(c=>'<div class="github-comment"><b>'+esc(c.user?.login||"user")+'</b>'+esc(c.body||"")+'</div>').join("")||'<div class="ide-panel-empty">No comments yet.</div>'}catch(e){toast(e.message)}
+ const n=Number($("#githubPRNumber").value),repo=githubSelectedRepo();if(!n)return toast("Enter a pull request number");if(!repo)return toast("Choose a repository first");
+ try{const d=await api("/v1/github/comments?repo="+encodeURIComponent(repo)+"&number="+n);$("#githubComments").innerHTML=(d.comments||[]).map(c=>'<div class="github-comment"><b>'+esc(c.user?.login||"user")+'</b>'+esc(c.body||"")+"</div>").join("")||'<div class="ide-panel-empty">No comments yet.</div>'}catch(e){toast(e.message)}
 }
 async function githubSync(op){
  try{const d=await api("/v1/github/sync",{method:"POST",timeoutMs:300000,body:JSON.stringify({operation:op})});$("#githubSyncOutput").textContent=d.output||"Completed";toast("Git "+op+" completed");await githubStatus()}catch(e){$("#githubSyncOutput").textContent=e.message;toast("Git "+op+" failed: "+e.message)}
 }
 async function loadGithub(){
  const connected=await githubStatus();if(!connected){$("#githubRepoList").innerHTML='<div class="ide-panel-empty">Connect GitHub to load repositories.</div>';$("#githubPRList").innerHTML="";$("#githubActionsList").innerHTML="";$("#githubIssuesList").innerHTML="";return}
- await Promise.all([githubRepos(),githubPRs(),githubActions(),githubIssues()]);
+ await githubRepos();
+ await Promise.all([githubPRs(),githubActions(),githubIssues()]);
 }
 function view(v){document.body.classList.toggle("command-mode",v==="chat");document.querySelectorAll(".nav-item").forEach(b=>b.classList.toggle("active",b.dataset.view===v));document.querySelectorAll(".view").forEach(x=>x.classList.toggle("active",x.id==="view-"+v));$("#pageTitle").textContent=v==="builder"?"Live Builder":v[0].toUpperCase()+v.slice(1);if(v==="ide")loadIDE();if(v==="builder")loadBuilder(currentPreview);if(v==="workspace")workspace();if(v==="activity")activity();if(v==="telemetry")telemetry();if(v==="github")loadGithub()}
 async function save(){try{await api("/v1/config",{method:"POST",body:JSON.stringify({provider:$("#settingsProvider").value,model:$("#settingsModel").value.trim()})});toast("Settings saved");await loadConfig()}catch(e){toast(e.message)}}
 document.querySelectorAll(".nav-item").forEach(b=>b.onclick=()=>view(b.dataset.view));$("#runtimeBtn")?.addEventListener("click",()=>view("settings"));
 document.querySelectorAll(".quick-actions button").forEach(b=>b.onclick=()=>{$("#prompt").value=b.dataset.prompt;$("#prompt").focus();$("#prompt").dispatchEvent(new Event("input"))});
 $("#githubRefresh").onclick=loadGithub;
-$("#githubConnect").onclick=async()=>{const token=$("#githubToken").value.trim();if(!token)return toast("Enter a GitHub token");try{const d=await api("/v1/github/auth",{method:"POST",body:JSON.stringify({token})});$("#githubToken").value="";toast("Connected as "+d.login);await loadGithub()}catch(e){toast("GitHub connection failed: "+e.message)}};
-$("#githubDisconnect").onclick=async()=>{try{await api("/v1/github/auth",{method:"DELETE"});toast("GitHub disconnected");await loadGithub()}catch(e){toast(e.message)}};
+let githubAuthCancelled=false;
+let githubAuthTask=null;
+const githubAuthDelay=ms=>new Promise(resolve=>window.setTimeout(resolve,ms));
+$("#githubConnect").onclick=async()=>{
+  if(githubAuthTask)return;
+  githubAuthCancelled=false;
+  const flow=$("#githubOAuthFlow"),status=$("#githubOAuthStatus"),code=$("#githubDeviceCode"),link=$("#githubAuthorizeLink");
+  $("#githubConnect").disabled=true;
+  status.textContent="Starting secure GitHub authorization…";
+  flow.hidden=false;code.textContent="";
+  try{
+    const start=await api("/v1/github/auth/device/start",{method:"POST",body:"{}"});
+    code.textContent=start.user_code;
+    link.href=start.verification_uri||"https://github.com/login/device";
+    status.textContent="Open GitHub, enter the code above, and approve FuzeCLI. Keep this window open.";
+    githubAuthTask=(async()=>{
+      const deadline=Date.now()+Math.max(60,start.expires_in||900)*1000;
+      let interval=Math.max(3,start.interval||5)*1000;
+      while(!githubAuthCancelled&&Date.now()<deadline){
+        await githubAuthDelay(interval);
+        if(githubAuthCancelled)return;
+        try{
+          const result=await api("/v1/github/auth/device/poll",{method:"POST",body:JSON.stringify({device_code:start.device_code})});
+          if(result.pending){if(result.slow_down)interval=Math.max(interval,10000);continue}
+          if(result.ok){
+            flow.hidden=true;code.textContent="";status.textContent="";
+            toast("Connected as "+result.login);
+            await loadGithub();
+            return;
+          }
+        }catch(error){
+          if(error.status===202)continue;
+          throw error;
+        }
+      }
+      if(!githubAuthCancelled)status.textContent="Authorization expired. Select Connect with GitHub to try again.";
+    })();
+    await githubAuthTask;
+  }catch(e){
+    if(!githubAuthCancelled){status.textContent="GitHub authorization failed: "+e.message;toast(status.textContent)}
+  }finally{
+    githubAuthTask=null;
+    $("#githubConnect").disabled=false;
+  }
+};
+$("#githubCancelAuth").onclick=()=>{githubAuthCancelled=true;$("#githubOAuthStatus").textContent="Authorization cancelled.";$("#githubOAuthFlow").hidden=true;$("#githubConnect").disabled=false};
+$("#githubDisconnect").onclick=async()=>{githubAuthCancelled=true;try{await api("/v1/github/auth",{method:"DELETE"});$("#githubOAuthFlow").hidden=true;toast("GitHub disconnected");await loadGithub()}catch(e){toast(e.message)}};
 $("#githubPull").onclick=()=>githubSync("pull");$("#githubPush").onclick=()=>githubSync("push");$("#githubRefreshActions").onclick=githubActions;$("#githubLoadComments").onclick=githubLoadComments;
 $("#githubCreateRepo").onclick=async()=>{const name=prompt("Repository name");if(!name)return;const description=prompt("Description (optional)")||"";const privateRepo=confirm("Make this repository private?");try{const d=await api("/v1/github/repo",{method:"POST",body:JSON.stringify({name,description,private:privateRepo,auto_init:false})});toast("Created "+d.repository.full_name);await githubRepos()}catch(e){toast(e.message)}};
-$("#githubCreatePR").onclick=async()=>{const head=prompt("Head branch");if(!head)return;const base=prompt("Base branch","main")||"main";const title=prompt("Pull request title");if(!title)return;const body=prompt("Pull request description (optional)")||"";try{const d=await api("/v1/github/prs",{method:"POST",body:JSON.stringify({head,base,title,body,draft:false})});$("#githubPRNumber").value=d.pull_request.number;toast("Created PR #"+d.pull_request.number);await githubPRs()}catch(e){toast(e.message)}};
-$("#githubCreateIssue").onclick=async()=>{const title=prompt("Issue title");if(!title)return;const body=prompt("Issue description (optional)")||"";try{await api("/v1/github/issues",{method:"POST",body:JSON.stringify({title,body})});toast("Issue created");await githubIssues()}catch(e){toast(e.message)}};
+$("#githubCreatePR").onclick=async()=>{const repo=githubSelectedRepo();if(!repo)return toast("Choose a repository first");const head=prompt("Head branch");if(!head)return;const base=prompt("Base branch","main")||"main";const title=prompt("Pull request title");if(!title)return;const body=prompt("Pull request description (optional)")||"";try{const d=await api("/v1/github/prs?repo="+encodeURIComponent(repo),{method:"POST",body:JSON.stringify({head,base,title,body,draft:false})});$("#githubPRNumber").value=d.pull_request.number;toast("Created PR #"+d.pull_request.number);await githubPRs()}catch(e){toast(e.message)}};
+$("#githubCreateIssue").onclick=async()=>{const repo=githubSelectedRepo();if(!repo)return toast("Choose a repository first");const title=prompt("Issue title");if(!title)return;const body=prompt("Issue description (optional)")||"";try{await api("/v1/github/issues?repo="+encodeURIComponent(repo),{method:"POST",body:JSON.stringify({title,body})});toast("Issue created");await githubIssues()}catch(e){toast(e.message)}};
 async function githubReview(event){
- const n=Number($("#githubPRNumber").value);if(!n)return toast("Enter a PR number");
+ const n=Number($("#githubPRNumber").value),repo=githubSelectedRepo();if(!n)return toast("Enter a PR number");if(!repo)return toast("Choose a repository first");
  const body=event==="APPROVE"?"":(prompt("Review message (optional)")||"");
- try{await api("/v1/github/review",{method:"POST",body:JSON.stringify({number:n,event,body})});toast("Review submitted");await githubLoadComments()}catch(e){toast(e.message)}
+ try{await api("/v1/github/review",{method:"POST",body:JSON.stringify({repo,number:n,event,body})});toast("Review submitted");await githubLoadComments()}catch(e){toast(e.message)}
 }
 $("#githubApprovePR").onclick=()=>githubReview("APPROVE");$("#githubCommentPR").onclick=()=>githubReview("COMMENT");$("#githubRequestChangesPR").onclick=()=>githubReview("REQUEST_CHANGES");
-$("#githubSendComment").onclick=async()=>{const n=Number($("#githubPRNumber").value),body=$("#githubComment").value.trim();if(!n||!body)return toast("Enter a PR number and comment");try{await api("/v1/github/comments?number="+n,{method:"POST",body:JSON.stringify({body})});$("#githubComment").value="";toast("Comment posted");await githubLoadComments()}catch(e){toast(e.message)}};
+$("#githubSendComment").onclick=async()=>{const n=Number($("#githubPRNumber").value),repo=githubSelectedRepo(),body=$("#githubComment").value.trim();if(!n||!body)return toast("Enter a PR number and comment");if(!repo)return toast("Choose a repository first");try{await api("/v1/github/comments?repo="+encodeURIComponent(repo)+"&number="+n,{method:"POST",body:JSON.stringify({body})});$("#githubComment").value="";toast("Comment posted");await githubLoadComments()}catch(e){toast(e.message)}};
 $("#githubPRList").onclick=e=>{const b=e.target.closest("[data-github-pr]");if(b){$("#githubPRNumber").value=b.dataset.githubPr;githubLoadComments()}};
-$("#githubActionsList").onclick=async e=>{const b=e.target.closest("[data-github-rerun]");if(!b)return;try{await api("/v1/github/actions",{method:"POST",body:JSON.stringify({operation:"rerun",run_id:Number(b.dataset.githubRerun)})});toast("Workflow rerun requested");await githubActions()}catch(x){toast(x.message)}};
+$("#githubActionsList").onclick=async e=>{const b=e.target.closest("[data-github-rerun]");if(!b)return;try{await api("/v1/github/actions?repo="+encodeURIComponent(githubSelectedRepo()),{method:"POST",body:JSON.stringify({operation:"rerun",run_id:Number(b.dataset.githubRerun)})});toast("Workflow rerun requested");await githubActions()}catch(x){toast(x.message)}};
 $("#attachBtn").onclick=()=>$("#fileUpload").click();$("#fileUpload").onchange=async e=>{try{await uploadFiles(e.target.files)}catch(x){toast(x.message)}e.target.value=""};$("#providerSelect").onchange=()=>models($("#providerSelect").value);$("#refreshMemoryBtn").onclick=async()=>{try{await api("/v1/memory/refresh",{method:"POST"});toast("Conversation memory refreshed")}catch(e){toast(e.message)}};$("#settingsProvider").onchange=()=>models($("#settingsProvider").value);$("#sendBtn").onclick=send;$("#saveProvider").onclick=save;$("#refreshBtn").onclick=()=>loadConfig().then(()=>toast("Runtime refreshed"));$("#workspaceRefresh").onclick=workspace;$("#activityRefresh").onclick=activity;$("#telemetryRefresh").onclick=telemetry;$("#previewFile").onchange=e=>openSite(e.target.value);$("#runRuntimePreview").onclick=runRuntimePreview;$("#openPreview").onclick=()=>window.open("/preview/"+encodeURI(currentPreview),"_blank","noopener");$("#savePreview").onclick=savePreview;$("#requestSavePreview").onclick=savePreview;$("#applyInspector").onclick=applyInspector;$("#deviceDesktop").onclick=()=>{$("#deviceFrame").className="device desktop"};$("#deviceMobile").onclick=()=>{$("#deviceFrame").className="device mobile"};document.querySelectorAll(".builder-add").forEach(b=>b.onclick=()=>{if(!currentPreview)return toast("Open an HTML page first");postEditor("add",{kind:b.dataset.builderAdd})});$("#builderMoveUp").onclick=()=>postEditor("move",{direction:"up"});$("#builderMoveDown").onclick=()=>postEditor("move",{direction:"down"});$("#builderDuplicate").onclick=()=>postEditor("duplicate");$("#builderDelete").onclick=()=>postEditor("delete");window.addEventListener("message",builderMessage);
 $("#prompt").onkeydown=e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send()}};$("#newSessionBtn").onclick=()=>{$("#messages").innerHTML='<div class="chat-empty" id="chatEmpty"><div class="chat-empty-mark">F</div><strong>What are we building?</strong><span>Ask FuzeCLI to inspect, create, fix, explain, or improve your project.</span></div>';$("#sessionTitle").textContent="New coding session";$("#prompt").focus()};$("#stopBtn").onclick=()=>chatAbort?.abort();$("#prompt").oninput=e=>{e.target.style.height="auto";e.target.style.height=Math.min(e.target.scrollHeight,180)+"px"};
 (async()=>{try{await loadConfig();await activity();await refreshLiveTelemetry();liveTelemetryTimer=setInterval(refreshLiveTelemetry,1000);const h=await api("/v1/history");(h.messages||[]).slice(-80).forEach(m=>msg(m.role,m.content))}catch(e){$("#statusText").textContent="Offline";toast(e.message)}})();
@@ -198,7 +269,7 @@ let ideEditor=null,ideFiles=[],ideOpen=[],ideActive="",ideSaveTimer=null,ideWork
 let ideLSPSocket=null,ideLSPSeq=100,ideLSPPending=new Map(),ideLSPVersion=0,ideLSPPath="",ideLSPProvidersRegistered=false;
 let ideDebugSocket=null,ideDebugSeq=1,ideDebugPending=new Map(),ideDebugInitialized=false,ideDebugRunning=false,ideDebugConnectTimer=null,ideDebugFrameId=0;
 
-function ideLang(path){const e=(path.split(".").pop()||"").toLowerCase();return ({js:"javascript",mjs:"javascript",cjs:"javascript",ts:"typescript",tsx:"typescript",jsx:"javascript",go:"go",py:"python",json:"json",css:"css",html:"html",htm:"html",md:"markdown",yaml:"yaml",yml:"yaml",sql:"sql",sh:"shell",xml:"xml",svg:"xml",php:"php"})[e]||"plaintext"}
+function ideLang(path){const e=(path.split(".").pop()||"").toLowerCase();return ({js:"javascript",mjs:"javascript",cjs:"javascript",ts:"typescript",tsx:"typescript",jsx:"javascript",vue:"html",svelte:"html",go:"go",py:"python",pyw:"python",json:"json",css:"css",scss:"scss",less:"less",html:"html",htm:"html",md:"markdown",mdx:"markdown",yaml:"yaml",yml:"yaml",toml:"ini",ini:"ini",sql:"sql",sh:"shell",bash:"shell",zsh:"shell",ps1:"powershell",bat:"bat",cmd:"bat",xml:"xml",svg:"xml",php:"php",rb:"ruby",rs:"rust",java:"java",kt:"kotlin",kts:"kotlin",c:"c",h:"c",cc:"cpp",cpp:"cpp",cxx:"cpp",hpp:"cpp",cs:"csharp",fs:"fsharp",fsx:"fsharp",swift:"swift",dart:"dart",lua:"lua",pl:"perl",r:"r",jl:"julia",ex:"elixir",exs:"elixir",erl:"erlang",hs:"haskell",lhs:"haskell",scala:"scala",sc:"scala",clj:"clojure",cljs:"clojure",groovy:"groovy",gradle:"groovy",dockerfile:"dockerfile",makefile:"makefile",mk:"makefile",proto:"protobuf",graphql:"graphql",gql:"graphql",ipynb:"json"})[e]||"plaintext"}
 function ideTree(files){const root={children:{},files:[]};files.forEach(path=>{const parts=path.split("/").filter(Boolean);let n=root;parts.forEach((part,i)=>{if(i===parts.length-1)n.files.push({name:part,path});else{n.children[part]??={children:{},files:[]};n=n.children[part]}})});const render=n=>{let out="";Object.keys(n.children).sort().forEach(name=>{out+='<div class="ide-folder" data-folder="'+esc(name)+'"><span>›</span><b>▱</b>'+esc(name)+'</div><div class="ide-folder-children">'+render(n.children[name])+"</div>"});n.files.sort((a,b)=>a.name.localeCompare(b.name)).forEach(f=>out+='<button class="ide-file '+(f.path===ideActive?"active":"")+'" data-ide-file="'+encodeURIComponent(f.path)+'"><span class="file-dot '+ideLang(f.path)+'"></span>'+esc(f.name)+"</button>");return out};$("#ideExplorerTree").innerHTML=render(root)}
 
 function ideURI(path){let clean=String(path||"").replace(/\\/g,"/");if(!/^[A-Za-z]:\//.test(clean)&&cfg?.workspace){const root=String(cfg.workspace).replace(/\\/g,"/").replace(/\/$/,"");clean=root+"/"+clean.replace(/^\/+/,"")}return encodeURI("file:///"+clean.replace(/^\/+/, ""))}
@@ -232,7 +303,7 @@ function renderIdeTabs(){const el=$("#ideTabs");el.innerHTML=ideOpen.map(p=>'<bu
 function renderIdeEditor(content,path){const host=$("#ideEditor");if(!host)return;if(ideEditor){ideEditor.dispose();ideEditor=null}host.innerHTML="";if(!window.monaco){const ta=document.createElement("textarea");ta.id="ideFallbackEditor";ta.className="ide-fallback-editor";ta.value=content;ta.spellcheck=false;ta.addEventListener("input",()=>{$(".ide-tab.active")?.classList.add("dirty")});ta.addEventListener("keydown",e=>{if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==="s"){e.preventDefault();ideSaveFallback(path)}});host.appendChild(ta);$("#ideBreadcrumbs").textContent="Workspace / "+path+" · text editor";return}registerLSPProviders();const model=monaco.editor.createModel(content,ideLang(path),monaco.Uri.parse(ideURI(path)));ideEditor=monaco.editor.create(host,{model,theme:"vs-dark",automaticLayout:true,minimap:{enabled:true},fontFamily:"Cascadia Code, Consolas, monospace",fontSize:13,lineHeight:21,wordWrap:"off",smoothScrolling:true,scrollBeyondLastLine:false,bracketPairColorization:{enabled:true},padding:{top:14,bottom:18},stickyScroll:{enabled:true},quickSuggestions:true,glyphMargin:true});ideEditor.addCommand(monaco.KeyMod.CtrlCmd|monaco.KeyCode.KeyS,ideSaveFile);ideEditor.onDidSaveModel(()=>ideLSPNotify("textDocument/didSave",{textDocument:{uri:model.uri.toString(),text:model.getValue()}}));ideEditor.onDidChangeModelContent(()=>{ideLSPChange(path,ideEditor.getValue());clearTimeout(ideSaveTimer);ideSaveTimer=setTimeout(()=>$(".ide-tab.active")?.classList.add("dirty"),500);ideRenderOutline()});ideEditor.onMouseDown(e=>{if(e.target.type===monaco.editor.MouseTargetType.GUTTER_GLYPH_MARGIN)ideToggleBreakpoint(e.target.position.lineNumber)});if(ideLSPSocket?.readyState===WebSocket.OPEN&&ideLSPPath===path)ideLSPOpen(path);else ideLSPConnect(path)}
 async function ideSaveFallback(path){const ta=$("#ideFallbackEditor");if(!ta)return;try{await api("/v1/file",{method:"POST",body:JSON.stringify({path,content:ta.value})});$(".ide-tab.active")?.classList.remove("dirty");toast("Saved "+path);await loadIDE()}catch(e){toast("Save failed: "+e.message)}}
 async function ideSaveFile(){if(!ideActive)return;const content=ideEditor?ideEditor.getValue():$("#ideFallbackEditor")?.value;if(content===undefined)return;try{await api("/v1/file",{method:"POST",body:JSON.stringify({path:ideActive,content})});$(".ide-tab.active")?.classList.remove("dirty");toast("Saved "+ideActive);await workspace()}catch(e){toast("Save failed: "+e.message)}}
-async function loadIDE(){try{const roots=await api("/v1/workspace/roots");ideWorkspaceRoots=roots.roots||[];const primary=ideWorkspaceRoots[0]||cfg?.workspace||"";ideFiles=await files();for(const root of ideWorkspaceRoots.slice(1)){try{const extra=await api("/v1/files?root="+encodeURIComponent(root));ideFiles.push(...(extra.files||[]))}catch(_){}}ideFiles=[...new Set(ideFiles)];ideTree(ideFiles);$("#ideWorkspaceName").textContent=(primary||"WORKSPACE").split(/[\\/]/).pop().toUpperCase();if(window.monaco){registerLSPProviders();if(ideActive)ideOpenFile(ideActive)}else if(window.require){window.require.config({paths:{vs:"https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs"}});window.require(["vs/editor/editor.main"],()=>{registerLSPProviders();if(ideActive)ideOpenFile(ideActive)})}}catch(e){toast(e.message)}}
+async function loadIDE(){try{const roots=await api("/v1/workspace/roots");ideWorkspaceRoots=roots.roots||[];const primary=ideWorkspaceRoots[0]||cfg?.workspace||"";ideFiles=await files();for(const root of ideWorkspaceRoots.slice(1)){try{const extra=await api("/v1/files?root="+encodeURIComponent(root));ideFiles.push(...(extra.files||[]))}catch(_){}}ideFiles=[...new Set(ideFiles)];ideTree(ideFiles);$("#ideWorkspaceName").textContent=(primary||"WORKSPACE").split(/[\/]/).pop().toUpperCase();if(window.monaco){registerLSPProviders();if(ideActive)ideOpenFile(ideActive)}else if(window.require){window.require.config({paths:{vs:"https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs"}});window.require(["vs/editor/editor.main"],()=>{registerLSPProviders();if(ideActive)ideOpenFile(ideActive)})}}catch(e){toast(e.message)}}
 async function askIDE(extra){const p=(extra||$("#idePrompt").value).trim();if(!p)return;const context=ideActive&&ideEditor?"\n\nCURRENT FILE: "+ideActive+"\n\n"+ideEditor.getValue():"";const applyChanges=!promptNeedsApproval(p);$("#ideAIMessages").innerHTML+='<div class="ide-ai-msg user">'+esc(p)+'</div>';$("#idePrompt").value="";try{const d=await api("/v1/chat",{method:"POST",body:JSON.stringify({prompt:p+context,provider:$("#providerSelect").value,model:$("#modelSelect").value,files:ideActive?[ideActive]:[],apply:applyChanges,billing_mode:$("#billingMode").value})});$("#ideAIMessages").innerHTML+='<div class="ide-ai-msg assistant">'+esc(d.content||"No response.")+'</div>';if(applyChanges&&d.written_files?.length){for(const path of d.written_files){if(path===ideActive)await ideOpenFile(path)}await loadIDE()}}catch(e){$("#ideAIMessages").innerHTML+='<div class="ide-ai-msg error">'+esc(e.message)+'</div>'}$("#ideAIMessages").scrollTop=$("#ideAIMessages").scrollHeight}
 
 function ideBottom(kind){
@@ -241,7 +312,7 @@ function ideBottom(kind){
     const markers=window.monaco?monaco.editor.getModelMarkers({}):[];
     $("#problemCount").textContent=String(markers.length);
     b.innerHTML=markers.length?markers.slice(0,200).map((m,i)=>'<button class="ide-problem-row" data-problem-uri="'+encodeURIComponent(m.resource?.toString()||"")+'" data-problem-line="'+m.startLineNumber+'"><span class="problem-severity">'+(m.severity===8?"ERROR":m.severity===4?"WARN":"INFO")+'</span><span class="problem-message">'+esc(m.message)+'</span><span class="problem-location">'+m.startLineNumber+":"+m.startColumn+'</span></button>').join(""):'<div class="ide-panel-empty">No diagnostics in the workspace.</div>';
-    b.onclick=e=>{const row=e.target.closest("[data-problem-line]");if(!row)return;const uri=decodeURIComponent(row.dataset.problemUri);const model=monaco.editor.getModels().find(x=>x.uri.toString()===uri);if(model){const path=uri.startsWith("file:///")?decodeURIComponent(uri.slice(8)):uri;const clean=path.replace(/^[A-Za-z]:[\\/]/,"").replace(/^\/+/,"");if(ideActive&&ideEditor){ideEditor.revealLineInCenter(Number(row.dataset.problemLine));ideEditor.focus()}}};
+    b.onclick=e=>{const row=e.target.closest("[data-problem-line]");if(!row)return;const uri=decodeURIComponent(row.dataset.problemUri);const model=monaco.editor.getModels().find(x=>x.uri.toString()===uri);if(model){const path=uri.startsWith("file:///")?decodeURIComponent(uri.slice(8)):uri;const clean=path.replace(/^[A-Za-z]:[\/]/,"").replace(/^\/+/,"");if(ideActive&&ideEditor){ideEditor.revealLineInCenter(Number(row.dataset.problemLine));ideEditor.focus()}}};
     return;
   }
   if(kind==="diff"){
@@ -252,16 +323,17 @@ function ideBottom(kind){
   const lines={terminal:"Integrated workspace terminal.",output:"Fuze output will appear here as workspace operations complete."};
   b.innerHTML='<div class="ide-terminal-line"><span class="terminal-prompt">F</span><span>'+esc(lines[kind]||"Ready.")+"</span></div>";
   if(kind==="terminal"){
+    const output=document.createElement("pre");output.id="ideTerminalOutput";output.className="ide-terminal-output";output.setAttribute("aria-live","polite");b.appendChild(output);
     const row=document.createElement("div");row.className="ide-terminal-input-row";
     row.innerHTML='<span class="terminal-prompt">›</span><input id="ideTerminalInput" autocomplete="off" spellcheck="false" placeholder="Type a command and press Enter…">';
     b.appendChild(row);
     const input=$("#ideTerminalInput");
-    input.onkeydown=e=>{if(e.key==="Enter"){e.preventDefault();const value=input.value+"\n";input.value="";ideTerminalInput(value)}};
+    input.onkeydown=e=>{if(e.key==="Enter"){e.preventDefault();const value=input.value.trimEnd();if(value){ideTerminalHistory.push(value);if(ideTerminalHistory.length>200)ideTerminalHistory.shift();ideTerminalHistoryIndex=ideTerminalHistory.length;ideAppendTerminalOutput("› "+value+"\n");ideTerminalInput(value+"\n")}input.value=""}else if(e.key==="ArrowUp"){e.preventDefault();if(ideTerminalHistoryIndex>0)input.value=ideTerminalHistory[--ideTerminalHistoryIndex]}else if(e.key==="ArrowDown"){e.preventDefault();if(ideTerminalHistoryIndex<ideTerminalHistory.length-1)input.value=ideTerminalHistory[++ideTerminalHistoryIndex];else{ideTerminalHistoryIndex=ideTerminalHistory.length;input.value=""}}};
     input.focus();
   }
 }
 function ideUpdateDebugStatus(text){$("#ideDebugStatus").textContent=text}
-function ideDebugRequest(command,args={}){if(!ideDebugSocket||ideDebugSocket.readyState!==WebSocket.OPEN)return Promise.reject(Error("Debugger is not connected"));const seq=ideDebugSeq++;ideDebugSocket.send(JSON.stringify({seq,type:"request",command,arguments:args}));return new Promise((resolve,reject)=>ideDebugPending.set(seq,{resolve,reject}))}
+function ideDebugRequest(command,args={}){if(!ideDebugSocket||ideDebugSocket.readyState!==WebSocket.OPEN)return Promise.reject(Error("Debugger is not connected"));const seq=ideDebugSeq++;try{ideDebugSocket.send(JSON.stringify({seq,type:"request",command,arguments:args}))}catch(error){return Promise.reject(error)}return new Promise((resolve,reject)=>{const timer=setTimeout(()=>{ideDebugPending.delete(seq);reject(Error("Debugger request timed out: "+command))},15000);ideDebugPending.set(seq,{resolve:value=>{clearTimeout(timer);resolve(value)},reject:error=>{clearTimeout(timer);reject(error)}})})}
 function ideDebugConnect(){
   if(ideDebugSocket?.readyState===WebSocket.OPEN&&ideDebugInitialized)return Promise.resolve();
   if(ideDebugConnectTimer)return ideDebugConnectTimer;
@@ -287,6 +359,7 @@ function ideDebugConnect(){
     ws.onmessage=e=>{
       try{
         const d=JSON.parse(e.data);
+        if(d.type==="error"){const failure=Error(d.message||"Debugger adapter failed to start");ideUpdateDebugStatus(failure.message);finish(false,failure);try{ws.close()}catch(_){};return}
         if(d.type==="response"&&d.request_seq!==undefined&&ideDebugPending.has(d.request_seq)){
           const p=ideDebugPending.get(d.request_seq);ideDebugPending.delete(d.request_seq);
           if(d.success===false)p.reject(Error(d.message||"Debugger request failed"));else p.resolve(d);
@@ -322,7 +395,7 @@ function ideDebugConnect(){
   });
   return ideDebugConnectTimer;
 }
-async function ideSendBreakpoints(){if(!ideDebugSocket||ideDebugSocket.readyState!==WebSocket.OPEN||!ideActive)return;const bp=window.__fuzeBreakpoints||new Map();const lines=[];for(const [key,value] of bp){if(key.startsWith(ideActive+":"))lines.push({line:Number(value.line),column:1})}const workspace=String(cfg?.workspace||"").replace(/[\\/]+$/,"");const absoluteSource=workspace?workspace+"/"+ideActive.replace(/^[/\\]+/,""):ideActive;await ideDebugRequest("setBreakpoints",{source:{path:absoluteSource,name:ideActive,sourceReference:0},breakpoints:lines});}
+async function ideSendBreakpoints(){if(!ideDebugSocket||ideDebugSocket.readyState!==WebSocket.OPEN||!ideActive)return;const bp=window.__fuzeBreakpoints||new Map();const lines=[];for(const [key,value] of bp){if(key.startsWith(ideActive+":"))lines.push({line:Number(value.line),column:1})}const workspace=String(cfg?.workspace||"").replace(/[\/]+$/,"");const absoluteSource=workspace?workspace+"/"+ideActive.replace(/^[/\\]+/,""):ideActive;await ideDebugRequest("setBreakpoints",{source:{path:absoluteSource,name:ideActive,sourceReference:0},breakpoints:lines});}
 async function ideWaitForInitialized(timeoutMs=10000){if(ideDebugInitialized)return;return new Promise((resolve,reject)=>{const started=Date.now();const poll=()=>{if(ideDebugInitialized){resolve();return}if(Date.now()-started>timeoutMs){reject(Error("Debugger did not send initialized event"))}else setTimeout(poll,50)};poll()})}
 async function ideDebugStart(){
   populateDebugLanguages();
@@ -334,7 +407,7 @@ async function ideDebugStart(){
     const dirty=$(".ide-tab.active")?.classList.contains("dirty");
     if(dirty)await ideSaveFile();
     await ideDebugConnect();
-    const workspace=String(cfg?.workspace||"").replace(/[\\/]+$/,"");
+    const workspace=String(cfg?.workspace||"").replace(/[\/]+$/,"");
     if(!workspace)throw Error("Workspace root is unavailable");
     const program=workspace+"/"+ideActive.replace(/^[/\\]+/,"");
     ideUpdateDebugStatus("Launching · "+ideActive);
@@ -378,7 +451,9 @@ async function ideDebugCommand(command,args={}){try{if(!ideDebugSocket||ideDebug
 async function ideDebugStack(threadId){try{const d=await ideDebugRequest("stackTrace",{threadId:threadId||1,startFrame:0,levels:50});const frames=d.body?.stackFrames||[];$("#ideDebugFrames").innerHTML=frames.map(f=>'<button class="ide-debug-frame" data-line="'+f.line+'"><span>'+esc(f.name||"frame")+'</span><small>'+esc(f.source?.path||"")+" :"+String(f.line||"")+"</small></button>").join("")||"<span>No stack frames.</span>";$("#ideDebugFrames").onclick=e=>{const b=e.target.closest("[data-line]");if(b&&ideEditor){ideEditor.revealLineInCenter(Number(b.dataset.line));ideEditor.setPosition({lineNumber:Number(b.dataset.line),column:1});ideEditor.focus()}};const top=frames[0];if(top?.id){ideDebugFrameId=top.id;try{const scopes=await ideDebugRequest("scopes",{frameId:top.id});const scope=(scopes.body?.scopes||[]).find(x=>x.variablesReference);if(scope){const vars=await ideDebugRequest("variables",{variablesReference:scope.variablesReference});const values=(vars.body?.variables||[]).slice(0,80);$("#ideBottomBody").insertAdjacentHTML("beforeend",'<div class="ide-debug-vars"><div class="ide-panel-subhead">LOCALS</div>'+values.map(v=>'<div class="ide-debug-var"><b>'+esc(v.name||"")+'</b><span>'+esc(v.value||v.type||"")+'</span></div>').join("")+"</div>")}}catch(_){}}}catch(e){$("#ideBottomBody").insertAdjacentText("beforeend","\nUnable to read debugger stack: "+e.message+"\n")}}
 function ideToggleBreakpoint(line){if(!ideEditor||!ideActive)return;const key=ideActive+":"+line;window.__fuzeBreakpoints??=new Map();const bp=window.__fuzeBreakpoints;if(bp.has(key)){const item=bp.get(key);bp.delete(key);if(item.dec)ideEditor.deltaDecorations(item.dec,[])}else{const dec=ideEditor.deltaDecorations([],[{range:new monaco.Range(line,1,line,1),options:{isWholeLine:false,glyphMarginClassName:"ide-breakpoint"}}]);bp.set(key,{line,dec})}if(ideDebugSocket?.readyState===WebSocket.OPEN)ideSendBreakpoints().catch(()=>{})}
 let ideTerminalSocket=null,ideTerminalConnectPromise=null;
-function ideTerminalConnect(){if(ideTerminalSocket?.readyState===WebSocket.OPEN)return Promise.resolve();if(ideTerminalConnectPromise)return ideTerminalConnectPromise;ideBottom("terminal");const proto=location.protocol==="https:"?"wss":"ws";const ws=new WebSocket(proto+"://"+location.host+"/v1/terminal");ideTerminalSocket=ws;const box=$("#ideBottomBody");ideTerminalConnectPromise=new Promise((resolve,reject)=>{let settled=false;const timer=setTimeout(()=>{if(!settled){settled=true;try{ws.close()}catch(e){}ideTerminalConnectPromise=null;reject(Error("Terminal connection timed out"))}},8000);ws.onopen=()=>{if(settled)return;settled=true;clearTimeout(timer);ideTerminalConnectPromise=null;box.insertAdjacentHTML("beforeend",'<div class="ide-terminal-line"><span class="terminal-prompt">F</span><span>Terminal connected · '+esc(cfg?.workspace||"workspace")+'</span></div>');$("#ideTerminalInput")?.focus();resolve()};ws.onmessage=e=>{try{const d=JSON.parse(e.data);if(d.type==="output"){box.insertAdjacentText("beforeend",d.data||"");box.scrollTop=box.scrollHeight}else if(d.type==="ready"){box.insertAdjacentHTML("beforeend",'<div class="ide-terminal-line"><span class="terminal-prompt">F</span><span>Shell ready</span></div>')}else if(d.type==="error")toast(d.message||"Terminal error")}catch(err){toast("Terminal message error: "+err.message)}};ws.onerror=()=>{if(!settled){settled=true;clearTimeout(timer);ideTerminalConnectPromise=null;reject(Error("Terminal connection failed"))}toast("Terminal connection failed")};ws.onclose=()=>{if(ideTerminalSocket===ws)ideTerminalSocket=null;ideTerminalConnectPromise=null;const input=$("#ideTerminalInput");if(input)input.disabled=true}});return ideTerminalConnectPromise}
+function ideAppendTerminalOutput(value){const out=$("#ideTerminalOutput");if(!out)return;const text=String(value||"").replace(/\u001b\[[0-?]*[ -/]*[@-~]/g,"");out.append(document.createTextNode(text));if(out.textContent.length>180000)out.textContent=out.textContent.slice(-140000);out.scrollTop=out.scrollHeight}
+let ideTerminalHistory=[],ideTerminalHistoryIndex=0;
+function ideTerminalConnect(){if(ideTerminalSocket?.readyState===WebSocket.OPEN)return Promise.resolve();if(ideTerminalConnectPromise)return ideTerminalConnectPromise;ideBottom("terminal");const proto=location.protocol==="https:"?"wss":"ws";const ws=new WebSocket(proto+"://"+location.host+"/v1/terminal");ideTerminalSocket=ws;const box=$("#ideBottomBody");ideTerminalConnectPromise=new Promise((resolve,reject)=>{let settled=false;const timer=setTimeout(()=>{if(!settled){settled=true;try{ws.close()}catch(e){}ideTerminalConnectPromise=null;reject(Error("Terminal connection timed out"))}},8000);ws.onopen=()=>{if(settled)return;settled=true;clearTimeout(timer);ideTerminalConnectPromise=null;ideAppendTerminalOutput("Terminal connected · "+(cfg?.workspace||"workspace")+"\n");$("#ideTerminalInput")?.focus();resolve()};ws.onmessage=e=>{try{const d=JSON.parse(e.data);if(d.type==="output"){ideAppendTerminalOutput(d.data||"")}else if(d.type==="ready"){ideAppendTerminalOutput("Shell ready\n")}else if(d.type==="error"){ideAppendTerminalOutput("Terminal error: "+(d.message||"unknown error")+"\n");toast(d.message||"Terminal error")}}catch(err){toast("Terminal message error: "+err.message)}};ws.onerror=()=>{if(!settled){settled=true;clearTimeout(timer);ideTerminalConnectPromise=null;reject(Error("Terminal connection failed"))}toast("Terminal connection failed")};ws.onclose=()=>{if(ideTerminalSocket===ws)ideTerminalSocket=null;ideTerminalConnectPromise=null;const input=$("#ideTerminalInput");if(input)input.disabled=true}});return ideTerminalConnectPromise}
 async function ideTerminalInput(value){if(!value)return;try{await ideTerminalConnect();if(ideTerminalSocket?.readyState===WebSocket.OPEN)ideTerminalSocket.send(JSON.stringify({type:"input",data:value}))}catch(e){toast(e.message)}}
 
 async function ideRenderSourcePanel(){
@@ -421,8 +496,34 @@ function ideCommandClose(){const overlay=$("#ideCommandOverlay");if(overlay)over
 function ideRenderCommandResults(){const overlay=$("#ideCommandOverlay"),input=$("#ideCommandInput"),out=$("#ideCommandResults");if(!overlay||!input||!out)return;const q=input.value.trim().toLowerCase(),mode=overlay.dataset.mode||"quick";const items=mode==="command"?ideCommands.filter(x=>!q||x.label.toLowerCase().includes(q)):ideFiles.filter(x=>!q||x.toLowerCase().includes(q)).slice(0,80).map(path=>({label:path,key:"",run:()=>{ideCommandClose();ideOpenFile(path)}}));out.innerHTML=items.map((x,i)=>'<button class="ide-command-row '+(i===0?"active":"")+'" data-command-index="'+i+'"><span>'+esc(x.label)+'</span><kbd>'+esc(x.key||"")+"</kbd></button>").join("")||'<div class="ide-panel-empty">No matches.</div>';out.__items=items}
 function ideRunCommandIndex(index){const out=$("#ideCommandResults"),item=out?.__items?.[index];if(item){ideCommandClose();item.run()}}
 const IDE_DEBUG_LANGUAGES=[["javascript","JavaScript"],["typescript","TypeScript"],["php","PHP"],["ruby","Ruby"],["html","HTML/CSS"],["python","Python"],["r","R"],["julia","Julia"],["matlab","MATLAB"],["java","Java"],["csharp","C#"],["cobol","COBOL"],["abap","ABAP"],["c","C"],["cpp","C++"],["rust","Rust"],["go","Go"],["assembly","Assembly"],["swift","Swift"],["kotlin","Kotlin"],["dart","Dart"],["sql","SQL"],["shell","Bash / Shell"],["perl","Perl"],["scala","Scala"]];
-function populateDebugLanguages(){const s=$("#ideDebugLanguage");if(!s||s.options.length>1)return;for(const [v,l] of IDE_DEBUG_LANGUAGES){const o=document.createElement("option");o.value=v;o.textContent=l;s.appendChild(o)}}
+function populateDebugLanguages(){const s=$("#ideDebugLanguage");if(!s)return;if(s.options.length<=1){for(const [v,l] of IDE_DEBUG_LANGUAGES){const o=document.createElement("option");o.value=v;o.textContent=l;s.appendChild(o)}}if(!s.dataset.userSelected){const inferred=ideLang(ideActive);if(IDE_DEBUG_LANGUAGES.some(([v])=>v===inferred))s.value=inferred;else s.value=""}}
+async function ideRunFile(){
+  if(!ideActive){toast("Open a source file first");return}
+  try{
+    if($(".ide-tab.active")?.classList.contains("dirty"))await ideSaveFile();
+    ideBottom("output");
+    const body=$("#ideBottomBody");
+    body.innerHTML='<div class="ide-terminal-line"><span class="terminal-prompt">▶</span><span>Running '+esc(ideActive)+'</span></div><pre id="ideRunOutput" class="ide-run-output">Preparing runtime…</pre>';
+    const output=$("#ideRunOutput");
+    const render=d=>{output.textContent=[d.message||"",d.output||""].filter(Boolean).join("\n");if(d.duration_ms!==undefined)output.textContent+="\n\nExited "+d.exit_code+" · "+d.duration_ms+" ms";};
+    let result=await api("/v1/run",{method:"POST",timeoutMs:150000,body:JSON.stringify({path:ideActive})});
+    if(result.runtime_missing){
+      const runtime=result.runtime||"required runtime";
+      if(!window.confirm(runtime+" is missing. Allow FuzeCLI to install it using this computer's package manager? This may download software and change your system.")){render({...result,message:"Run cancelled. Install "+runtime+" yourself, then retry."});return}
+      output.textContent="Installing "+runtime+"…";
+      const installed=await api("/v1/runtime/install",{method:"POST",timeoutMs:10*60*1000,body:JSON.stringify({runtime})});
+      if(!installed.ok){render(installed);return}
+      output.textContent="Installation finished. Checking runtime…";
+      result=await api("/v1/run",{method:"POST",timeoutMs:150000,body:JSON.stringify({path:ideActive})});
+      if(result.runtime_missing)result.message=(result.message||"Runtime still unavailable.")+" Restart FuzeCLI so the updated PATH can be detected.";
+    }
+    render(result);
+    if(result.ok)toast("Finished "+ideActive);
+    else toast(result.message||"Run failed");
+  }catch(e){const body=$("#ideBottomBody");body.textContent="Run failed: "+e.message;toast(e.message)}
+}
 function initIDEEvents(){
+$("#ideDebugLanguage")?.addEventListener("change",()=>{$("#ideDebugLanguage").dataset.userSelected="true"});
 document.querySelectorAll("[data-ide-panel]").forEach(b=>b.onclick=async()=>{
   document.querySelectorAll(".ide-rail-btn").forEach(x=>x.classList.toggle("active",x===b));
   const panel=b.dataset.idePanel;
@@ -456,7 +557,7 @@ $("#ideOutlineResults").onclick=e=>{const b=e.target.closest("[data-outline-line
 document.querySelectorAll("[data-bottom]").forEach(b=>b.onclick=()=>{document.querySelectorAll("[data-bottom]").forEach(x=>x.classList.toggle("active",x===b));ideBottom(b.dataset.bottom);if(b.dataset.bottom==="terminal")ideTerminalConnect()});
 document.querySelectorAll("[data-ide-action]").forEach(b=>b.onclick=()=>askIDE({explain:"Explain this file and point out risky code.",fix:"Find correctness bugs and propose a minimal safe fix.",refactor:"Refactor this file for clarity without changing behavior.",tests:"Design focused tests for this file."}[b.dataset.ideAction]));
 $("#ideAsk").onclick=()=>askIDE();$("#idePrompt").onkeydown=e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();askIDE()}};
-$("#ideDebugStart").onclick=ideDebugStart;
+$("#ideDebugStart").onclick=ideDebugStart;$("#ideRunFile")?.addEventListener("click",ideRunFile);
 $("#ideDebugStop").onclick=async()=>{try{if(ideDebugSocket?.readyState===WebSocket.OPEN)await ideDebugRequest("disconnect",{restart:false,terminateDebuggee:true})}catch(e){}ideDebugRunning=false;ideUpdateDebugStatus("Debugger stopped")};
 $("#ideDebugContinue").onclick=()=>ideDebugCommand("continue");$("#ideDebugPause").onclick=()=>ideDebugCommand("pause");$("#ideDebugStepOver").onclick=()=>ideDebugCommand("next");$("#ideDebugStepInto").onclick=()=>ideDebugCommand("stepIn");$("#ideDebugStepOut").onclick=()=>ideDebugCommand("stepOut");
 }
@@ -465,5 +566,5 @@ window.addEventListener("unhandledrejection",e=>{const message=e.reason?.message
 
 document.addEventListener("click",e=>{const b=e.target.closest("[data-copy-message]");if(!b)return;const m=b.closest(".msg")?.querySelector(".bubble");if(!m)return;navigator.clipboard?.writeText(m.innerText).then(()=>{b.textContent="Copied";setTimeout(()=>b.textContent="Copy",1200)}).catch(()=>toast("Copy failed"))});initIDEEvents();
 
-function initGithubContext(){const repo=$("#githubRepoSelect"),branch=$("#githubBranchSelect");if(!repo||!branch)return;repo.addEventListener("change",async()=>{if(repo.value){$("#githubContextRepo").textContent=repo.value;$("#githubContextMeta").textContent="Repository selected. Choose a branch to work from.";await githubBranches(repo.value)}});branch.addEventListener("change",()=>{if(branch.value)$("#githubContextMeta").textContent="Branch "+branch.value+" selected."});$("#githubUseInChat")?.addEventListener("click",()=>{view("chat");const p=$("#prompt");if(p){p.value=(p.value?p.value+"\n\n":"")+"Work with the connected GitHub repository and current branch.";p.focus()}});$("#githubOpenPRContext")?.addEventListener("click",()=>$("#githubCreatePR")?.click())}
+function initGithubContext(){const repo=$("#githubRepoSelect"),branch=$("#githubBranchSelect");if(!repo||!branch)return;repo.addEventListener("change",async()=>{if(repo.value){$("#githubContextRepo").textContent=repo.value;$("#githubContextMeta").textContent="Repository selected. Choose a branch to work from.";await Promise.all([githubBranches(repo.value),githubPRs(),githubActions(),githubIssues()])}else{$("#githubContextRepo").textContent="No repository selected";$("#githubContextMeta").textContent="Choose a repository to browse GitHub data.";$("#githubBranchSelect").innerHTML='<option value="">Branch</option>';await Promise.all([githubPRs(),githubActions(),githubIssues()])}});branch.addEventListener("change",()=>{if(branch.value)$("#githubContextMeta").textContent="Branch "+branch.value+" selected."});$("#githubUseInChat")?.addEventListener("click",()=>{view("chat");const p=$("#prompt");if(p){p.value=(p.value?p.value+"\n\n":"")+"Work with the connected GitHub repository and current branch.";p.focus()}});$("#githubOpenPRContext")?.addEventListener("click",()=>$("#githubCreatePR")?.click())}
 initGithubContext();

@@ -10,13 +10,13 @@ import (
  "io"
  "net/http"
  "os"
- "os/exec"
+	"os/exec"
  "path/filepath"
  "strings"
  "time"
 )
 
-type Client struct{ Token, BaseURL string; HTTP *http.Client }
+type Client struct{ Token, BaseURL string; HTTP *http.Client; DisableCLI bool }
 type Repository struct{ ID int64 `json:"id"`; Name string `json:"name"`; FullName string `json:"full_name"`; Description string `json:"description"`; HTMLURL string `json:"html_url"`; CloneURL string `json:"clone_url"`; SSHURL string `json:"ssh_url"`; DefaultBranch string `json:"default_branch"`; Private bool `json:"private"`; Archived bool `json:"archived"` }
 type Branch struct{Name string `json:"name"`; SHA string `json:"sha"`}
 type PullRequest struct{ Number int `json:"number"`; Title string `json:"title"`; Body string `json:"body"`; State string `json:"state"`; Draft bool `json:"draft"`; HTMLURL string `json:"html_url"`; Head struct{Ref string `json:"ref"`; SHA string `json:"sha"`} `json:"head"`; Base struct{Ref string `json:"ref"`; SHA string `json:"sha"`} `json:"base"`; User struct{Login string `json:"login"`} `json:"user"` }
@@ -28,18 +28,76 @@ type CreateRepositoryRequest struct{Name string `json:"name"`; Description strin
 type CreatePullRequestRequest struct{Title string `json:"title"`; Body string `json:"body,omitempty"`; Head string `json:"head"`; Base string `json:"base"`; Draft bool `json:"draft"`}
 type ReviewRequest struct{Body string `json:"body"`; Event string `json:"event"`}
 
-func New(token string)*Client{return &Client{Token:strings.TrimSpace(token),BaseURL:"https://api.github.com",HTTP:&http.Client{Timeout:30*time.Second}}}
-func(c *Client)Authenticated()bool{return c!=nil&&strings.TrimSpace(c.Token)!=""}
-func(c *Client)do(ctx context.Context,method,path string,body,out any)error{
- if !c.Authenticated(){return errors.New("GitHub is not authenticated; set GITHUB_TOKEN, GH_TOKEN, or run 'aicli github auth set <token>'")}
- var payload []byte; var err error
- if body!=nil{payload,err=json.Marshal(body);if err!=nil{return fmt.Errorf("encode GitHub request: %w",err)}}
- req,err:=http.NewRequestWithContext(ctx,method,strings.TrimRight(c.BaseURL,"/")+path,bytes.NewReader(payload));if err!=nil{return fmt.Errorf("create GitHub request: %w",err)}
- req.Header.Set("Accept","application/vnd.github+json");req.Header.Set("X-GitHub-Api-Version","2022-11-28");req.Header.Set("Authorization","Bearer "+c.Token);if body!=nil{req.Header.Set("Content-Type","application/json")}
- resp,err:=c.HTTP.Do(req);if err!=nil{return fmt.Errorf("GitHub request failed: %w",err)};defer resp.Body.Close()
- data,err:=io.ReadAll(io.LimitReader(resp.Body,8<<20));if err!=nil{return fmt.Errorf("read GitHub response: %w",err)}
- if resp.StatusCode<200||resp.StatusCode>=300{var e struct{Message string `json:"message"`};_ = json.Unmarshal(data,&e);m:=strings.TrimSpace(e.Message);if m==""{m=strings.TrimSpace(string(data))};if resp.StatusCode==401{return errors.New("GitHub authentication failed; check the token and its repository permissions")};if resp.StatusCode==403{return fmt.Errorf("GitHub permission denied: %s",m)};if resp.StatusCode==404{return fmt.Errorf("GitHub resource not found or not accessible: %s",m)};return fmt.Errorf("GitHub API error (%d): %s",resp.StatusCode,m)}
- if out!=nil&&len(data)>0{if err:=json.Unmarshal(data,out);err!=nil{return fmt.Errorf("decode GitHub response: %w",err)}};return nil
+func New(token string) *Client {
+	return &Client{Token: strings.TrimSpace(token), BaseURL: "https://api.github.com", HTTP: &http.Client{Timeout: 30 * time.Second}}
+}
+
+func (c *Client) Authenticated() bool {
+	if c == nil { return false }
+	if strings.TrimSpace(c.Token) != "" { return true }
+	if c.DisableCLI { return false }
+	if _, err := exec.LookPath("gh"); err != nil { return false }
+	return exec.Command("gh", "auth", "status", "--hostname", "github.com").Run() == nil
+}
+
+func (c *Client) do(ctx context.Context, method, path string, body, out any) error {
+	if c == nil { return errors.New("GitHub client is not configured") }
+	var payload []byte
+	var err error
+	if body != nil {
+		payload, err = json.Marshal(body)
+		if err != nil { return fmt.Errorf("encode GitHub request: %w", err) }
+	}
+	if strings.TrimSpace(c.Token) == "" {
+		if c.DisableCLI { return errors.New("GitHub is disconnected; connect an account in the GitHub panel") }
+		if _, err := exec.LookPath("gh"); err != nil {
+			return errors.New("GitHub is not authenticated; run 'aicli github auth login' or set GITHUB_TOKEN")
+		}
+		endpoint := strings.TrimLeft(path, "/")
+		args := []string{"api", "--hostname", "github.com", "--method", method}
+		if len(payload) > 0 { args = append(args, "--input", "-") }
+		args = append(args, endpoint)
+		cmd := exec.CommandContext(ctx, "gh", args...)
+		if len(payload) > 0 { cmd.Stdin = bytes.NewReader(payload) }
+		data, runErr := cmd.Output()
+		if runErr != nil {
+			var exitErr *exec.ExitError
+			if errors.As(runErr, &exitErr) {
+				message := strings.TrimSpace(string(exitErr.Stderr))
+				if message != "" { return fmt.Errorf("GitHub CLI request failed: %s", message) }
+			}
+			return fmt.Errorf("GitHub CLI request failed: %w", runErr)
+		}
+		if out != nil && len(data) > 0 {
+			if err := json.Unmarshal(data, out); err != nil { return fmt.Errorf("decode GitHub response: %w", err) }
+		}
+		return nil
+	}
+	req, err := http.NewRequestWithContext(ctx, method, strings.TrimRight(c.BaseURL, "/")+path, bytes.NewReader(payload))
+	if err != nil { return fmt.Errorf("create GitHub request: %w", err) }
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+	req.Header.Set("Authorization", "Bearer "+c.Token)
+	if body != nil { req.Header.Set("Content-Type", "application/json") }
+	resp, err := c.HTTP.Do(req)
+	if err != nil { return fmt.Errorf("GitHub request failed: %w", err) }
+	defer resp.Body.Close()
+	data, err := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
+	if err != nil { return fmt.Errorf("read GitHub response: %w", err) }
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		var e struct { Message string `json:"message"` }
+		_ = json.Unmarshal(data, &e)
+		m := strings.TrimSpace(e.Message)
+		if m == "" { m = strings.TrimSpace(string(data)) }
+		if resp.StatusCode == 401 { return errors.New("GitHub authentication failed; check the token and its repository permissions") }
+		if resp.StatusCode == 403 { return fmt.Errorf("GitHub permission denied: %s", m) }
+		if resp.StatusCode == 404 { return fmt.Errorf("GitHub resource not found or not accessible: %s", m) }
+		return fmt.Errorf("GitHub API error (%d): %s", resp.StatusCode, m)
+	}
+	if out != nil && len(data) > 0 {
+		if err := json.Unmarshal(data, out); err != nil { return fmt.Errorf("decode GitHub response: %w", err) }
+	}
+	return nil
 }
 func(c *Client)Profile(ctx context.Context)(User,error){var v User;err:=c.do(ctx,http.MethodGet,"/user",nil,&v);return v,err}
 func(c *Client)Repositories(ctx context.Context,page,perPage int)([]Repository,error){if page<1{page=1};if perPage<=0||perPage>100{perPage=100};var v []Repository;err:=c.do(ctx,http.MethodGet,fmt.Sprintf("/user/repos?affiliation=owner,collaborator,organization_member&sort=updated&per_page=%d&page=%d",perPage,page),nil,&v);return v,err}
