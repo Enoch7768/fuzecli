@@ -207,8 +207,10 @@ async function githubStatus(){
     const d=await api("/v1/github/status");
     $("#githubRemote").textContent=d.remote||"No origin";
     const el=$("#githubStatus");
-    if(d.authenticated){el.className="github-status ok";el.textContent="Connected as "+(d.user||"GitHub user");return true}
-    el.className="github-status";el.textContent="Not connected";return false;
+    if(d.authenticated){el.className="github-status ok";el.textContent="Connected as "+(d.user||"GitHub user")+" · "+(d.auth_mode==="token"?"saved token":"GitHub CLI");return true}
+    el.className=d.login_running?"github-status":"github-status";
+    el.textContent=d.login_running?(d.login_message||"Waiting for GitHub sign-in…"):d.auth_mode==="disconnected"?"Disconnected":"Not signed in with GitHub CLI";
+    return false;
   }catch(e){$("#githubStatus").className="github-status error";$("#githubStatus").textContent=e.message;return false}
 }
 function githubSelectedRepo(){return $("#githubRepoSelect")?.value||"";}
@@ -285,25 +287,45 @@ async function save(){try{await api("/v1/config",{method:"POST",body:JSON.string
 document.querySelectorAll(".nav-item").forEach(b=>b.onclick=()=>view(b.dataset.view));$("#runtimeBtn")?.addEventListener("click",()=>view("settings"));
 document.querySelectorAll(".quick-actions button").forEach(b=>b.onclick=()=>{$("#prompt").value=b.dataset.prompt;$("#prompt").focus();$("#prompt").dispatchEvent(new Event("input"))});
 $("#githubRefresh").onclick=loadGithub;
-$("#githubConnect").onclick=async()=>{
-  const input=$("#githubPAT"),button=$("#githubConnect"),token=input.value.trim();
-  if(!token){toast("Paste a GitHub personal access token first");input.focus();return}
-  button.disabled=true;button.textContent="Validating…";
+let githubLoginPoll=null;
+async function pollGitHubLogin(){
+  if(githubLoginPoll)clearTimeout(githubLoginPoll);
   try{
-    const result=await api("/v1/github/auth",{method:"POST",body:JSON.stringify({token})});
-    input.value="";
-    toast("Connected as "+result.login);
-    await loadGithub();
-  }catch(error){
-    input.value="";
-    toast("GitHub connection failed: "+error.message);
-    input.focus();
+    const state=await api("/v1/github/auth/login/status");
+    if(state.running){
+      $("#githubStatus").className="github-status";
+      $("#githubStatus").textContent=state.message||"Waiting for GitHub sign-in…";
+      githubLoginPoll=setTimeout(pollGitHubLogin,1500);
+      return;
+    }
+    await githubStatus();
+    if(state.error)toast(state.error);
+    else if(state.message&&state.message.startsWith("Connected as "))toast(state.message);
+    if(state.error||state.message)await loadGithub();
+  }catch(e){
+    $("#githubStatus").className="github-status error";
+    $("#githubStatus").textContent=e.message;
   }finally{
-    button.disabled=false;button.textContent="Connect with token";
+    const button=$("#githubConnect");
+    if(button){button.disabled=false;button.textContent="Sign in with GitHub CLI"}
+  }
+}
+$("#githubConnect").onclick=async()=>{
+  const button=$("#githubConnect");
+  button.disabled=true;
+  button.textContent="Starting sign-in…";
+  try{
+    const result=await api("/v1/github/auth/login",{method:"POST"});
+    $("#githubStatus").textContent=result.message||"Complete GitHub sign-in in the terminal running FuzeCLI.";
+    toast("Follow the GitHub sign-in flow in the FuzeCLI terminal");
+    pollGitHubLogin();
+  }catch(error){
+    button.disabled=false;
+    button.textContent="Sign in with GitHub CLI";
+    toast("GitHub sign-in failed: "+error.message);
   }
 };
-$("#githubPAT").onkeydown=e=>{if(e.key==="Enter"){e.preventDefault();$("#githubConnect").click()}};
-$("#githubDisconnect").onclick=async()=>{try{await api("/v1/github/auth",{method:"DELETE"});$("#githubPAT").value="";toast("GitHub disconnected");await loadGithub()}catch(e){toast(e.message)}};
+$("#githubDisconnect").onclick=async()=>{try{await api("/v1/github/auth",{method:"DELETE"});toast("GitHub disconnected from Studio");await loadGithub()}catch(e){toast(e.message)}};
 $("#githubPull").onclick=()=>githubSync("pull");$("#githubPush").onclick=()=>githubSync("push");$("#githubRefreshActions").onclick=githubActions;$("#githubLoadComments").onclick=githubLoadComments;
 $("#githubCreateRepo").onclick=async()=>{const name=prompt("Repository name");if(!name)return;const description=prompt("Description (optional)")||"";const privateRepo=confirm("Make this repository private?");try{const d=await api("/v1/github/repo",{method:"POST",body:JSON.stringify({name,description,private:privateRepo,auto_init:false})});toast("Created "+d.repository.full_name);await githubRepos()}catch(e){toast(e.message)}};
 $("#githubCreatePR").onclick=async()=>{const repo=githubSelectedRepo();if(!repo)return toast("Choose a repository first");const head=prompt("Head branch");if(!head)return;const base=prompt("Base branch","main")||"main";const title=prompt("Pull request title");if(!title)return;const body=prompt("Pull request description (optional)")||"";try{const d=await api("/v1/github/prs?repo="+encodeURIComponent(repo),{method:"POST",body:JSON.stringify({head,base,title,body,draft:false})});$("#githubPRNumber").value=d.pull_request.number;toast("Created PR #"+d.pull_request.number);await githubPRs()}catch(e){toast(e.message)}};
