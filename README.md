@@ -120,24 +120,13 @@ aicli config set default_provider gemini
 
 `config show` masks API keys. The web Settings screen can replace or clear a provider key without exposing the stored value back to the browser.
 
-## GitHub sign-in
+## GitHub connection
 
-The Studio GitHub panel uses GitHub OAuth device authorization instead of asking you to paste a Personal Access Token.
+In Studio, open **GitHub** and paste a GitHub personal access token into the password field. FuzeCLI validates the token with GitHub before saving it in the local FuzeCLI configuration. The web UI clears the input after the request and never returns the token to the browser.
 
-1. Create a GitHub OAuth App in GitHub Developer Settings and enable **Device Flow**.
-2. Set its Client ID in the environment before starting FuzeCLI:
+Use a fine-grained token with access to the repositories you need and the required Contents, Pull requests, Issues, Actions, and Metadata permissions. A classic token generally needs the `repo` and `workflow` scopes. Grant only the permissions needed for your workflow, and never paste the token into chat or commit it to a repository.
 
-```powershell
-$env:FUZECLI_GITHUB_CLIENT_ID="YOUR_OAUTH_APP_CLIENT_ID"
-aicli app
-```
-
-3. In Studio, open **GitHub → Connect with GitHub**.
-4. Open the official GitHub device page, enter the one-time code shown in Studio, and approve access.
-
-The OAuth flow requests repository, workflow, and basic profile access for the GitHub features shown in Studio. The resulting access token is stored in FuzeCLI's local config and is cleared when you disconnect. Do not commit the Client ID environment setting or local config file into a repository. The Client ID is public application metadata; never put an OAuth client secret in the browser or embed it in source code.
-
-The command-line workflow remains available through the official GitHub CLI:
+Select **Disconnect** to remove the saved token. The command-line workflow remains available through the official GitHub CLI:
 
 ```powershell
 gh auth login --hostname github.com --web
