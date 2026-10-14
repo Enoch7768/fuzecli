@@ -35,7 +35,7 @@ var runtimePackages = map[string]runtimePackage{
 	"rustc": {"Rustlang.Rustup", "rust", "rustc", "rust", "rust"},
 	"rust (rustc)": {"Rustlang.Rustup", "rust", "rustc", "rust", "rust"},
 	"node.js + tsx": {"OpenJS.NodeJS.LTS", "node", "nodejs", "nodejs", "nodejs"},
-	"c/c++ compiler": {"MSYS2.MSYS2", "gcc", "build-essential", "gcc-c++", "base-devel"},
+	"c/c++ compiler": {"LLVM.LLVM", "llvm", "build-essential", "gcc-c++", "base-devel"},
 	"java": {"EclipseAdoptium.Temurin.21.JDK", "openjdk", "default-jdk", "java-21-openjdk-devel", "jdk-openjdk"},
 	"kotlinc": {"JetBrains.Kotlin.Compiler", "kotlin", "kotlin", "kotlin", "kotlin"},
 	"kotlin compiler + java": {"JetBrains.Kotlin.Compiler", "kotlin", "kotlin", "kotlin", "kotlin"},
