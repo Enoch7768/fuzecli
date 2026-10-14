@@ -437,7 +437,7 @@ func apiKeyCommand(args []string) error {
 
 func githubCommand(args []string) error {
 	if len(args) == 0 || args[0] == "help" || args[0] == "--help" {
-		fmt.Println("Usage: aicli github auth login|set|status|clear")
+		fmt.Println("Usage: aicli github auth login|status|clear")
 		fmt.Println("       aicli github repo list|create|info|clone")
 		fmt.Println("       aicli github pull [remote] [branch]")
 		fmt.Println("       aicli github push [remote] [branch]")
@@ -454,7 +454,7 @@ func githubCommand(args []string) error {
 	defer cancel()
 	switch args[0] {
 	case "auth":
-		if len(args) < 2 { return fmt.Errorf("usage: aicli github auth login|set|status|clear") }
+		if len(args) < 2 { return fmt.Errorf("usage: aicli github auth login|status|clear") }
 		switch args[1] {
 		case "login":
 			if len(args) != 2 { return fmt.Errorf("usage: aicli github auth login") }
@@ -470,11 +470,6 @@ func githubCommand(args []string) error {
 			user, err := client.Profile(ctx)
 			if err != nil { return fmt.Errorf("verify GitHub sign-in: %w", err) }
 			fmt.Printf("GitHub connected as %s.\n", user.Login)
-			return nil
-		case "set":
-			if len(args) != 3 || strings.TrimSpace(args[2]) == "" { return fmt.Errorf("usage: aicli github auth set <token>") }
-			if err := config.SetGitHubToken(args[2]); err != nil { return err }
-			fmt.Println("GitHub token saved locally.")
 			return nil
 		case "clear":
 			if err := config.ClearGitHubToken(); err != nil { return err }
