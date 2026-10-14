@@ -76,13 +76,6 @@ func (m *terminalManager) start(root string) (*terminalSession, error) {
 	m.mu.Lock()
 	m.sessions[id] = s
 	m.mu.Unlock()
-	go func() {
-		_ = cmd.Wait()
-		cancel()
-		m.mu.Lock()
-		delete(m.sessions, id)
-		m.mu.Unlock()
-	}()
 	return s, nil
 }
 
@@ -348,7 +341,15 @@ func (m *terminalManager) handleWS(ws *websocket.Conn, root string) {
 		_ = ws.WriteJSON(map[string]any{"type":"error","message":err.Error()})
 		return
 	}
-	defer m.stop(s.id)
+	var readers sync.WaitGroup
+	defer func() {
+		m.stop(s.id)
+		readers.Wait()
+		_ = s.cmd.Wait()
+		m.mu.Lock()
+		delete(m.sessions, s.id)
+		m.mu.Unlock()
+	}()
 	var writeMu sync.Mutex
 	send := func(v any) {
 		writeMu.Lock()
@@ -357,6 +358,7 @@ func (m *terminalManager) handleWS(ws *websocket.Conn, root string) {
 	}
 	send(map[string]any{"type":"ready","session":s.id,"cwd":root,"shell":runtime.GOOS})
 	copyOutput := func(stream string, reader io.Reader) {
+		defer readers.Done()
 		buf := make([]byte, 32<<10)
 		for {
 			n, readErr := reader.Read(buf)
@@ -368,8 +370,10 @@ func (m *terminalManager) handleWS(ws *websocket.Conn, root string) {
 			}
 		}
 	}
+	readers.Add(2)
 	go copyOutput("stdout", s.stdout)
 	go copyOutput("stderr", s.stderr)
+	go func() { readers.Wait(); _ = ws.Close() }()
 	for {
 		var msg struct {
 			Type string `json:"type"`
