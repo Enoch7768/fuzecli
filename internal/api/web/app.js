@@ -290,13 +290,14 @@ $("#githubRefresh").onclick=loadGithub;
 let githubLoginPoll=null;
 async function pollGitHubLogin(){
   if(githubLoginPoll)clearTimeout(githubLoginPoll);
-  const button=$("#githubConnect");
+  const button=$("#githubConnect"),disconnect=$("#githubDisconnect");
   try{
     const state=await api("/v1/github/auth/login/status");
     if(state.running){
       $("#githubStatus").className="github-status";
       $("#githubStatus").textContent=state.message||"Waiting for GitHub sign-in…";
       if(button){button.disabled=true;button.textContent="Waiting for GitHub…"}
+      if(disconnect)disconnect.disabled=true;
       githubLoginPoll=setTimeout(pollGitHubLogin,1500);
       return;
     }
@@ -305,15 +306,18 @@ async function pollGitHubLogin(){
     else if(state.message&&state.message.startsWith("Connected as "))toast(state.message);
     if(state.error||state.message)await loadGithub();
     if(button){button.disabled=false;button.textContent="Sign in with GitHub CLI"}
+    if(disconnect)disconnect.disabled=false;
   }catch(e){
     $("#githubStatus").className="github-status error";
     $("#githubStatus").textContent=e.message;
     if(button){button.disabled=false;button.textContent="Sign in with GitHub CLI"}
+    if(disconnect)disconnect.disabled=false;
   }
 }
 $("#githubConnect").onclick=async()=>{
   const button=$("#githubConnect");
   button.disabled=true;
+  $("#githubDisconnect").disabled=true;
   button.textContent="Starting sign-in…";
   try{
     const result=await api("/v1/github/auth/login",{method:"POST"});
@@ -322,6 +326,7 @@ $("#githubConnect").onclick=async()=>{
     pollGitHubLogin();
   }catch(error){
     button.disabled=false;
+    $("#githubDisconnect").disabled=false;
     button.textContent="Sign in with GitHub CLI";
     toast("GitHub sign-in failed: "+error.message);
   }
