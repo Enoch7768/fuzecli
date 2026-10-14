@@ -209,10 +209,18 @@ func (s *Server) githubAuth(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed; use the GitHub CLI sign-in button")
 		return
 	}
+	s.githubAuthMu.Lock()
+	defer s.githubAuthMu.Unlock()
+	if s.githubAuthRunning {
+		writeError(w, http.StatusConflict, "wait for GitHub sign-in to finish before disconnecting")
+		return
+	}
 	if err := config.DisconnectGitHub(); err != nil {
 		writeError(w, http.StatusInternalServerError, "could not disconnect GitHub in FuzeCLI")
 		return
 	}
+	s.githubAuthMessage = "GitHub disconnected from Studio."
+	s.githubAuthError = ""
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
