@@ -537,7 +537,77 @@ async function ideDebugCommand(command,args={}){try{if(!ideDebugSocket||ideDebug
 async function ideDebugStack(threadId){try{const d=await ideDebugRequest("stackTrace",{threadId:threadId||1,startFrame:0,levels:50});const frames=d.body?.stackFrames||[];$("#ideDebugFrames").innerHTML=frames.map(f=>'<button class="ide-debug-frame" data-line="'+f.line+'"><span>'+esc(f.name||"frame")+'</span><small>'+esc(f.source?.path||"")+" :"+String(f.line||"")+"</small></button>").join("")||"<span>No stack frames.</span>";$("#ideDebugFrames").onclick=e=>{const b=e.target.closest("[data-line]");if(b&&ideEditor){ideEditor.revealLineInCenter(Number(b.dataset.line));ideEditor.setPosition({lineNumber:Number(b.dataset.line),column:1});ideEditor.focus()}};const top=frames[0];if(top?.id){ideDebugFrameId=top.id;try{const scopes=await ideDebugRequest("scopes",{frameId:top.id});const scope=(scopes.body?.scopes||[]).find(x=>x.variablesReference);if(scope){const vars=await ideDebugRequest("variables",{variablesReference:scope.variablesReference});const values=(vars.body?.variables||[]).slice(0,80);$("#ideBottomBody").insertAdjacentHTML("beforeend",'<div class="ide-debug-vars"><div class="ide-panel-subhead">LOCALS</div>'+values.map(v=>'<div class="ide-debug-var"><b>'+esc(v.name||"")+'</b><span>'+esc(v.value||v.type||"")+'</span></div>').join("")+"</div>")}}catch(_){}}}catch(e){$("#ideBottomBody").insertAdjacentText("beforeend","\nUnable to read debugger stack: "+e.message+"\n")}}
 function ideToggleBreakpoint(line){if(!ideEditor||!ideActive)return;const key=ideActive+":"+line;window.__fuzeBreakpoints??=new Map();const bp=window.__fuzeBreakpoints;if(bp.has(key)){const item=bp.get(key);bp.delete(key);if(item.dec)ideEditor.deltaDecorations(item.dec,[])}else{const dec=ideEditor.deltaDecorations([],[{range:new monaco.Range(line,1,line,1),options:{isWholeLine:false,glyphMarginClassName:"ide-breakpoint"}}]);bp.set(key,{line,dec})}if(ideDebugSocket?.readyState===WebSocket.OPEN)ideSendBreakpoints().catch(()=>{})}
 let ideTerminalSocket=null,ideTerminalConnectPromise=null;
-function ideAppendTerminalOutput(value){const out=$("#ideTerminalOutput");if(!out)return;const text=String(value||"").replace(/\u001b\[[0-?]*[ -/]*[@-~]/g,"");out.append(document.createTextNode(text));if(out.textContent.length>180000)out.textContent=out.textContent.slice(-140000);out.scrollTop=out.scrollHeight}
+const ideTerminalPalette=["#202124","#f28b82","#81c995","#fdd663","#8ab4f8","#c58af9","#78d9ec","#e8eaed","#5f6368","#f28b82","#81c995","#fdd663","#8ab4f8","#c58af9","#78d9ec","#ffffff"];
+let ideTerminalAnsi={fg:"",bg:"",bold:false,dim:false,italic:false,underline:false,inverse:false,strike:false},ideTerminalEscapeBuffer="";
+function ideTerminalColor(code){
+  if(code>=0&&code<16)return ideTerminalPalette[code];
+  if(code>=232&&code<=255){const n=8+(code-232)*10;return "rgb("+n+","+n+","+n+")"}
+  if(code>=16&&code<=231){const n=code-16,levels=[0,95,135,175,215,255];return "rgb("+levels[Math.floor(n/36)]+","+levels[Math.floor(n/6)%6]+","+levels[n%6]+")"}
+  return "";
+}
+function ideTerminalSetSGR(values){
+  const codes=values.length?values:[0];
+  for(let i=0;i<codes.length;i++){
+    const code=codes[i];
+    if(code===0)ideTerminalAnsi={fg:"",bg:"",bold:false,dim:false,italic:false,underline:false,inverse:false,strike:false};
+    else if(code===1)ideTerminalAnsi.bold=true;
+    else if(code===2)ideTerminalAnsi.dim=true;
+    else if(code===3)ideTerminalAnsi.italic=true;
+    else if(code===4)ideTerminalAnsi.underline=true;
+    else if(code===7)ideTerminalAnsi.inverse=true;
+    else if(code===9)ideTerminalAnsi.strike=true;
+    else if(code===22){ideTerminalAnsi.bold=false;ideTerminalAnsi.dim=false}
+    else if(code===23)ideTerminalAnsi.italic=false;
+    else if(code===24)ideTerminalAnsi.underline=false;
+    else if(code===27)ideTerminalAnsi.inverse=false;
+    else if(code===29)ideTerminalAnsi.strike=false;
+    else if(code>=30&&code<=37)ideTerminalAnsi.fg=ideTerminalColor(code-30);
+    else if(code===39)ideTerminalAnsi.fg="";
+    else if(code>=40&&code<=47)ideTerminalAnsi.bg=ideTerminalColor(code-40);
+    else if(code===49)ideTerminalAnsi.bg="";
+    else if(code>=90&&code<=97)ideTerminalAnsi.fg=ideTerminalColor(code-90+8);
+    else if(code>=100&&code<=107)ideTerminalAnsi.bg=ideTerminalColor(code-100+8);
+    else if((code===38||code===48)&&codes[i+1]===5&&codes.length>i+2){
+      const color=ideTerminalColor(codes[i+2]);
+      if(code===38)ideTerminalAnsi.fg=color;else ideTerminalAnsi.bg=color;
+      i+=2;
+    }else if((code===38||code===48)&&codes[i+1]===2&&codes.length>i+4){
+      const color="rgb("+codes[i+2]+","+codes[i+3]+","+codes[i+4]+")";
+      if(code===38)ideTerminalAnsi.fg=color;else ideTerminalAnsi.bg=color;
+      i+=4;
+    }
+  }
+}
+function ideTerminalAppendText(out,value){
+  if(!value)return;
+  const style=ideTerminalAnsi,span=document.createElement("span");
+  span.textContent=value;
+  if(style.fg)span.style.color=style.fg;
+  if(style.bg)span.style.backgroundColor=style.bg;
+  if(style.bold)span.style.fontWeight="700";
+  if(style.dim)span.style.opacity=".65";
+  if(style.italic)span.style.fontStyle="italic";
+  if(style.underline)span.style.textDecoration="underline";
+  if(style.strike)span.style.textDecoration=style.underline?"underline line-through":"line-through";
+  if(style.inverse){span.style.color=style.bg||"#080b10";span.style.backgroundColor=style.fg||"#e8eaed"}
+  out.appendChild(span);
+}
+function ideAppendTerminalOutput(value){
+  const out=$("#ideTerminalOutput");if(!out)return;
+  let source=ideTerminalEscapeBuffer+String(value||"");ideTerminalEscapeBuffer="";
+  const escapeAt=source.lastIndexOf("\u001b[");
+  if(escapeAt>=0&&!/^\u001b\[[0-?]*[ -/]*[@-~]/.test(source.slice(escapeAt))){ideTerminalEscapeBuffer=source.slice(escapeAt);source=source.slice(0,escapeAt)}
+  const sgr=/\u001b\[([0-9;]*)m/g;let cursor=0,match;
+  while((match=sgr.exec(source))!==null){
+    ideTerminalAppendText(out,source.slice(cursor,match.index));
+    ideTerminalSetSGR(match[1].split(";").filter(Boolean).map(Number));
+    cursor=sgr.lastIndex;
+  }
+  let remainder=source.slice(cursor).replace(/\u001b\][^\u0007]*(?:\u0007|\u001b\\)/g,"").replace(/\u001b\[[0-?]*[ -/]*[@-~]/g,"").replace(/\u001b[@-_]/g,"");
+  ideTerminalAppendText(out,remainder);
+  if(out.textContent.length>180000)out.textContent=out.textContent.slice(-140000);
+  out.scrollTop=out.scrollHeight;
+}
 let ideTerminalHistory=[],ideTerminalHistoryIndex=0;
 function ideTerminalConnect(){if(ideTerminalSocket?.readyState===WebSocket.OPEN)return Promise.resolve();if(ideTerminalConnectPromise)return ideTerminalConnectPromise;ideBottom("terminal");const proto=location.protocol==="https:"?"wss":"ws";const ws=new WebSocket(proto+"://"+location.host+"/v1/terminal");ideTerminalSocket=ws;const box=$("#ideBottomBody");ideTerminalConnectPromise=new Promise((resolve,reject)=>{let settled=false;const timer=setTimeout(()=>{if(!settled){settled=true;try{ws.close()}catch(e){}ideTerminalConnectPromise=null;reject(Error("Terminal connection timed out"))}},8000);ws.onopen=()=>{if(settled)return;settled=true;clearTimeout(timer);ideTerminalConnectPromise=null;ideAppendTerminalOutput("Terminal connected · "+(cfg?.workspace||"workspace")+"\n");const terminalInput=$("#ideTerminalInput");if(terminalInput){terminalInput.disabled=false;terminalInput.placeholder="Type a command and press Enter…";terminalInput.focus()}resolve()};ws.onmessage=e=>{try{const d=JSON.parse(e.data);if(d.type==="output"){ideAppendTerminalOutput(d.data||"")}else if(d.type==="ready"){ideAppendTerminalOutput("Shell ready\n")}else if(d.type==="error"){ideAppendTerminalOutput("Terminal error: "+(d.message||"unknown error")+"\n");toast(d.message||"Terminal error")}}catch(err){toast("Terminal message error: "+err.message)}};ws.onerror=()=>{if(!settled){settled=true;clearTimeout(timer);ideTerminalConnectPromise=null;reject(Error("Terminal connection failed"))}toast("Terminal connection failed")};ws.onclose=()=>{if(ideTerminalSocket===ws)ideTerminalSocket=null;ideTerminalConnectPromise=null;const input=$("#ideTerminalInput");if(input){input.disabled=false;input.placeholder="Terminal disconnected — press Enter to reconnect"}}});return ideTerminalConnectPromise}
 async function ideTerminalInput(value){if(!value)return;try{await ideTerminalConnect();if(ideTerminalSocket?.readyState===WebSocket.OPEN)ideTerminalSocket.send(JSON.stringify({type:"input",data:value}))}catch(e){toast(e.message)}}
