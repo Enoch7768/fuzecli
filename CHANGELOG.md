@@ -1,5 +1,12 @@
 ## Unreleased
 
+- Replaced the Studio GitHub PAT form with official GitHub CLI browser sign-in.
+- Added observable sign-in progress and explicit Studio disconnect behavior.
+- Removed the standalone OAuth device-flow endpoints and PAT submission endpoint.
+- Separated clearing a saved legacy token from explicitly disconnecting GitHub, so CLI sign-in can be used without stale configuration blocking it.
+
+## Unreleased
+
 ### Production hardening
 
 - Documented the current multi-provider and local-provider architecture.
