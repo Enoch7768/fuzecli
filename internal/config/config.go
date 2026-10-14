@@ -218,6 +218,9 @@ func GitHubToken() (string, error) {
 	if c.GitHub.TokenConfigured {
 		return strings.TrimSpace(c.GitHub.Token), nil
 	}
+	if token := strings.TrimSpace(c.GitHub.Token); token != "" {
+		return token, nil
+	}
 	return "", nil
 }
 
