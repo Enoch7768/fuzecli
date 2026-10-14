@@ -33,11 +33,21 @@ func New(token string) *Client {
 }
 
 func (c *Client) Authenticated() bool {
-	if c == nil { return false }
-	if strings.TrimSpace(c.Token) != "" { return true }
-	if c.DisableCLI { return false }
-	if _, err := exec.LookPath("gh"); err != nil { return false }
-	return exec.Command("gh", "auth", "status", "--hostname", "github.com").Run() == nil
+	if c == nil {
+		return false
+	}
+	if strings.TrimSpace(c.Token) != "" {
+		return true
+	}
+	if c.DisableCLI {
+		return false
+	}
+	if _, err := exec.LookPath("gh"); err != nil {
+		return false
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	return exec.CommandContext(ctx, "gh", "auth", "status", "--hostname", "github.com").Run() == nil
 }
 
 func (c *Client) do(ctx context.Context, method, path string, body, out any) error {
