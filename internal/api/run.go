@@ -166,8 +166,11 @@ func temporaryBuildDirectory(args []string) string {
 	}
 	dir := filepath.Dir(output)
 	if requiredPrefix != "" {
-		if isFuzeTemporaryDirectory(dir, requiredPrefix) { return dir }
-		return ""
+		if !isFuzeTemporaryDirectory(dir, requiredPrefix) { return "" }
+		if requiredPrefix == "fuzecli-csharp-" {
+			if _, err := os.Stat(filepath.Join(dir, ".fuzecli-generated")); err != nil { return "" }
+		}
+		return dir
 	}
 	if isFuzeTemporaryDirectory(dir, "fuzecli-rust-") || isFuzeTemporaryDirectory(dir, "fuzecli-native-") || isFuzeTemporaryDirectory(dir, "fuzecli-compile-") { return dir }
 	return ""
@@ -264,6 +267,7 @@ func runSpec(root, source, ext string) (string, []string, string, func() (*exec.
 		if err := os.WriteFile(program, data, 0600); err != nil { _ = os.RemoveAll(tmp); return "", nil, "", nil, fmt.Errorf("prepare C# source: %w", err) }
 		projectData := []byte("<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net8.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable></PropertyGroup></Project>")
 		if err := os.WriteFile(project, projectData, 0600); err != nil { _ = os.RemoveAll(tmp); return "", nil, "", nil, fmt.Errorf("prepare C# project: %w", err) }
+		if err := os.WriteFile(filepath.Join(tmp, ".fuzecli-generated"), []byte("temporary standalone C# project"), 0600); err != nil { _ = os.RemoveAll(tmp); return "", nil, "", nil, fmt.Errorf("mark temporary C# project: %w", err) }
 		return noBuild("dotnet", "run", "--project", project, "--no-launch-profile")
 	case ".rb":
 		return noBuild("ruby", source)
