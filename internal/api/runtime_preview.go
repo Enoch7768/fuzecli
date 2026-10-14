@@ -117,11 +117,8 @@ func detectRuntime(root, requested string) (string, error) {
 			return "python", nil
 		}
 	}
-	if _, err := os.Stat(filepath.Join(root, "app.py")); err == nil {
-		return "python", nil
-	}
-	if _, err := os.Stat(filepath.Join(root, "main.py")); err == nil {
-		return "python", nil
+	for _, entry := range []string{"app.py", "main.py", "server.py"} {
+		if _, err := os.Stat(filepath.Join(root, entry)); err == nil { return "python", nil }
 	}
 	foundPHP := false
 	_ = filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
@@ -186,6 +183,7 @@ func runtimeCommand(root, kind string, port int) (string, []string, []string, er
 		}
 		entry := "app.py"
 		if _, err := os.Stat(filepath.Join(root, entry)); err != nil { entry = "main.py" }
+		if _, err := os.Stat(filepath.Join(root, entry)); err != nil { entry = "server.py" }
 		if strings.Contains(lower, "fastapi") || strings.Contains(lower, "uvicorn") {
 			module := strings.TrimSuffix(filepath.Base(entry), filepath.Ext(entry)) + ":app"
 			return pythonExecutable(), []string{"-m", "uvicorn", module, "--host", "127.0.0.1", "--port", fmt.Sprint(port)}, []string{"HOST=127.0.0.1", "PORT=" + fmt.Sprint(port)}, nil
@@ -195,7 +193,14 @@ func runtimeCommand(root, kind string, port int) (string, []string, []string, er
 		}
 		if data, err := os.ReadFile(filepath.Join(root, entry)); err == nil {
 			lowerSource := strings.ToLower(string(data))
-			if strings.Contains(lowerSource, "uvicorn.run(") || strings.Contains(lowerSource, "app.run(") || strings.Contains(lowerSource, "http.server") {
+			if strings.Contains(lowerSource, "fastapi(") || strings.Contains(lowerSource, "uvicorn.run(") {
+				module := strings.TrimSuffix(filepath.Base(entry), filepath.Ext(entry)) + ":app"
+				return pythonExecutable(), []string{"-m", "uvicorn", module, "--host", "127.0.0.1", "--port", fmt.Sprint(port)}, []string{"HOST=127.0.0.1", "PORT=" + fmt.Sprint(port)}, nil
+			}
+			if strings.Contains(lowerSource, "flask(") || strings.Contains(lowerSource, "app.run(") || strings.Contains(lowerSource, "from flask import") {
+				return pythonExecutable(), []string{"-m", "flask", "--app", entry, "run", "--host", "127.0.0.1", "--port", fmt.Sprint(port)}, []string{"FLASK_RUN_HOST=127.0.0.1", "FLASK_RUN_PORT=" + fmt.Sprint(port), "HOST=127.0.0.1", "PORT=" + fmt.Sprint(port)}, nil
+			}
+			if strings.Contains(lowerSource, "http.server") {
 				return pythonExecutable(), []string{entry}, []string{"HOST=127.0.0.1", "PORT=" + fmt.Sprint(port)}, nil
 			}
 		}
