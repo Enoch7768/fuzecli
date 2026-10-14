@@ -202,8 +202,53 @@ async function save(){try{await api("/v1/config",{method:"POST",body:JSON.string
 document.querySelectorAll(".nav-item").forEach(b=>b.onclick=()=>view(b.dataset.view));$("#runtimeBtn")?.addEventListener("click",()=>view("settings"));
 document.querySelectorAll(".quick-actions button").forEach(b=>b.onclick=()=>{$("#prompt").value=b.dataset.prompt;$("#prompt").focus();$("#prompt").dispatchEvent(new Event("input"))});
 $("#githubRefresh").onclick=loadGithub;
-$("#githubConnect").onclick=async()=>{const token=$("#githubToken").value.trim();if(!token)return toast("Enter a GitHub token");try{const d=await api("/v1/github/auth",{method:"POST",body:JSON.stringify({token})});$("#githubToken").value="";toast("Connected as "+d.login);await loadGithub()}catch(e){toast("GitHub connection failed: "+e.message)}};
-$("#githubDisconnect").onclick=async()=>{try{await api("/v1/github/auth",{method:"DELETE"});toast("GitHub disconnected");await loadGithub()}catch(e){toast(e.message)}};
+let githubAuthCancelled=false;
+let githubAuthTask=null;
+const githubAuthDelay=ms=>new Promise(resolve=>window.setTimeout(resolve,ms));
+$("#githubConnect").onclick=async()=>{
+  if(githubAuthTask)return;
+  githubAuthCancelled=false;
+  const flow=$("#githubOAuthFlow"),status=$("#githubOAuthStatus"),code=$("#githubDeviceCode"),link=$("#githubAuthorizeLink");
+  $("#githubConnect").disabled=true;
+  status.textContent="Starting secure GitHub authorization…";
+  flow.hidden=false;code.textContent="";
+  try{
+    const start=await api("/v1/github/auth/device/start",{method:"POST",body:"{}"});
+    code.textContent=start.user_code;
+    link.href=start.verification_uri||"https://github.com/login/device";
+    status.textContent="Open GitHub, enter the code above, and approve FuzeCLI. Keep this window open.";
+    githubAuthTask=(async()=>{
+      const deadline=Date.now()+Math.max(60,start.expires_in||900)*1000;
+      let interval=Math.max(3,start.interval||5)*1000;
+      while(!githubAuthCancelled&&Date.now()<deadline){
+        await githubAuthDelay(interval);
+        if(githubAuthCancelled)return;
+        try{
+          const result=await api("/v1/github/auth/device/poll",{method:"POST",body:JSON.stringify({device_code:start.device_code})});
+          if(result.pending){if(result.slow_down)interval=Math.max(interval,10000);continue}
+          if(result.ok){
+            flow.hidden=true;code.textContent="";status.textContent="";
+            toast("Connected as "+result.login);
+            await loadGithub();
+            return;
+          }
+        }catch(error){
+          if(error.status===202)continue;
+          throw error;
+        }
+      }
+      if(!githubAuthCancelled)status.textContent="Authorization expired. Select Connect with GitHub to try again.";
+    })();
+    await githubAuthTask;
+  }catch(e){
+    if(!githubAuthCancelled){status.textContent="GitHub authorization failed: "+e.message;toast(status.textContent)}
+  }finally{
+    githubAuthTask=null;
+    $("#githubConnect").disabled=false;
+  }
+};
+$("#githubCancelAuth").onclick=()=>{githubAuthCancelled=true;$("#githubOAuthStatus").textContent="Authorization cancelled.";$("#githubOAuthFlow").hidden=true;$("#githubConnect").disabled=false};
+$("#githubDisconnect").onclick=async()=>{githubAuthCancelled=true;try{await api("/v1/github/auth",{method:"DELETE"});$("#githubOAuthFlow").hidden=true;toast("GitHub disconnected");await loadGithub()}catch(e){toast(e.message)}};
 $("#githubPull").onclick=()=>githubSync("pull");$("#githubPush").onclick=()=>githubSync("push");$("#githubRefreshActions").onclick=githubActions;$("#githubLoadComments").onclick=githubLoadComments;
 $("#githubCreateRepo").onclick=async()=>{const name=prompt("Repository name");if(!name)return;const description=prompt("Description (optional)")||"";const privateRepo=confirm("Make this repository private?");try{const d=await api("/v1/github/repo",{method:"POST",body:JSON.stringify({name,description,private:privateRepo,auto_init:false})});toast("Created "+d.repository.full_name);await githubRepos()}catch(e){toast(e.message)}};
 $("#githubCreatePR").onclick=async()=>{const repo=githubSelectedRepo();if(!repo)return toast("Choose a repository first");const head=prompt("Head branch");if(!head)return;const base=prompt("Base branch","main")||"main";const title=prompt("Pull request title");if(!title)return;const body=prompt("Pull request description (optional)")||"";try{const d=await api("/v1/github/prs?repo="+encodeURIComponent(repo),{method:"POST",body:JSON.stringify({head,base,title,body,draft:false})});$("#githubPRNumber").value=d.pull_request.number;toast("Created PR #"+d.pull_request.number);await githubPRs()}catch(e){toast(e.message)}};
