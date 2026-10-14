@@ -40,6 +40,10 @@ func TestRunSpecRecognizesCommonLanguages(t *testing.T) {
 		{".cr", "crystal"},
 		{".rkt", "racket"},
 		{".fsx", "dotnet"},
+		{".m", "octave"},
+		{".ml", "ocaml"},
+		{".erl", "erlang"},
+		{".cob", "COBOL compiler"},
 	}
 	for _, test := range tests {
 		t.Run(test.extension, func(t *testing.T) {

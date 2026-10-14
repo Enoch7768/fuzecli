@@ -187,6 +187,36 @@ type debugAdapterSpec struct {
 	Setup string
 }
 
+type debugAdapterMissingError struct {
+	Language string
+	Command string
+	Runtime string
+	Details string
+}
+
+func (e *debugAdapterMissingError) Error() string {
+	message := fmt.Sprintf("%s debugger requires %q, which is not installed or not on PATH", e.Language, e.Command)
+	if e.Details != "" { message += ": " + e.Details }
+	return message
+}
+
+func goDebuggerPath() string {
+	if path, err := exec.LookPath("dlv"); err == nil { return path }
+	goBin := strings.TrimSpace(os.Getenv("GOBIN"))
+	if goBin == "" {
+		output, err := exec.Command("go", "env", "GOPATH").Output()
+		if err != nil { return "" }
+		paths := strings.Split(strings.TrimSpace(string(output)), string(os.PathListSeparator))
+		if len(paths) == 0 || strings.TrimSpace(paths[0]) == "" { return "" }
+		goBin = filepath.Join(paths[0], "bin")
+	}
+	name := "dlv"
+	if runtime.GOOS == "windows" { name += ".exe" }
+	path := filepath.Join(goBin, name)
+	if info, err := os.Stat(path); err == nil && !info.IsDir() { return path }
+	return ""
+}
+
 func debugAdapterForLanguage(language string) (debugAdapterSpec, error) {
 	lang := strings.ToLower(strings.TrimSpace(language))
 	envName := "FUZECLI_DEBUG_ADAPTER_" + strings.ToUpper(strings.ReplaceAll(lang, "-", "_"))
@@ -222,8 +252,28 @@ func debugAdapterForLanguage(language string) (debugAdapterSpec, error) {
 	}
 	spec, ok := profiles[lang]
 	if !ok { return debugAdapterSpec{}, fmt.Errorf("no debugger profile configured for %s", language) }
-	if _, err := exec.LookPath(spec.Command); err != nil {
-		return debugAdapterSpec{}, fmt.Errorf("%s debugger is configured but %q is not installed or not on PATH", language, spec.Command)
+	if lang == "python" {
+		spec.Command = pythonExecutable()
+		if _, err := exec.LookPath(spec.Command); err == nil {
+			check := exec.Command(spec.Command, "-c", "import debugpy")
+			if output, err := check.CombinedOutput(); err != nil {
+				return debugAdapterSpec{}, &debugAdapterMissingError{Language: language, Command: "debugpy", Runtime: "python-debugger", Details: strings.TrimSpace(string(output))}
+			}
+		} else {
+			return debugAdapterSpec{}, &debugAdapterMissingError{Language: language, Command: spec.Command, Runtime: "python"}
+		}
+	}
+	if lang == "go" {
+		if _, err := exec.LookPath("go"); err != nil {
+			return debugAdapterSpec{}, &debugAdapterMissingError{Language: language, Command: "go", Runtime: "go"}
+		}
+		if path := goDebuggerPath(); path != "" { spec.Command = path } else {
+			return debugAdapterSpec{}, &debugAdapterMissingError{Language: language, Command: "dlv", Runtime: "go-debugger"}
+		}
+	} else if lang != "python" {
+		if _, err := exec.LookPath(spec.Command); err != nil {
+			return debugAdapterSpec{}, &debugAdapterMissingError{Language: language, Command: spec.Command}
+		}
 	}
 	return spec, nil
 }

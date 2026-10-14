@@ -155,6 +155,8 @@ func temporaryBuildDirectory(args []string) string {
 	}
 	var output, requiredPrefix string
 	switch {
+	case len(args) >= 4 && args[0] == "-x" && args[1] == "-o":
+		output, requiredPrefix = args[2], "fuzecli-cobol-"
 	case len(args) >= 3 && args[1] == "-o":
 		output = args[2]
 	case len(args) >= 4 && args[1] == "-include-runtime" && args[2] == "-d":
@@ -273,6 +275,20 @@ func runSpec(root, source, ext string) (string, []string, string, func() (*exec.
 		return noBuild("ruby", source)
 	case ".fsx":
 		return noBuild("dotnet", "fsi", source)
+	case ".m":
+		return noBuild("octave", "--quiet", source)
+	case ".ml":
+		return noBuild("ocaml", source)
+	case ".erl":
+		return "escript", []string{source}, "erlang", nil, nil
+	case ".cob", ".cbl":
+		tmp, err := os.MkdirTemp("", "fuzecli-cobol-*")
+		if err != nil { return "", nil, "", nil, err }
+		bin := filepath.Join(tmp, strings.TrimSuffix(filepath.Base(source), filepath.Ext(source)))
+		if runtime.GOOS == "windows" { bin += ".exe" }
+		args := []string{"-x", "-o", bin, source}
+		build := func() (*exec.Cmd, []string) { return exec.Command("cobc", args...), []string{bin} }
+		return "cobc", args, "COBOL compiler", build, nil
 	case ".f", ".for", ".f90", ".f95", ".f03", ".f08":
 		return compiledSpec(root, source, "gfortran", "Fortran compiler", "-o")
 	case ".pas", ".pp":
