@@ -170,26 +170,6 @@ async function runRuntimePreview(){
     toast(e.message);
   }finally{button.disabled=false}
 }
-  const button=$("#runRuntimePreview");
-  try{
-    button.disabled=true;
-    $("#previewStatus").textContent="Starting local runtime…";
-    const runtime=$("#runtimeSelect").value;
-    const d=await api("/v1/preview/runtime?runtime="+encodeURIComponent(runtime),{method:"POST",timeoutMs:150000});
-    runtimePreviewActive=true;
-    $("#sitePreview").sandbox="allow-scripts allow-forms";
-    let page="";
-    if(d.kind==="php"&&/\.php$/i.test(currentPreview||""))page=String(currentPreview).replace(/\\/g,"/").replace(/^public\//i,"").replace(/^\/+/,"");
-    $("#sitePreview").src=d.url+(page?encodeURI(page):"")+"?fuzecli="+Date.now();
-    $("#previewStatus").textContent=d.kind==="php"?"Live PHP preview · edit source in Code":"Live "+d.kind+" runtime · "+d.url;
-    $("#builderSaveState").textContent="Runtime preview";
-    toast(d.kind.toUpperCase()+" preview running");
-  }catch(e){
-    runtimePreviewActive=false;
-    $("#previewStatus").textContent="Runtime preview unavailable";
-    toast(e.message);
-  }finally{button.disabled=false}
-}
 function refreshRuntimePreview(){if(!runtimePreviewActive)return;const frame=$("#sitePreview");if(frame?.src)frame.src=frame.src.split("?")[0]+"?fuzecli="+Date.now()}
 function openSite(file=currentPreview){if(!file)return;if(runtimePreviewActive){api("/v1/preview/runtime",{method:"DELETE"}).catch(()=>{});runtimePreviewActive=false}currentPreview=file;selected=null;previewHTML="";$("#applyInspector").textContent="Apply live";$("#requestSavePreview").style.display="block";$("#sitePreview").sandbox="allow-scripts allow-forms";$("#inspectorForm").hidden=true;$("#inspectorEmpty").hidden=false;$("#selectedPath").textContent="Nothing selected";$("#sitePreview").src="/preview/"+encodeURI(file)+"?t="+Date.now();document.querySelectorAll(".builder-files .file-row").forEach(e=>e.classList.toggle("selected",decodeURIComponent(e.dataset.file)===file))}
 async function editRawFile(file){try{const d=await api("/v1/file?path="+encodeURIComponent(file));$("#selectedPath").textContent=file;$("#inspectorEmpty").hidden=true;$("#inspectorForm").hidden=false;$("#selectedTag").textContent="SOURCE FILE";$("#editText").value=d.content;selected={source:"file",path:file};$("#applyInspector").textContent="Save file";$("#requestSavePreview").style.display="none";toast(file+" opened for editing")}catch(e){toast(e.message)}}
