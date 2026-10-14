@@ -52,6 +52,16 @@ var runtimePackages = map[string]runtimePackage{
 	"scala": {"Scala.Scala", "scala", "scala", "scala", "scala"},
 	"powershell": {"Microsoft.PowerShell", "powershell", "powershell", "powershell", "powershell"},
 	"bash": {"Git.Git", "bash", "bash", "bash", "bash"},
+	"fortran compiler": {"", "gcc", "gfortran", "gcc-gfortran", "gcc-fortran"},
+	"pascal compiler": {"", "fpc", "fpc", "fpc", "fpc"},
+	"d compiler": {"Dlang.DMD", "dmd", "gdc", "gdc", "dmd"},
+	"dmd": {"Dlang.DMD", "dmd", "gdc", "gdc", "dmd"},
+	"zig": {"", "zig", "zig", "zig", "zig"},
+	"nim": {"", "nim", "nim", "nim", "nim"},
+	"clojure": {"", "clojure", "clojure", "clojure", "clojure"},
+	"groovy": {"", "groovy", "groovy", "groovy", "groovy"},
+	"crystal": {"", "crystal", "crystal", "crystal", "crystal"},
+	"racket": {"", "racket", "racket", "racket", "racket"},
 }
 
 func (s *Server) installRuntime(w http.ResponseWriter, r *http.Request) {
