@@ -253,6 +253,7 @@ func debugAdapterForLanguage(language string) (debugAdapterSpec, error) {
 	spec, ok := profiles[lang]
 	if !ok { return debugAdapterSpec{}, fmt.Errorf("no debugger profile configured for %s", language) }
 	if lang == "python" {
+		spec.Command = pythonExecutable()
 		if _, err := exec.LookPath(spec.Command); err == nil {
 			check := exec.Command(spec.Command, "-c", "import debugpy")
 			if output, err := check.CombinedOutput(); err != nil {
