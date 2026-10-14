@@ -83,7 +83,8 @@ func (s *Server) githubStatus(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not read GitHub connection settings")
 		return
 	}
-	out := map[string]any{"authenticated": c.Authenticated(), "remote": "", "auth_mode": "gh"}
+authenticated := c.Authenticated()
+	out := map[string]any{"authenticated": authenticated, "remote": "", "auth_mode": "gh"}
 	if configured && strings.TrimSpace(c.Token) == "" {
 		out["auth_mode"] = "disconnected"
 	} else if strings.TrimSpace(c.Token) != "" {
@@ -97,7 +98,7 @@ func (s *Server) githubStatus(w http.ResponseWriter, r *http.Request) {
 	out["login_message"] = s.githubAuthMessage
 	out["login_error"] = s.githubAuthError
 	s.githubAuthMu.Unlock()
-	if !c.Authenticated() {
+	if !authenticated {
 		writeJSON(w, http.StatusOK, out)
 		return
 	}
