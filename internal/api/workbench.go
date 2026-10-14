@@ -45,18 +45,22 @@ func (m *terminalManager) start(root string) (*terminalSession, error) {
 	var cmd *exec.Cmd
 	if runtime.GOOS == "windows" {
 		if shell, err := exec.LookPath("pwsh.exe"); err == nil {
-			cmd = exec.CommandContext(ctx, shell, "-NoLogo", "-NoProfile", "-NoExit")
+			cmd = exec.CommandContext(ctx, shell, "-NoLogo", "-NoProfile", "-Command", "-")
 		} else if shell, err := exec.LookPath("powershell.exe"); err == nil {
-			cmd = exec.CommandContext(ctx, shell, "-NoLogo", "-NoProfile", "-NoExit")
+			cmd = exec.CommandContext(ctx, shell, "-NoLogo", "-NoProfile", "-Command", "-")
 		} else {
-			cmd = exec.CommandContext(ctx, "cmd.exe", "/Q")
+			cmd = exec.CommandContext(ctx, "cmd.exe", "/Q", "/K", "prompt $G")
 		}
 	} else {
 		shell := strings.TrimSpace(os.Getenv("SHELL"))
 		if shell == "" || !filepath.IsAbs(shell) {
 			if candidate, err := exec.LookPath("bash"); err == nil { shell = candidate } else { shell = "/bin/sh" }
 		}
-		cmd = exec.CommandContext(ctx, shell, "-i")
+		if strings.Contains(strings.ToLower(filepath.Base(shell)), "bash") {
+			cmd = exec.CommandContext(ctx, shell, "--noprofile", "--norc", "-s")
+		} else {
+			cmd = exec.CommandContext(ctx, shell)
+		}
 	}
 	cmd.Dir = root
 	cmd.Env = os.Environ()
