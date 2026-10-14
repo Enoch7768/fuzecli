@@ -141,6 +141,30 @@ func TestGitHubTokenConfiguredOverridesEnvironment(t *testing.T) {
 		t.Fatal(err)
 	}
 	if got != "" {
-		t.Fatalf("explicit disconnect should not fall back to environment tokens, got %q", got)
+		t.Fatalf("clearing the stored token should enable gh fallback, got %q", got)
+	}
+	configured, err := GitHubTokenConfigured()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if configured {
+		t.Fatal("clearing the stored token should not mark an explicit disconnect")
+	}
+	if err := DisconnectGitHub(); err != nil {
+		t.Fatal(err)
+	}
+	configured, err = GitHubTokenConfigured()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !configured {
+		t.Fatal("explicit disconnect should suppress gh fallback")
+	}
+	got, err = GitHubToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "" {
+		t.Fatalf("explicit disconnect should not return a token, got %q", got)
 	}
 }
