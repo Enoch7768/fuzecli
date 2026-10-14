@@ -220,7 +220,16 @@ func runSpec(root, source, ext string) (string, []string, string, func() (*exec.
 		return "kotlinc", []string{source, "-include-runtime", "-d", jar}, "Kotlin compiler + Java", build, nil
 	case ".cs":
 		if projects, _ := filepath.Glob(filepath.Join(root, "*.csproj")); len(projects) > 0 { return noBuild("dotnet", "run", "--project", projects[0]) }
-		return "", nil, "", nil, errors.New("C# execution requires a .csproj project in the workspace")
+		tmp, err := os.MkdirTemp("", "fuzecli-csharp-*")
+		if err != nil { return "", nil, "", nil, err }
+		data, err := os.ReadFile(source)
+		if err != nil { _ = os.RemoveAll(tmp); return "", nil, "", nil, fmt.Errorf("read C# source: %w", err) }
+		program := filepath.Join(tmp, "Program.cs")
+		project := filepath.Join(tmp, "Program.csproj")
+		if err := os.WriteFile(program, data, 0600); err != nil { _ = os.RemoveAll(tmp); return "", nil, "", nil, fmt.Errorf("prepare C# source: %w", err) }
+		projectData := []byte("<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net8.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable></PropertyGroup></Project>")
+		if err := os.WriteFile(project, projectData, 0600); err != nil { _ = os.RemoveAll(tmp); return "", nil, "", nil, fmt.Errorf("prepare C# project: %w", err) }
+		return noBuild("dotnet", "run", "--project", project, "--no-launch-profile")
 	case ".rb":
 		return noBuild("ruby", source)
 	case ".fsx":
