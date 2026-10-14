@@ -166,7 +166,7 @@ func runSpec(root, source, ext string) (string, []string, string, func() (*exec.
 	case ".js", ".mjs", ".cjs":
 		return noBuild("node", source)
 	case ".ts", ".tsx", ".jsx", ".mts", ".cts":
-		if _, err := exec.LookPath("tsx"); err == nil { return noBuild("tsx", source) }
+		if _, err := exec.LookPath("tsx"); err == nil { return "tsx", []string{source}, "Node.js + tsx", nil, nil }
 		return "", nil, "Node.js + tsx", nil, nil
 	case ".py", ".pyw":
 		cmd := "python"
