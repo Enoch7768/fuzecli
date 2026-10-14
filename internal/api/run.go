@@ -150,6 +150,9 @@ func (s *Server) runFile(w http.ResponseWriter, r *http.Request) {
 func temporaryBuildDirectory(args []string) string {
 	for _, output := range args {
 		if len(args) >= 3 && args[0] == "java" && args[1] == "-jar" { output = args[2] }
+		for _, prefix := range []string{"-FE", "-FU", "-o"} {
+			if strings.HasPrefix(output, prefix) && len(output) > len(prefix) { output = strings.TrimPrefix(output, prefix); break }
+		}
 		dir := filepath.Dir(output)
 		if strings.HasPrefix(filepath.Base(dir), "fuzecli-") { return dir }
 	}
@@ -166,6 +169,16 @@ func compiledSpec(root, source, compiler, runtimeName, outputFlag string) (strin
 		return cmd, []string{bin}
 	}
 	return compiler, []string{source, outputFlag, bin}, runtimeName, build, nil
+}
+
+func pascalSpec(source string) (string, []string, string, func() (*exec.Cmd, []string), error) {
+	tmp, err := os.MkdirTemp("", "fuzecli-pascal-*")
+	if err != nil { return "", nil, "", nil, err }
+	bin := filepath.Join(tmp, strings.TrimSuffix(filepath.Base(source), filepath.Ext(source)))
+	if runtime.GOOS == "windows" { bin += ".exe" }
+	args := []string{"-FE" + tmp, "-FU" + tmp, "-o" + bin, source}
+	build := func() (*exec.Cmd, []string) { return exec.Command("fpc", args...), []string{bin} }
+	return "fpc", args, "Pascal compiler", build, nil
 }
 
 func runSpec(root, source, ext string) (string, []string, string, func() (*exec.Cmd, []string), error) {
@@ -235,7 +248,7 @@ func runSpec(root, source, ext string) (string, []string, string, func() (*exec.
 	case ".f", ".for", ".f90", ".f95", ".f03", ".f08":
 		return compiledSpec(root, source, "gfortran", "Fortran compiler", "-o")
 	case ".pas", ".pp":
-		return compiledSpec(root, source, "fpc", "Pascal compiler", "-o")
+		return pascalSpec(source)
 	case ".d":
 		if _, err := exec.LookPath("dmd"); err == nil { return "dmd", []string{"-run", source}, "D compiler", nil, nil }
 		if _, err := exec.LookPath("ldc2"); err == nil { return "ldc2", []string{"-run", source}, "D compiler", nil, nil }
