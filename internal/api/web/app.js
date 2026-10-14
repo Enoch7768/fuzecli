@@ -138,7 +138,7 @@ async function openBuilderPage(file){
   }
   openSite(file);
 }
-async function runRuntimePreview(){
+async function runRuntimePreview(retriedInstall=false){
   const button=$("#runRuntimePreview");
   try{
     button.disabled=true;
@@ -157,17 +157,18 @@ async function runRuntimePreview(){
     $("#builderSaveState").textContent="Runtime preview";
     toast(d.kind.toUpperCase()+" preview running");
   }catch(e){
-    if(/runtime is not installed|not available on PATH/i.test(e.message)&&window.confirm(e.message+"\nAllow FuzeCLI to install the required runtime using this computer's package manager? This may download software and change your system.")){
+    if(!retriedInstall&&/runtime is not installed|not available on PATH/i.test(e.message)&&window.confirm(e.message+"\nAllow FuzeCLI to install the required runtime using this computer's package manager? This may download software and change your system.")){
       try{
         const installed=await api("/v1/runtime/install",{method:"POST",timeoutMs:10*60*1000,body:JSON.stringify({runtime:$("#runtimeSelect").value})});
         if(!installed.ok)throw Error(installed.message||"Runtime installation failed");
         toast(installed.message||"Runtime installed");
-        return await runRuntimePreview();
+        return await runRuntimePreview(true);
       }catch(installError){e=installError}
     }
     runtimePreviewActive=false;
     $("#previewStatus").textContent="Runtime preview unavailable";
-    toast(e.message);
+    const message=retriedInstall&&/runtime is not installed|not available on PATH/i.test(e.message)?e.message+" Restart FuzeCLI so the updated PATH can be detected.":e.message;
+    toast(message);
   }finally{button.disabled=false}
 }
 function refreshRuntimePreview(){if(!runtimePreviewActive)return;const frame=$("#sitePreview");if(frame?.src)frame.src=frame.src.split("?")[0]+"?fuzecli="+Date.now()}
@@ -316,7 +317,7 @@ $("#githubApprovePR").onclick=()=>githubReview("APPROVE");$("#githubCommentPR").
 $("#githubSendComment").onclick=async()=>{const n=Number($("#githubPRNumber").value),repo=githubSelectedRepo(),body=$("#githubComment").value.trim();if(!n||!body)return toast("Enter a PR number and comment");if(!repo)return toast("Choose a repository first");try{await api("/v1/github/comments?repo="+encodeURIComponent(repo)+"&number="+n,{method:"POST",body:JSON.stringify({body})});$("#githubComment").value="";toast("Comment posted");await githubLoadComments()}catch(e){toast(e.message)}};
 $("#githubPRList").onclick=e=>{const b=e.target.closest("[data-github-pr]");if(b){$("#githubPRNumber").value=b.dataset.githubPr;githubLoadComments()}};
 $("#githubActionsList").onclick=async e=>{const b=e.target.closest("[data-github-rerun]");if(!b)return;try{await api("/v1/github/actions?repo="+encodeURIComponent(githubSelectedRepo()),{method:"POST",body:JSON.stringify({operation:"rerun",run_id:Number(b.dataset.githubRerun)})});toast("Workflow rerun requested");await githubActions()}catch(x){toast(x.message)}};
-$("#attachBtn").onclick=()=>$("#fileUpload").click();$("#fileUpload").onchange=async e=>{try{await uploadFiles(e.target.files)}catch(x){toast(x.message)}e.target.value=""};$("#providerSelect").onchange=()=>models($("#providerSelect").value);$("#refreshMemoryBtn").onclick=async()=>{try{await api("/v1/memory/refresh",{method:"POST"});toast("Conversation memory refreshed")}catch(e){toast(e.message)}};$("#settingsProvider").onchange=()=>models($("#settingsProvider").value);$("#sendBtn").onclick=send;$("#saveProvider").onclick=save;$("#refreshBtn").onclick=()=>loadConfig().then(()=>toast("Runtime refreshed"));$("#workspaceRefresh").onclick=workspace;$("#activityRefresh").onclick=activity;$("#telemetryRefresh").onclick=telemetry;$("#previewFile").onchange=e=>openBuilderPage(e.target.value);$("#runRuntimePreview").onclick=runRuntimePreview;$("#openPreview").onclick=()=>window.open("/preview/"+encodeURI(currentPreview),"_blank","noopener");$("#savePreview").onclick=savePreview;$("#requestSavePreview").onclick=savePreview;$("#applyInspector").onclick=applyInspector;$("#deviceDesktop").onclick=()=>{$("#deviceFrame").className="device desktop"};$("#deviceMobile").onclick=()=>{$("#deviceFrame").className="device mobile"};document.querySelectorAll(".builder-add").forEach(b=>b.onclick=()=>{if(!currentPreview)return toast("Open an HTML page first");postEditor("add",{kind:b.dataset.builderAdd})});$("#builderMoveUp").onclick=()=>postEditor("move",{direction:"up"});$("#builderMoveDown").onclick=()=>postEditor("move",{direction:"down"});$("#builderDuplicate").onclick=()=>postEditor("duplicate");$("#builderDelete").onclick=()=>postEditor("delete");window.addEventListener("message",builderMessage);
+$("#attachBtn").onclick=()=>$("#fileUpload").click();$("#fileUpload").onchange=async e=>{try{await uploadFiles(e.target.files)}catch(x){toast(x.message)}e.target.value=""};$("#providerSelect").onchange=()=>models($("#providerSelect").value);$("#refreshMemoryBtn").onclick=async()=>{try{await api("/v1/memory/refresh",{method:"POST"});toast("Conversation memory refreshed")}catch(e){toast(e.message)}};$("#settingsProvider").onchange=()=>models($("#settingsProvider").value);$("#sendBtn").onclick=send;$("#saveProvider").onclick=save;$("#refreshBtn").onclick=()=>loadConfig().then(()=>toast("Runtime refreshed"));$("#workspaceRefresh").onclick=workspace;$("#activityRefresh").onclick=activity;$("#telemetryRefresh").onclick=telemetry;$("#previewFile").onchange=e=>openBuilderPage(e.target.value);$("#runRuntimePreview").onclick=runRuntimePreview;$("#openPreview").onclick=()=>window.open(runtimePreviewActive?$("#sitePreview").src:"/preview/"+encodeURI(currentPreview),"_blank","noopener");$("#savePreview").onclick=savePreview;$("#requestSavePreview").onclick=savePreview;$("#applyInspector").onclick=applyInspector;$("#deviceDesktop").onclick=()=>{$("#deviceFrame").className="device desktop"};$("#deviceMobile").onclick=()=>{$("#deviceFrame").className="device mobile"};document.querySelectorAll(".builder-add").forEach(b=>b.onclick=()=>{if(!currentPreview)return toast("Open an HTML page first");postEditor("add",{kind:b.dataset.builderAdd})});$("#builderMoveUp").onclick=()=>postEditor("move",{direction:"up"});$("#builderMoveDown").onclick=()=>postEditor("move",{direction:"down"});$("#builderDuplicate").onclick=()=>postEditor("duplicate");$("#builderDelete").onclick=()=>postEditor("delete");window.addEventListener("message",builderMessage);
 $("#prompt").onkeydown=e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send()}};$("#newSessionBtn").onclick=()=>{$("#messages").innerHTML='<div class="chat-empty" id="chatEmpty"><div class="chat-empty-mark">F</div><strong>What are we building?</strong><span>Ask FuzeCLI to inspect, create, fix, explain, or improve your project.</span></div>';$("#sessionTitle").textContent="New coding session";$("#prompt").focus()};$("#stopBtn").onclick=()=>chatAbort?.abort();$("#prompt").oninput=e=>{e.target.style.height="auto";e.target.style.height=Math.min(e.target.scrollHeight,180)+"px"};
 (async()=>{try{await loadConfig();await activity();await refreshLiveTelemetry();liveTelemetryTimer=setInterval(refreshLiveTelemetry,1000);const h=await api("/v1/history");(h.messages||[]).slice(-80).forEach(m=>msg(m.role,m.content))}catch(e){$("#statusText").textContent="Offline";toast(e.message)}})();
 let ideEditor=null,ideFiles=[],ideOpen=[],ideActive="",ideSaveTimer=null,ideWorkspaceRoots=[];
