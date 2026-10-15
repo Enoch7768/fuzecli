@@ -24,6 +24,8 @@ func (s *Server) githubRoutes(w http.ResponseWriter, r *http.Request) {
 	switch path {
 	case "/status":
 		s.githubStatus(w, r)
+	case "/profile":
+		s.githubProfile(w, r)
 	case "/auth":
 		s.githubAuth(w, r)
 	case "/auth/login":
@@ -57,14 +59,28 @@ func (s *Server) githubRoutes(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) githubClient() (*github.Client, error) {
 	token, err := config.GitHubToken()
-	if err != nil {
-		return nil, err
+	if err != nil { return nil, err }
+	configured, err := config.GitHubTokenConfigured()
+	if err != nil { return nil, err }
+
+	// An explicit Studio disconnect is respected. Otherwise, an existing gh
+	// session takes precedence over legacy PAT configuration so the CLI and
+	// Studio consistently use the same durable GitHub identity.
+	if !(configured && strings.TrimSpace(token) == "") {
+		if _, lookErr := exec.LookPath("gh"); lookErr == nil {
+			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			statusErr := exec.CommandContext(ctx, "gh", "auth", "status", "--hostname", "github.com").Run()
+			cancel()
+			if statusErr == nil {
+				if configured && strings.TrimSpace(token) != "" {
+					if err := config.ClearGitHubToken(); err != nil { return nil, err }
+				}
+				token = ""
+				configured = false
+			}
+		}
 	}
 	client := github.New(token)
-	configured, err := config.GitHubTokenConfigured()
-	if err != nil {
-		return nil, err
-	}
 	client.DisableCLI = configured && strings.TrimSpace(token) == ""
 	return client, nil
 }
@@ -112,7 +128,18 @@ authenticated := c.Authenticated()
 	}
 	out["user"] = user.Login
 	out["profile_url"] = user.HTMLURL
+	out["profile"] = user
 	writeJSON(w, http.StatusOK, out)
+}
+
+func (s *Server) githubProfile(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet { writeError(w, http.StatusMethodNotAllowed, "method not allowed"); return }
+	c, err := s.githubClient()
+	if err != nil { writeError(w, http.StatusInternalServerError, "could not initialize GitHub client"); return }
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second); defer cancel()
+	user, err := c.Profile(ctx)
+	if err != nil { writeError(w, http.StatusBadGateway, err.Error()); return }
+	writeJSON(w, http.StatusOK, map[string]any{"profile": user})
 }
 
 func (s *Server) githubAuthLogin(w http.ResponseWriter, r *http.Request) {
@@ -123,6 +150,16 @@ func (s *Server) githubAuthLogin(w http.ResponseWriter, r *http.Request) {
 	if !isLoopbackRequest(r) {
 		writeError(w, http.StatusForbidden, "GitHub CLI sign-in is available only from the local machine")
 		return
+	}
+	client, clientErr := s.githubClient()
+	if clientErr == nil && client.Authenticated() {
+		ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
+		defer cancel()
+		user, profileErr := client.Profile(ctx)
+		if profileErr == nil {
+			writeJSON(w, http.StatusOK, map[string]any{"running": false, "authenticated": true, "user": user.Login, "message": "Already connected as " + user.Login + ". Your existing GitHub CLI session is being reused."})
+			return
+		}
 	}
 	if _, err := exec.LookPath("gh"); err != nil {
 		writeError(w, http.StatusServiceUnavailable, "GitHub CLI is not installed. Install it from https://cli.github.com, reopen your terminal, and retry.")

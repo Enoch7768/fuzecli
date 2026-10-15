@@ -30,6 +30,19 @@ func TestParseChatResponseEdit(t *testing.T) {
 	}
 }
 
+func TestParseChatResponseFallsBackToPlainText(t *testing.T) {
+	for _, raw := range []string{
+		"Here is the explanation in plain text.",
+		"Your request is complete. No files were changed.",
+	} {
+		got, err := ParseChatResponse(raw)
+		if err != nil { t.Fatalf("plain-text response returned error: %v", err) }
+		if got.Type != "chat" || got.Response != raw || got.Message != raw || got.Plan != nil {
+			t.Fatalf("unexpected plain-text fallback: %#v", got)
+		}
+	}
+}
+
 func TestParseChatResponseFencedJSON(t *testing.T) {
 	got, err := ParseChatResponse("```json\n{\"type\":\"chat\",\"response\":\"Ready.\"}\n```")
 	if err != nil {

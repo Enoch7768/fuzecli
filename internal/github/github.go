@@ -25,7 +25,7 @@ type WorkflowRun struct{ ID int64 `json:"id"`; Name string `json:"name"`; Status
 type CheckRun struct { ID int64 `json:"id"`; Name string `json:"name"`; Status string `json:"status"`; Conclusion string `json:"conclusion"`; DetailsURL string `json:"details_url"` }
 type CommitStatus struct { Context string `json:"context"`; State string `json:"state"`; Description string `json:"description"`; TargetURL string `json:"target_url"` }
 type PullRequestChecksSummary struct { PullRequest PullRequest `json:"pull_request"`; HeadSHA string `json:"head_sha"`; State string `json:"state"`; Checks []CheckRun `json:"checks"`; Statuses []CommitStatus `json:"statuses"` }
-type User struct{Login string `json:"login"`; Name string `json:"name"`; Email string `json:"email"`; HTMLURL string `json:"html_url"`}
+type User struct{Login string `json:"login"`; Name string `json:"name"`; Email string `json:"email"`; HTMLURL string `json:"html_url"`; AvatarURL string `json:"avatar_url"`; Bio string `json:"bio"`; Company string `json:"company"`; Location string `json:"location"`; PublicRepos int `json:"public_repos"`; Followers int `json:"followers"`; Following int `json:"following"`}
 type Issue struct{Number int `json:"number"`; Title string `json:"title"`; Body string `json:"body"`; State string `json:"state"`; HTMLURL string `json:"html_url"`}
 type CreateRepositoryRequest struct{Name string `json:"name"`; Description string `json:"description,omitempty"`; Private bool `json:"private"`; AutoInit bool `json:"auto_init"`}
 type CreatePullRequestRequest struct{Title string `json:"title"`; Body string `json:"body,omitempty"`; Head string `json:"head"`; Base string `json:"base"`; Draft bool `json:"draft"`}
