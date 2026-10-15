@@ -70,7 +70,10 @@ func TestDeterministicAgentEvaluationHarness(t *testing.T) {
 			}
 			executor := Executor{Root: root}
 			if fixture.scenario == "verification-repair" {
-				result, executeErr := executor.Execute(plan, func() VerificationResult {
+				initialPlan := plan
+				initialPlan.Files = append([]generation.FileChange(nil), plan.Files...)
+				initialPlan.Files[0].Content += "invalid repair candidate"
+				result, executeErr := executor.Execute(initialPlan, func() VerificationResult {
 					return VerificationResult{Passed: false, Output: "injected deterministic verification failure"}
 				})
 				if executeErr == nil || result.Passed { t.Fatal("injected failure must not commit the plan") }
