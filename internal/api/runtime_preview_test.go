@@ -160,11 +160,32 @@ func TestNodePreviewRespectsPackageManagerAndLockfile(t *testing.T) {
 			wantCommand := tc.wantManager
 			if runtime.GOOS == "windows" {
 				wantCommand = "cmd.exe"
-				wantArgs = []string{"/d", "/s", "/c", tc.wantManager + ".cmd " + strings.Join(wantArgs, " ")}
+				wantArgs = []string{"/d", "/s", "/c", nodeManagerWindowsCommand(tc.wantManager) + " " + strings.Join(wantArgs, " ")}
 			}
 			if command != wantCommand || !reflect.DeepEqual(args, wantArgs) {
 				t.Fatalf("command/args = %q %v, want %q %v", command, args, wantCommand, wantArgs)
 			}
 		})
+	}
+}
+
+
+func TestNodePreviewHonorsDeclaredManagerWithoutLockfile(t *testing.T) {
+	root := t.TempDir()
+	manifest := `{"packageManager":"pnpm@9.0.0","scripts":{"start":"node server.js"}}`
+	if err := os.WriteFile(filepath.Join(root, "package.json"), []byte(manifest), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if got := detectPreviewNodeManager(root, "pnpm@9.0.0"); got != "pnpm" {
+		t.Fatalf("manager = %q, want pnpm from packageManager", got)
+	}
+}
+
+func TestNodeManagerWindowsCommandUsesBunExecutable(t *testing.T) {
+	if got := nodeManagerWindowsCommand("bun"); got != "bun.exe" {
+		t.Fatalf("Windows Bun command = %q, want bun.exe", got)
+	}
+	if got := nodeManagerWindowsCommand("pnpm"); got != "pnpm.cmd" {
+		t.Fatalf("Windows pnpm command = %q, want pnpm.cmd", got)
 	}
 }
