@@ -5,6 +5,8 @@
 - Bound terminal sessions to registered workspace roots and connected the Studio terminal to the configured workspace.
 - Added regression tests for workspace path containment, preview package-manager selection, Windows launch behavior, and local-only preview shutdown.
 - Added a read-only Project Health Center for detecting project manifests, relevant runtime availability, Git metadata, and likely test files.
+- Preserved the exact verification failure through the coding agent's Diagnose → Repair → Verify cycle, emitted structured failure events, and returned detailed errors when the bounded repair budget is exhausted.
+- Added regression coverage for diagnosis error visibility, structured failure events, and clearing stale errors after successful verification.
 
 - Replaced the Studio GitHub PAT form with official GitHub CLI browser sign-in.
 - Added observable sign-in progress and explicit Studio disconnect behavior.
