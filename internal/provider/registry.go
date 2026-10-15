@@ -181,9 +181,10 @@ func (r *Registry) sendWithRetry(ctx context.Context, name string, messages []Me
 		r.observe(name, err)
 		var usage Usage
 		if response != nil {
-			usage = response.Usage
+			usage = normalizeUsage(response.Usage, messages, response.Content)
+			response.Usage = usage
 		}
-		r.recordTelemetry(TelemetryEvent{RequestID: opts.RequestID, Time: time.Now(), Provider: name, Model: opts.Model, PromptTokens: uint64(nonNegativeInt(usage.PromptTokens)), CompletionTokens: uint64(nonNegativeInt(usage.CompletionTokens)), TotalTokens: uint64(nonNegativeInt(usage.TotalTokens)), CostUSD: maxNonNegativeFloat(usage.CostUSD), LatencyMs: time.Since(started).Milliseconds(), Streaming: false, Success: err == nil, Error: errorString(err), ErrorKind: errorKind(err)}, err)
+		r.recordTelemetry(TelemetryEvent{RequestID: opts.RequestID, Time: time.Now(), Provider: name, Model: opts.Model, PromptTokens: uint64(nonNegativeInt(usage.PromptTokens)), CompletionTokens: uint64(nonNegativeInt(usage.CompletionTokens)), TotalTokens: uint64(nonNegativeInt(usage.TotalTokens)), CostUSD: maxNonNegativeFloat(usage.CostUSD), Estimated: usage.Estimated, LatencyMs: time.Since(started).Milliseconds(), Streaming: false, Success: err == nil, Error: errorString(err), ErrorKind: errorKind(err)}, err)
 		if err == nil {
 			return response, nil
 		}
@@ -579,6 +580,26 @@ func adaptRequest(name string, messages []Message, opts RequestOptions) ([]Messa
 	return messages, request
 }
 
+func normalizeUsage(usage Usage, messages []Message, output string) Usage {
+	if usage.PromptTokens <= 0 {
+		usage.PromptTokens = estimateMessageTokens(messages)
+		usage.Estimated = true
+	}
+	if usage.CompletionTokens <= 0 && strings.TrimSpace(output) != "" {
+		usage.CompletionTokens = estimateTextTokens(output)
+		usage.Estimated = true
+	}
+	if usage.TotalTokens <= 0 {
+		usage.TotalTokens = usage.PromptTokens + usage.CompletionTokens
+	}
+	return usage
+}
+
+func estimateTextTokens(text string) int {
+	if text == "" { return 0 }
+	return (len(text) + 2) / 3
+}
+
 func minInt(a, b int) int {
 	if a < b {
 		return a
@@ -919,7 +940,8 @@ func (r *Registry) continueStream(ctx context.Context, name string, messages []M
 				return
 			}
 			if !finished || continuations >= 16 || !responseNeedsContinuation(partial) {
-				event := TelemetryEvent{RequestID: opts.RequestID, Time: time.Now(), Provider: name, Model: opts.Model, PromptTokens: uint64(nonNegativeInt(usage.PromptTokens)), CompletionTokens: uint64(nonNegativeInt(usage.CompletionTokens)), TotalTokens: uint64(nonNegativeInt(usage.TotalTokens)), LatencyMs: time.Since(started).Milliseconds(), Streaming: true, Success: true}
+				usage = normalizeUsage(usage, messages, combined.String())
+				event := TelemetryEvent{RequestID: opts.RequestID, Time: time.Now(), Provider: name, Model: opts.Model, PromptTokens: uint64(nonNegativeInt(usage.PromptTokens)), CompletionTokens: uint64(nonNegativeInt(usage.CompletionTokens)), TotalTokens: uint64(nonNegativeInt(usage.TotalTokens)), Estimated: usage.Estimated, LatencyMs: time.Since(started).Milliseconds(), Streaming: true, Success: true}
 				r.recordTelemetry(event, nil)
 				out <- StreamChunk{Done: true, Usage: usage}
 				return
