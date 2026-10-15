@@ -69,7 +69,7 @@ function handleStudioEvent(e){
 function updateLiveUsage(e){
   const tokens=Number(e.total_tokens||0);
   const cost=Number(e.cost_usd||0);
-  if($("#liveTokens"))$("#liveTokens").textContent=tokens.toLocaleString();
+  if($("#liveTokens"))$("#liveTokens").textContent=(e.usage_estimated?"~":"")+tokens.toLocaleString();
   if($("#liveCost"))$("#liveCost").textContent=cost>0?"$"+cost.toFixed(4):"Cost pending";
 }
 async function refreshLiveTelemetry(){
@@ -92,7 +92,7 @@ function renderTelemetrySnapshot(d){
     const success=p.requests?Math.round((p.successes/p.requests)*100):0;
     const avg=p.requests?Math.round((p.total_latency||0)/p.requests/1000000):0;
     const cost=Number(p.total_cost_usd||0);
-    return '<div class="panel telemetry-card"><div class="telemetry-head"><div><b>'+esc(p.provider)+'</b><span>'+esc(p.last_error||"Healthy session")+'</span></div><strong>'+success+'%</strong></div><div class="telemetry-metrics"><div><small>Requests</small><b>'+Number(p.requests||0).toLocaleString()+'</b></div><div><small>Success</small><b>'+Number(p.successes||0).toLocaleString()+'</b></div><div><small>Failures</small><b>'+Number(p.failures||0).toLocaleString()+'</b></div><div><small>Avg latency</small><b>'+avg+' ms</b></div><div><small>Prompt tokens</small><b>'+Number(p.prompt_tokens||0).toLocaleString()+'</b></div><div><small>Output tokens</small><b>'+Number(p.completion_tokens||0).toLocaleString()+'</b></div><div><small>Total tokens</small><b>'+Number(p.total_tokens||0).toLocaleString()+'</b></div><div><small>Cost</small><b>'+(cost>0?"$"+cost.toFixed(4):"Pending")+'</b></div></div><div class="telemetry-bar"><i style="width:'+success+'%"></i></div></div>';
+    return '<div class="panel telemetry-card"><div class="telemetry-head"><div><b>'+esc(p.provider)+'</b><span>'+esc(p.last_error||"Healthy session")+'</span></div><strong>'+success+'%</strong></div><div class="telemetry-metrics"><div><small>Requests</small><b>'+Number(p.requests||0).toLocaleString()+'</b></div><div><small>Success</small><b>'+Number(p.successes||0).toLocaleString()+'</b></div><div><small>Failures</small><b>'+Number(p.failures||0).toLocaleString()+'</b></div><div><small>Avg latency</small><b>'+avg+' ms</b></div><div><small>Prompt tokens</small><b>'+Number(p.prompt_tokens||0).toLocaleString()+'</b></div><div><small>Output tokens</small><b>'+Number(p.completion_tokens||0).toLocaleString()+'</b></div><div><small>Total tokens</small><b>'+Number(p.total_tokens||0).toLocaleString()+'</b></div><div><small>Estimated tokens</small><b>'+Number(p.estimated_tokens||0).toLocaleString()+'</b></div><div><small>Cost</small><b>'+(cost>0?"$"+cost.toFixed(4):"Pending")+'</b></div></div><div class="telemetry-bar"><i style="width:'+success+'%"></i></div></div>';
   }).join(""):'<div class="panel telemetry-empty"><b>No provider traffic yet</b><span>Run a request and this dashboard will update automatically.</span></div>';
   const events=d.events||[];
   $("#telemetryEvents").innerHTML=events.slice().reverse().map(e=>{
