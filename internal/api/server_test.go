@@ -48,6 +48,26 @@ func TestSecurityHeaders(t *testing.T) {
 }
 
 
+func TestGitHubStatusSubrouteIsRegistered(t *testing.T) {
+	root := t.TempDir()
+	store, err := workspace.Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	server := NewServer(NewService(&app.App{Store: store}), "")
+	request := httptest.NewRequest(http.MethodGet, "http://127.0.0.1:8787/v1/github/status", nil)
+	request.RemoteAddr = "127.0.0.1:4000"
+	request.AddCookie(&http.Cookie{Name: "fuzecli_ui", Value: server.uiSession})
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("GET /v1/github/status status = %d, want %d; body: %s", response.Code, http.StatusOK, response.Body.String())
+	}
+}
+
 func TestAttachmentLimitsAndDeduplication(t *testing.T) {
 	root := t.TempDir()
 	store, err := workspace.Open(root)
