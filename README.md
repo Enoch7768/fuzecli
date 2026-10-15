@@ -246,6 +246,10 @@ Tagged Windows releases are built from a clean checkout and publish both `aicli.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the project quality bar, [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) for community standards, [SUPPORT.md](SUPPORT.md) for troubleshooting, [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the system boundaries and roadmap, and [evals/README.md](evals/README.md) for the coding-agent evaluation harness.
 
+## Quality gates and end-to-end validation
+
+The [quality-gate checklist](docs/QUALITY_GATES.md) defines repeatable coding-agent scenarios, adversarial security checks, Studio and accessibility review, performance baselines, and release validation. These checks distinguish automated CI results from manual or live-provider tests that still need to be run.
+
 ## Project documentation
 
 ```text
@@ -267,6 +271,7 @@ docs/TERMINAL.md
 docs/SECURITY.md
 docs/ARCHITECTURE.md
 docs/AGENT_ENGINE.md
+docs/QUALITY_GATES.md
 evals/README.md
 
 ```
