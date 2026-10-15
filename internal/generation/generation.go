@@ -213,7 +213,7 @@ func removeTrailingJSONCommas(candidate string) string {
 			out.WriteByte(c)
 			if escaped {
 				escaped = false
-			} else if c == '\\\\' {
+			} else if c == '\\' {
 				escaped = true
 			} else if c == '"' {
 				inString = false
@@ -227,7 +227,7 @@ func removeTrailingJSONCommas(candidate string) string {
 		}
 		if c == ',' {
 			j := i + 1
-			for j < len(candidate) && (candidate[j] == ' ' || candidate[j] == '\\n' || candidate[j] == '\\r' || candidate[j] == '\\t') {
+			for j < len(candidate) && (candidate[j] == ' ' || candidate[j] == '\n' || candidate[j] == '\r' || candidate[j] == '\t') {
 				j++
 			}
 			if j < len(candidate) && (candidate[j] == '}' || candidate[j] == ']') {
