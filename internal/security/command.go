@@ -32,9 +32,16 @@ func Authorize(command Command) Decision {
 		if exact(args, "test", "./...") {
 			return Decision{Allowed: true, Risk: RiskLow, Reason: "Go test is an allowlisted verification command."}
 		}
-	case "npm":
-		if exact(args, "test", "--", "--runInBand") {
+	case "npm", "pnpm", "bun":
+		if exact(args, "run", "test") || exact(args, "run", "typecheck") {
+			return Decision{Allowed: true, Risk: RiskMedium, Reason: "Declared project verification script is allowlisted."}
+		}
+		if name == "npm" && exact(args, "test", "--", "--runInBand") {
 			return Decision{Allowed: true, Risk: RiskLow, Reason: "npm test is an allowlisted verification command."}
+		}
+	case "yarn":
+		if exact(args, "test") || exact(args, "typecheck") {
+			return Decision{Allowed: true, Risk: RiskMedium, Reason: "Declared project verification script is allowlisted."}
 		}
 	case "npx":
 		if exact(args, "--yes", "tsc", "--noEmit") {
