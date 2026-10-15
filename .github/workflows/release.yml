@@ -1,4 +1,4 @@
-name: Release Windows build
+name: Release
 
 on:
   push:
@@ -9,25 +9,41 @@ permissions:
   contents: write
 
 jobs:
-  release:
-    runs-on: windows-latest
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: windows-latest
+            platform: windows
+            arch: amd64
+            suffix: .exe
+          - runner: ubuntu-latest
+            platform: linux
+            arch: amd64
+            suffix: ''
+          - runner: macos-latest
+            platform: darwin
+            arch: arm64
+            suffix: ''
+          - runner: macos-latest
+            platform: darwin
+            arch: amd64
+            suffix: ''
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.25.x'
+          go-version: '1.26.x'
           cache: true
       - name: Verify formatting
-        shell: pwsh
+        shell: bash
         run: |
-          $files = gofmt -l .
-          if ($files) {
-            Write-Host "The following files are not gofmt-formatted:"
-            $files
-            exit 1
-          }
+          files="$(gofmt -l $(git ls-files '*.go'))"
+          if [ -n "$files" ]; then printf '%s\n' "$files"; exit 1; fi
       - name: Verify modules
-        shell: pwsh
+        shell: bash
         run: |
           go mod tidy
           git diff --exit-code -- go.mod go.sum
@@ -35,27 +51,42 @@ jobs:
         run: go test ./...
       - name: Vet
         run: go vet ./...
-      - name: Build
-        shell: pwsh
+      - name: Build CGO-free binary
+        shell: bash
+        env:
+          CGO_ENABLED: '0'
+          GOOS: ${{ matrix.platform == 'darwin' && 'darwin' || matrix.platform }}
+          GOARCH: ${{ matrix.arch }}
         run: |
-          $env:CGO_ENABLED = '0'
-          go build -trimpath -ldflags "-s -w -X main.version=${{ github.ref_name }}" -o dist/aicli.exe ./cmd/aicli
-      - name: Smoke test
-        shell: pwsh
+          mkdir -p dist
+          name="aicli-${{ matrix.platform }}-${{ matrix.arch }}${{ matrix.suffix }}"
+          go build -trimpath -ldflags "-s -w -X main.version=${GITHUB_REF_NAME}" -o "dist/$name" ./cmd/aicli
+          cd dist
+          sha256sum "$name" > "$name.sha256"
+      - name: Smoke test native binary
+        if: matrix.platform != 'darwin' || matrix.arch == 'arm64'
+        shell: bash
         run: |
-          & .\dist\aicli.exe version
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          & .\dist\aicli.exe --help
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: Generate checksum
-        shell: pwsh
-        run: |
-          $hash = (Get-FileHash .\dist\aicli.exe -Algorithm SHA256).Hash.ToLower()
-          "$hash  aicli.exe" | Set-Content -NoNewline dist\aicli.exe.sha256
-      - name: Upload release assets
+          ./dist/aicli-${{ matrix.platform }}-${{ matrix.arch }}${{ matrix.suffix }} version
+          ./dist/aicli-${{ matrix.platform }}-${{ matrix.arch }}${{ matrix.suffix }} --help
+      - name: Upload platform assets
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.platform }}-${{ matrix.arch }}
+          path: dist/*
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          path: dist
+          merge-multiple: true
+      - name: Publish release assets
         uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
-          files: |
-            dist/aicli.exe
-            dist/aicli.exe.sha256
+          files: dist/*
