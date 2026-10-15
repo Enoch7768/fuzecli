@@ -74,7 +74,7 @@ func (e Executor) Execute(plan generation.Plan, verify func() VerificationResult
 
 	result := VerificationResult{Changed: changed}
 	if verify != nil {
-		result = verify()
+		result = runVerification(verify)
 		result.Changed = changed
 		if !result.Passed {
 			rollbackErr := tx.Rollback()
@@ -87,4 +87,13 @@ func (e Executor) Execute(plan generation.Plan, verify func() VerificationResult
 
 	tx.Commit()
 	return result, nil
+}
+
+func runVerification(verify func() VerificationResult) (result VerificationResult) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			result = VerificationResult{Passed: false, Output: fmt.Sprintf("verification panicked: %v", recovered)}
+		}
+	}()
+	return verify()
 }
