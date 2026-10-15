@@ -59,14 +59,28 @@ func (s *Server) githubRoutes(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) githubClient() (*github.Client, error) {
 	token, err := config.GitHubToken()
-	if err != nil {
-		return nil, err
+	if err != nil { return nil, err }
+	configured, err := config.GitHubTokenConfigured()
+	if err != nil { return nil, err }
+
+	// An explicit Studio disconnect is respected. Otherwise, an existing gh
+	// session takes precedence over legacy PAT configuration so the CLI and
+	// Studio consistently use the same durable GitHub identity.
+	if !(configured && strings.TrimSpace(token) == "") {
+		if _, lookErr := exec.LookPath("gh"); lookErr == nil {
+			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			statusErr := exec.CommandContext(ctx, "gh", "auth", "status", "--hostname", "github.com").Run()
+			cancel()
+			if statusErr == nil {
+				if configured && strings.TrimSpace(token) != "" {
+					if err := config.ClearGitHubToken(); err != nil { return nil, err }
+				}
+				token = ""
+				configured = false
+			}
+		}
 	}
 	client := github.New(token)
-	configured, err := config.GitHubTokenConfigured()
-	if err != nil {
-		return nil, err
-	}
 	client.DisableCLI = configured && strings.TrimSpace(token) == ""
 	return client, nil
 }
