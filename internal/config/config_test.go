@@ -94,17 +94,12 @@ func TestSetFallbackOrder(t *testing.T) {
 
 func TestGitHubTokenConfiguredOverridesEnvironment(t *testing.T) {
 	tmp := t.TempDir()
-	oldAppData := os.Getenv("APPDATA")
-	oldXDG := os.Getenv("XDG_CONFIG_HOME")
+	setTestConfigHome(t, tmp)
 	oldGitHub := os.Getenv("GITHUB_TOKEN")
 	oldGH := os.Getenv("GH_TOKEN")
-	_ = os.Setenv("APPDATA", tmp)
-	_ = os.Setenv("XDG_CONFIG_HOME", tmp)
 	_ = os.Setenv("GITHUB_TOKEN", "old-environment-token")
 	_ = os.Setenv("GH_TOKEN", "older-environment-token")
 	defer func() {
-		_ = os.Setenv("APPDATA", oldAppData)
-		_ = os.Setenv("XDG_CONFIG_HOME", oldXDG)
 		_ = os.Setenv("GITHUB_TOKEN", oldGitHub)
 		_ = os.Setenv("GH_TOKEN", oldGH)
 	}()
