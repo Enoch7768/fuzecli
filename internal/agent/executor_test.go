@@ -68,3 +68,34 @@ func TestExecutorCommitsVerifiedPlan(t *testing.T) {
 		t.Fatalf("unexpected committed content: %q", content)
 	}
 }
+
+func TestExecutorRollsBackWhenVerificationPanics(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "main.go")
+	if err := os.WriteFile(path, []byte("original"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := (Executor{Root: root}).Execute(generation.Plan{Files: []generation.FileChange{
+		{Path: "main.go", Content: "modified", Action: "modify"},
+		{Path: "new.txt", Content: "created", Action: "create"},
+	}}, func() VerificationResult {
+		panic("verification crashed")
+	})
+	if err == nil || !strings.Contains(err.Error(), "verification panicked: verification crashed") {
+		t.Fatalf("expected verification panic error, got %v", err)
+	}
+	if result.Passed || !strings.Contains(result.Output, "verification panicked") {
+		t.Fatalf("panic was not reported as failed verification: %+v", result)
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(content) != "original" {
+		t.Fatalf("rollback did not restore original content: %q", content)
+	}
+	if _, err := os.Stat(filepath.Join(root, "new.txt")); !os.IsNotExist(err) {
+		t.Fatalf("rollback did not remove created file")
+	}
+}
