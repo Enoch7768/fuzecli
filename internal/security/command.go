@@ -29,8 +29,12 @@ func Authorize(command Command) Decision {
 
 	switch name {
 	case "go":
-		if exact(args, "test", "./...") {
-			return Decision{Allowed: true, Risk: RiskLow, Reason: "Go test is an allowlisted verification command."}
+		if exact(args, "test", "./...") || exact(args, "vet", "./...") {
+			return Decision{Allowed: true, Risk: RiskLow, Reason: "Go test and vet are allowlisted verification commands."}
+		}
+	case "gofmt":
+		if exact(args, "-l", ".") {
+			return Decision{Allowed: true, Risk: RiskLow, Reason: "Go formatting inspection is an allowlisted verification command."}
 		}
 	case "npm", "pnpm", "bun":
 		if exact(args, "run", "test") || exact(args, "run", "typecheck") {
