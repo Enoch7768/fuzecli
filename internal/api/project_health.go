@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -106,7 +107,7 @@ func (s *Server) projectHealth(w http.ResponseWriter, r *http.Request) {
 	if testErr != nil {
 		checks = append(checks, projectHealthCheck{ID: "tests", Label: "Test files", Status: "info", Detail: "Could not scan test files: " + testErr.Error()})
 	} else if testCount > 0 {
-		checks = append(checks, projectHealthCheck{ID: "tests", Label: "Test files", Status: "ok", Detail: "Found " + itoa(testCount) + " likely test file(s). Tests were not executed."})
+		checks = append(checks, projectHealthCheck{ID: "tests", Label: "Test files", Status: "ok", Detail: "Found " + strconv.Itoa(testCount) + " likely test file(s). Tests were not executed."})
 	} else {
 		checks = append(checks, projectHealthCheck{ID: "tests", Label: "Test files", Status: "info", Detail: "No common test-file naming patterns were found. Tests were not executed."})
 	}
@@ -171,17 +172,3 @@ func countProjectTests(root string) (int, error) {
 	return count, err
 }
 
-func itoa(value int) string {
-	const digits = "0123456789"
-	if value == 0 {
-		return "0"
-	}
-	var buffer [20]byte
-	i := len(buffer)
-	for value > 0 {
-		i--
-		buffer[i] = digits[value%10]
-		value /= 10
-	}
-	return string(buffer[i:])
-}
