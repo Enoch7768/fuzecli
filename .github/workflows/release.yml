@@ -22,6 +22,10 @@ jobs:
             platform: linux
             arch: amd64
             suffix: ''
+          - runner: ubuntu-latest
+            platform: linux
+            arch: arm64
+            suffix: ''
           - runner: macos-latest
             platform: darwin
             arch: arm64
@@ -64,9 +68,9 @@ jobs:
           cd dist
           sha256sum "$name" > "$name.sha256"
       - name: Smoke test native binary
-        if: matrix.platform != 'darwin' || matrix.arch == 'arm64'
         shell: bash
         run: |
+          if [ "$(go env GOARCH)" != "${{ matrix.arch }}" ]; then echo "Skipping execution of cross-architecture binary"; exit 0; fi
           ./dist/aicli-${{ matrix.platform }}-${{ matrix.arch }}${{ matrix.suffix }} version
           ./dist/aicli-${{ matrix.platform }}-${{ matrix.arch }}${{ matrix.suffix }} --help
       - name: Upload platform assets

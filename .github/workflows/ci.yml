@@ -118,7 +118,9 @@ jobs:
       - name: Build CGO-free macOS binary
         env:
           CGO_ENABLED: '0'
-        run: go build -trimpath -ldflags "-s -w" -o dist/aicli ./cmd/aicli
+        run: |
+          mkdir -p dist
+          go build -trimpath -ldflags "-s -w" -o dist/aicli ./cmd/aicli
       - name: Smoke test
         run: |
           ./dist/aicli version

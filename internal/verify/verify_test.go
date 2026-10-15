@@ -2,6 +2,7 @@ package verify
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -45,6 +46,9 @@ func TestDetectNodeProjectWithoutLockfile(t *testing.T) {
 }
 
 func TestLintPHPUsesTouchedFiles(t *testing.T) {
+	if _, err := exec.LookPath("php"); err != nil {
+		t.Skip("PHP runtime is not installed on this runner")
+	}
 	root := t.TempDir()
 	path := filepath.Join(root, "test.php")
 	if err := os.WriteFile(path, []byte("<?php echo 'ok';"), 0600); err != nil {
