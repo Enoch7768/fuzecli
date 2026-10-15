@@ -289,7 +289,11 @@ async function githubActionDetails(runID,runURL){
  try{
   const d=await api("/v1/github/actions?repo="+encodeURIComponent(githubSelectedRepo()),{method:"POST",body:JSON.stringify({operation:"jobs",run_id:Number(runID)})});
   const jobs=d.jobs||[];
-  target.innerHTML='<div class="panel-title">Workflow run details <button class="ghost small" id="githubCloseActionDetails" type="button">Close</button></div><p class="muted">Live job status from GitHub Actions. Full logs remain available on GitHub.</p>'+jobs.map(job=>'<div class="github-job"><div><b>'+esc(job.name||"Job")+'</b><span>'+esc(job.status||"")+(job.conclusion?" · "+esc(job.conclusion):"")+(job.started_at?" · Started "+esc(new Date(job.started_at).toLocaleString()):"")+'</span></div>'+(job.steps||[]).length?'<ol>'+(job.steps||[]).map(step=>'<li><span>'+esc(step.name||"Step")+'</span><small>'+esc(step.status||"")+(step.conclusion?" · "+esc(step.conclusion):"")+'</small></li>').join("")+'</ol>':'').join("")+'<p><a href="'+esc(runURL||"#")+'" target="_blank" rel="noopener noreferrer">Open run and logs on GitHub ↗</a></p>';
+  const jobMarkup=jobs.map(job=>{
+   const steps=Array.isArray(job.steps)?job.steps:[];
+   return '<div class="github-job"><div><b>'+esc(job.name||"Job")+'</b><span>'+esc(job.status||"")+(job.conclusion?" · "+esc(job.conclusion):"")+(job.started_at?" · Started "+esc(new Date(job.started_at).toLocaleString()):"")+'</span></div>'+(steps.length?'<ol>'+steps.map(step=>'<li><span>'+esc(step.name||"Step")+'</span><small>'+esc(step.status||"")+(step.conclusion?" · "+esc(step.conclusion):"")+'</small></li>').join("")+'</ol>':'<p class="muted">No step details returned yet.</p>')+'</div>';
+  }).join("");
+  target.innerHTML='<div class="panel-title">Workflow run details <button class="ghost small" id="githubCloseActionDetails" type="button">Close</button></div><p class="muted">Live job status from GitHub Actions. Full logs remain available on GitHub.</p>'+(jobMarkup||'<div class="ide-panel-empty">No job details returned for this run.</div>')+'<p><a href="'+esc(runURL||"#")+'" target="_blank" rel="noopener noreferrer">Open run and logs on GitHub ↗</a></p>';
   $("#githubCloseActionDetails").onclick=()=>{target.hidden=true;target.innerHTML=""};
  }catch(e){target.innerHTML='<div class="ide-panel-empty">Could not load workflow jobs: '+esc(e.message)+'<p><a href="'+esc(runURL||"#")+'" target="_blank" rel="noopener noreferrer">Open run on GitHub ↗</a></p></div>'}
 }
