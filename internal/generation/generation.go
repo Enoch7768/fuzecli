@@ -194,10 +194,51 @@ func normalizeJSONDocument(raw string) ([]byte, error) {
 	}
 	candidate := strings.TrimSpace(s[start:end])
 	if !json.Valid([]byte(candidate)) {
-		return nil, errors.New("response contains malformed JSON")
+		repaired := removeTrailingJSONCommas(candidate)
+		if !json.Valid([]byte(repaired)) {
+			return nil, errors.New("response contains malformed JSON; only unambiguous trailing commas can be repaired automatically")
+		}
+		candidate = repaired
 	}
 	return []byte(candidate), nil
 }
+
+func removeTrailingJSONCommas(candidate string) string {
+	var out strings.Builder
+	out.Grow(len(candidate))
+	inString, escaped := false, false
+	for i := 0; i < len(candidate); i++ {
+		c := candidate[i]
+		if inString {
+			out.WriteByte(c)
+			if escaped {
+				escaped = false
+			} else if c == '\\' {
+				escaped = true
+			} else if c == '"' {
+				inString = false
+			}
+			continue
+		}
+		if c == '"' {
+			inString = true
+			out.WriteByte(c)
+			continue
+		}
+		if c == ',' {
+			j := i + 1
+			for j < len(candidate) && (candidate[j] == ' ' || candidate[j] == '\n' || candidate[j] == '\r' || candidate[j] == '\t') {
+				j++
+			}
+			if j < len(candidate) && (candidate[j] == '}' || candidate[j] == ']') {
+				continue
+			}
+		}
+		out.WriteByte(c)
+	}
+	return out.String()
+}
+
 func balancedJSONEnd(s string, start int) (int, bool) {
 	stack := make([]byte, 0, 16)
 	inString := false
