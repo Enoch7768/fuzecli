@@ -100,19 +100,11 @@ func detectNodeManager(root, declared string, has func(string) bool) string {
 
 func nodeManagerCommand(manager string, args ...string) (string, []string) {
 	switch manager {
-	case "npm":
-		return "npm", append([]string{"run"}, args...)
-	case "pnpm":
-		return "pnpm", append([]string{"run"}, args...)
+	case "npm", "pnpm":
+		return manager, append([]string{"run"}, args...)
 	case "yarn":
-		if len(args) == 1 && args[0] == "test" {
-			return "yarn", args
-		}
 		return "yarn", args
 	case "bun":
-		if len(args) == 1 && args[0] == "test" {
-			return "bun", args
-		}
 		return "bun", append([]string{"run"}, args...)
 	default:
 		return manager, args
