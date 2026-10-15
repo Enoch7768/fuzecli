@@ -19,6 +19,7 @@
     <button class="nav-item" data-view="ide"><span>⌘</span><div><b>Code</b><small>Editor · debug · terminal</small></div></button>
     <button class="nav-item" data-view="builder"><span>◈</span><div><b>Builder</b><small>Visual editing</small></div></button>
     <button class="nav-item" data-view="workspace"><span>▦</span><div><b>Files</b><small>Project files</small></div></button>
+    <button class="nav-item" data-view="health"><span>✓</span><div><b>Health</b><small>Project checks</small></div></button>
     <button class="nav-item" data-view="activity"><span>◷</span><div><b>Activity</b><small>What changed</small></div></button>
     <button class="nav-item" data-view="telemetry"><span>◌</span><div><b>Usage</b><small>Tokens · cost · health</small></div></button>
     <button class="nav-item" data-view="github"><span>⑂</span><div><b>GitHub</b><small>Repo · branch · PRs</small></div></button>
@@ -71,6 +72,12 @@
 </section>
 
 <section class="view" id="view-workspace"><div class="section-head"><div><span class="eyebrow">PROJECT</span><h2>Workspace</h2></div><button class="ghost" id="workspaceRefresh">Refresh</button></div><div class="workspace-grid"><div class="panel file-panel"><div class="panel-title">Files <span id="workspaceFileCount"></span></div><div id="fileList" class="file-list"></div></div><div class="panel preview-panel"><div class="panel-title"><span id="fileName">Select a file</span></div><pre id="fileContent">Choose a file from the workspace.</pre></div></div></section>
+
+<section class="view" id="view-health">
+  <div class="section-head"><div><span class="eyebrow">PROJECT HEALTH</span><h2>Project Health Center</h2><p>Read-only checks for project configuration, required runtimes, Git metadata, and likely test files. This screen does not run tests or modify files.</p></div><button class="ghost" id="projectHealthRefresh" type="button">Run checks</button></div>
+  <div class="health-summary panel"><div><span class="eyebrow">CURRENT WORKSPACE</span><strong id="projectHealthOverall">Not checked yet</strong><p id="projectHealthWorkspace">Run checks to inspect the active workspace.</p></div><div class="health-manifests"><span class="eyebrow">DETECTED CONFIGURATION</span><div id="projectHealthManifests" class="health-tags"><span class="health-tag">Not scanned</span></div></div></div>
+  <div id="projectHealthChecks" class="health-checks"><div class="panel health-check"><strong>Ready when you are</strong><p>Select Run checks to inspect this workspace.</p></div></div>
+</section>
 
 <section class="view" id="view-activity"><div class="section-head"><div><span class="eyebrow">SESSION</span><h2>Activity</h2></div><button class="ghost" id="activityRefresh">Refresh</button></div><div class="panel activity-panel"><div id="activityList"></div></div></section>
 
