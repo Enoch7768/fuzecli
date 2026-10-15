@@ -1,5 +1,7 @@
 ## Unreleased
 
+- Added a read-only Project Health Center for detecting project manifests, relevant runtime availability, Git metadata, and likely test files.
+
 - Replaced the Studio GitHub PAT form with official GitHub CLI browser sign-in.
 - Added observable sign-in progress and explicit Studio disconnect behavior.
 - Removed the standalone OAuth device-flow endpoints and PAT submission endpoint.
