@@ -22,6 +22,9 @@ type Branch struct{Name string `json:"name"`; SHA string `json:"sha"`}
 type PullRequest struct{ Number int `json:"number"`; Title string `json:"title"`; Body string `json:"body"`; State string `json:"state"`; Draft bool `json:"draft"`; HTMLURL string `json:"html_url"`; Head struct{Ref string `json:"ref"`; SHA string `json:"sha"`} `json:"head"`; Base struct{Ref string `json:"ref"`; SHA string `json:"sha"`} `json:"base"`; User struct{Login string `json:"login"`} `json:"user"` }
 type Comment struct{ ID int64 `json:"id"`; Body string `json:"body"`; HTMLURL string `json:"html_url"`; User struct{Login string `json:"login"`} `json:"user"`; CreatedAt time.Time `json:"created_at"`; UpdatedAt time.Time `json:"updated_at"` }
 type WorkflowRun struct{ ID int64 `json:"id"`; Name string `json:"name"`; Status string `json:"status"`; Conclusion string `json:"conclusion"`; HTMLURL string `json:"html_url"`; HeadBranch string `json:"head_branch"`; RunNumber int `json:"run_number"`; CreatedAt time.Time `json:"created_at"`; UpdatedAt time.Time `json:"updated_at"` }
+type CheckRun struct { ID int64 `json:"id"`; Name string `json:"name"`; Status string `json:"status"`; Conclusion string `json:"conclusion"`; DetailsURL string `json:"details_url"` }
+type CommitStatus struct { Context string `json:"context"`; State string `json:"state"`; Description string `json:"description"`; TargetURL string `json:"target_url"` }
+type PullRequestChecksSummary struct { PullRequest PullRequest `json:"pull_request"`; HeadSHA string `json:"head_sha"`; State string `json:"state"`; Checks []CheckRun `json:"checks"`; Statuses []CommitStatus `json:"statuses"` }
 type User struct{Login string `json:"login"`; Name string `json:"name"`; Email string `json:"email"`; HTMLURL string `json:"html_url"`}
 type Issue struct{Number int `json:"number"`; Title string `json:"title"`; Body string `json:"body"`; State string `json:"state"`; HTMLURL string `json:"html_url"`}
 type CreateRepositoryRequest struct{Name string `json:"name"`; Description string `json:"description,omitempty"`; Private bool `json:"private"`; AutoInit bool `json:"auto_init"`}
@@ -135,3 +138,63 @@ func ensureGit(root string)error{info,err:=os.Stat(filepath.Join(root,".git"));i
 func runGit(ctx context.Context,root,token string,args ...string)(string,error){cmd:=exec.CommandContext(ctx,"git",args...);cmd.Dir=root;cmd.Env=append(os.Environ(),"GIT_TERMINAL_PROMPT=0");if strings.TrimSpace(token)!=""{remote:="";if len(args)>1&&args[0]=="clone"{remote=args[1]}else{remote,_=LocalRemote(root)};if strings.HasPrefix(strings.ToLower(strings.TrimSpace(remote)),"https://github.com/"){auth:=base64.StdEncoding.EncodeToString([]byte("x-access-token:"+token));cmd.Env=append(cmd.Env,"GIT_CONFIG_COUNT=1","GIT_CONFIG_KEY_0=http.extraheader","GIT_CONFIG_VALUE_0=Authorization: Basic "+auth)}};var out,er bytes.Buffer;cmd.Stdout=&out;cmd.Stderr=&er;err:=cmd.Run();s:=strings.TrimSpace(out.String());if e:=strings.TrimSpace(er.String());e!=""{if s!=""{s+="\n"};s+=e};if err!=nil{return s,fmt.Errorf("git %s failed: %s",strings.Join(args," "),s)};return s,nil}
 func pathPart(v string)string{return strings.Trim(strings.TrimSpace(v),"/")}
 func urlQuery(v string)string{return strings.ReplaceAll(strings.TrimSpace(v)," ","%20")}
+
+
+func (c *Client) PullRequestChecks(ctx context.Context, full string, number int) (PullRequestChecksSummary, error) {
+	if number <= 0 {
+		return PullRequestChecksSummary{}, errors.New("pull request number must be positive")
+	}
+	pr, err := c.PullRequest(ctx, full, number)
+	if err != nil {
+		return PullRequestChecksSummary{}, err
+	}
+	if strings.TrimSpace(pr.Head.SHA) == "" {
+		return PullRequestChecksSummary{}, errors.New("pull request has no head commit SHA")
+	}
+	base := "/repos/" + pathPart(full) + "/commits/" + pathPart(pr.Head.SHA)
+	var checks struct { CheckRuns []CheckRun `json:"check_runs"` }
+	if err := c.do(ctx, http.MethodGet, base+"/check-runs?per_page=100", nil, &checks); err != nil {
+		return PullRequestChecksSummary{}, fmt.Errorf("load pull request checks: %w", err)
+	}
+	var status struct {
+		State string `json:"state"`
+		Statuses []CommitStatus `json:"statuses"`
+	}
+	if err := c.do(ctx, http.MethodGet, base+"/status", nil, &status); err != nil {
+		return PullRequestChecksSummary{}, fmt.Errorf("load commit statuses: %w", err)
+	}
+	summary := PullRequestChecksSummary{PullRequest: pr, HeadSHA: pr.Head.SHA, Checks: checks.CheckRuns, Statuses: status.Statuses, State: "neutral"}
+	pending, failed, passed := strings.EqualFold(status.State, "pending"), false, strings.EqualFold(status.State, "success")
+	for _, item := range checks.CheckRuns {
+		switch strings.ToLower(item.Status) {
+		case "queued", "in_progress", "waiting", "requested", "pending":
+			pending = true
+		case "completed":
+			switch strings.ToLower(item.Conclusion) {
+			case "failure", "timed_out", "cancelled", "action_required", "startup_failure", "stale":
+				failed = true
+			case "success", "neutral", "skipped":
+				passed = true
+			}
+		}
+	}
+	for _, item := range status.Statuses {
+		switch strings.ToLower(item.State) {
+		case "pending", "expected":
+			pending = true
+		case "failure", "error":
+			failed = true
+		case "success":
+			passed = true
+		}
+	}
+	switch {
+	case failed:
+		summary.State = "failure"
+	case pending:
+		summary.State = "pending"
+	case passed:
+		summary.State = "success"
+	}
+	return summary, nil
+}
