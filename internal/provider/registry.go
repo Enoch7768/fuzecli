@@ -572,10 +572,10 @@ func adaptRequest(name string, messages []Message, opts RequestOptions) ([]Messa
 	if request.JSONMode && request.MaxTokens > budget.JSONOutputTokens {
 		request.MaxTokens = budget.JSONOutputTokens
 	}
-	if request.RequestTokenLimit <= 0 {
-		request.RequestTokenLimit = inputChars / 3
-	}
 	messages = trimProviderMessages(messages, inputChars)
+	if request.RequestTokenLimit <= 0 {
+		request.RequestTokenLimit = estimateMessageTokens(messages) + request.MaxTokens + 256
+	}
 	messages = trimToRequestTokenBudget(messages, request.RequestTokenLimit)
 	return messages, request
 }
