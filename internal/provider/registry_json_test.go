@@ -3,9 +3,32 @@ package provider
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 )
+
+func TestValidateRequestBudgetEnforcesProviderCharacterLimit(t *testing.T) {
+	within := []Message{{Role: "user", Content: strings.Repeat("x", 22000)}}
+	if err := validateRequestBudget("openrouter", within, RequestOptions{}); err != nil {
+		t.Fatalf("request at provider character limit should pass: %v", err)
+	}
+	over := []Message{{Role: "user", Content: strings.Repeat("x", 22001)}}
+	if err := validateRequestBudget("openrouter", over, RequestOptions{}); !errors.Is(err, ErrRequestTooLarge) {
+		t.Fatalf("request above provider character limit should be rejected, got %v", err)
+	}
+}
+
+func TestValidateRequestBudgetEnforcesExplicitTokenLimit(t *testing.T) {
+	messages := []Message{{Role: "user", Content: strings.Repeat("word ", 100)}}
+	limit := estimateMessageTokens(messages) - 1
+	if err := validateRequestBudget("gemini", messages, RequestOptions{RequestTokenLimit: limit}); !errors.Is(err, ErrRequestTooLarge) {
+		t.Fatalf("request above explicit token budget should be rejected, got %v", err)
+	}
+	if err := validateRequestBudget("gemini", messages, RequestOptions{RequestTokenLimit: estimateMessageTokens(messages)}); err != nil {
+		t.Fatalf("request at explicit token budget should pass, got %v", err)
+	}
+}
 
 type jsonContinuationProvider struct { calls int }
 func (p *jsonContinuationProvider) Name() string { return "json-test" }
