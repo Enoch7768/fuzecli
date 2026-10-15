@@ -3,6 +3,7 @@ package diagnostics
 import (
 	"bufio"
 	"fmt"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -32,14 +33,15 @@ type Diagnostic struct {
 var (
 	colonLocationPattern = regexp.MustCompile(`^(.+?):([0-9]+)(?::([0-9]+))?:\s*(.+)$`)
 	tscLocationPattern = regexp.MustCompile(`^(.+?)\(([0-9]+),([0-9]+)\):\s*(error|warning|message)\s+([^:]+):\s*(.*)$`)
-	eslintLocationPattern = regexp.MustCompile(`^\s*(.+?)\s*\n?\s*([0-9]+):([0-9]+)\s+(error|warning)\s+(.+?)\s+([\w-]+)\s*$`)
-	pythonFramePattern = regexp.MustCompile(`^\s*File "(.+)", line ([0-9]+)(?:, in .*)?$ `)
+	eslintLocationPattern = regexp.MustCompile(`^\s*([0-9]+):([0-9]+)\s+(error|warning)\s+(.+?)\s+([\w-]+)\s*$`)
+	pythonFramePattern = regexp.MustCompile(`^File "(.+)", line ([0-9]+)(?:, in .*)?$`)
 	goTestPattern = regexp.MustCompile(`^--- (FAIL|PASS):\s+([^\s]+)`)
 )
 
 func Parse(output string) []Diagnostic {
 	var result []Diagnostic
 	seen := map[string]struct{}{}
+	currentFile := ""
 	scanner := bufio.NewScanner(strings.NewReader(output))
 	scanner.Buffer(make([]byte, 4096), 1024*1024)
 	for scanner.Scan() {
@@ -47,8 +49,21 @@ func Parse(output string) []Diagnostic {
 		if raw == "" {
 			continue
 		}
+		if looksLikeDiagnosticFilename(raw) {
+			currentFile = raw
+			continue
+		}
 		d := parseLine(raw)
-		key := fmt.Sprintf("%s:%d:%d:%s:%s", d.Kind, d.File, d.Line, d.Column, d.Message)
+		if m := eslintLocationPattern.FindStringSubmatch(raw); len(m) == 6 && currentFile != "" {
+			d.File = currentFile
+			d.Line = parsePositiveInt(m[1])
+			d.Column = parsePositiveInt(m[2])
+			d.Severity = m[3]
+			d.Message = strings.TrimSpace(m[4] + " (" + m[5] + ")")
+			d.Kind = Compile
+			d.Stage = stageFor(d.Kind)
+		}
+		key := fmt.Sprintf("%s:%s:%d:%d:%s", d.Kind, d.File, d.Line, d.Column, d.Message)
 		if _, ok := seen[key]; ok {
 			continue
 		}
@@ -56,6 +71,19 @@ func Parse(output string) []Diagnostic {
 		result = append(result, d)
 	}
 	return result
+}
+
+func looksLikeDiagnosticFilename(line string) bool {
+	if strings.ContainsAny(line, " :") || strings.HasPrefix(line, "---") {
+		return false
+	}
+	ext := strings.ToLower(filepath.Ext(line))
+	switch ext {
+	case ".go", ".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".py", ".php", ".rs", ".java", ".cs", ".cpp", ".c", ".h", ".rb":
+		return true
+	default:
+		return false
+	}
 }
 
 func parseLine(line string) Diagnostic {
@@ -79,8 +107,6 @@ func parseLine(line string) Diagnostic {
 		d.File = m[1]
 		d.Line = parsePositiveInt(m[2])
 		d.Kind = Runtime
-		d.Stage = stageFor(d.Kind)
-		d.Severity = severityFor(d.Kind)
 	}
 	d.Stage = stageFor(d.Kind)
 	if d.Severity == "" || d.Severity == "info" {
