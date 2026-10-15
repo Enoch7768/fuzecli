@@ -226,7 +226,7 @@ async function githubStatus(){
     const d=await api("/v1/github/status");
     $("#githubRemote").textContent=d.remote||"No origin";
     const el=$("#githubStatus");
-    if(d.authenticated){el.className="github-status ok";el.textContent="Connected as "+(d.user||"GitHub user")+" · "+(d.auth_mode==="token"?"saved token":"GitHub CLI");return true}
+    if(d.authenticated){el.className="github-status ok";el.textContent="Connected as "+(d.user||"GitHub user")+" · "+(d.auth_mode==="token"?"saved token":"GitHub CLI");const button=$("#githubConnect");if(button){button.textContent="Sign in with GitHub CLI";button.title="An existing session is reused; no repeat sign-in is required."}return true}
     el.className=d.login_running?"github-status":"github-status";
     el.textContent=d.login_running?(d.login_message||"Waiting for GitHub sign-in…"):d.auth_mode==="disconnected"?"Disconnected":"Not signed in with GitHub CLI";
     return false;
@@ -272,7 +272,26 @@ async function githubPRs(){
 }
 async function githubActions(){
   const repo=githubSelectedRepo();if(!repo){$("#githubActionsList").innerHTML='<div class="ide-panel-empty">Choose a repository to view workflow runs.</div>';return}
-  try{const d=await api("/v1/github/actions?repo="+encodeURIComponent(repo));$("#githubActionsList").innerHTML=(d.runs||[]).map(r=>'<div class="github-item"><div><b>'+esc(r.name||"Workflow")+' #'+r.run_number+'</b><span>'+esc(r.status||"")+" / "+esc(r.conclusion||"")+" · "+esc(r.head_branch||"")+'</span></div><button class="ghost small" data-github-rerun="'+r.id+'">Rerun</button></div>').join("")||'<div class="ide-panel-empty">No workflow runs found.</div>'}catch(e){$("#githubActionsList").innerHTML='<div class="ide-panel-empty">'+esc(e.message)+'</div>'}
+  try{const d=await api("/v1/github/actions?repo="+encodeURIComponent(repo));$("#githubActionsList").innerHTML=(d.runs||[]).map(r=>'<div class="github-item"><div><b>'+esc(r.name||"Workflow")+' #'+r.run_number+'</b><span>'+esc(r.status||"")+" / "+esc(r.conclusion||"")+" · "+esc(r.head_branch||"")+(r.created_at?" · "+esc(new Date(r.created_at).toLocaleString()):"")+'</span></div><div class="github-action-controls"><button class="ghost small" data-github-details="'+r.id+'" data-github-url="'+esc(r.html_url||"") +'">Details</button><a class="ghost small" href="'+esc(r.html_url||"#")+'" target="_blank" rel="noopener noreferrer">Open on GitHub</a><button class="ghost small" data-github-rerun="'+r.id+'">Rerun</button></div></div>').join("")||'<div class="ide-panel-empty">No workflow runs found.</div>'}catch(e){$("#githubActionsList").innerHTML='<div class="ide-panel-empty">'+esc(e.message)+'</div>'}
+}
+async function loadGithubProfile(){
+ const card=$("#githubProfileCard");if(!card)return;
+ card.innerHTML='<div class="ide-panel-empty">Loading your GitHub profile…</div>';
+ try{
+  const d=await api("/v1/github/profile"),p=d.profile||{};
+  const displayName=p.name||p.login||"GitHub user";
+  card.innerHTML='<div class="github-profile-hero">'+(p.avatar_url?'<img class="github-profile-avatar" src="'+esc(p.avatar_url)+'" alt="'+esc(displayName)+' avatar" referrerpolicy="no-referrer">':'<div class="github-profile-avatar github-profile-fallback">GH</div>')+'<div class="github-profile-identity"><h3>'+esc(displayName)+'</h3><p>@'+esc(p.login||"")+'</p>'+(p.bio?'<p>'+esc(p.bio)+'</p>':'')+'<a href="'+esc(p.html_url||"https://github.com")+'" target="_blank" rel="noopener noreferrer">View profile on GitHub ↗</a></div></div><div class="github-profile-stats"><div><b>'+Number(p.public_repos||0)+'</b><span>Public repositories</span></div><div><b>'+Number(p.followers||0)+'</b><span>Followers</span></div><div><b>'+Number(p.following||0)+'</b><span>Following</span></div></div><div class="github-profile-meta">'+(p.company?'<p><b>Company</b> '+esc(p.company)+'</p>':'')+(p.location?'<p><b>Location</b> '+esc(p.location)+'</p>':'')+'</div>';
+ }catch(e){card.innerHTML='<div class="ide-panel-empty">'+esc(e.message)+'<p>Check <code>gh auth status --hostname github.com</code> in your terminal.</p></div>'}
+}
+async function githubActionDetails(runID,runURL){
+ const target=$("#githubActionDetails");if(!target)return;
+ target.hidden=false;target.innerHTML='<div class="ide-panel-empty">Loading workflow jobs…</div>';
+ try{
+  const d=await api("/v1/github/actions?repo="+encodeURIComponent(githubSelectedRepo()),{method:"POST",body:JSON.stringify({operation:"jobs",run_id:Number(runID)})});
+  const jobs=d.jobs||[];
+  target.innerHTML='<div class="panel-title">Workflow run details <button class="ghost small" id="githubCloseActionDetails" type="button">Close</button></div><p class="muted">Live job status from GitHub Actions. Full logs remain available on GitHub.</p>'+jobs.map(job=>'<div class="github-job"><div><b>'+esc(job.name||"Job")+'</b><span>'+esc(job.status||"")+(job.conclusion?" · "+esc(job.conclusion):"")+(job.started_at?" · Started "+esc(new Date(job.started_at).toLocaleString()):"")+'</span></div>'+(job.steps||[]).length?'<ol>'+(job.steps||[]).map(step=>'<li><span>'+esc(step.name||"Step")+'</span><small>'+esc(step.status||"")+(step.conclusion?" · "+esc(step.conclusion):"")+'</small></li>').join("")+'</ol>':'').join("")+'<p><a href="'+esc(runURL||"#")+'" target="_blank" rel="noopener noreferrer">Open run and logs on GitHub ↗</a></p>';
+  $("#githubCloseActionDetails").onclick=()=>{target.hidden=true;target.innerHTML=""};
+ }catch(e){target.innerHTML='<div class="ide-panel-empty">Could not load workflow jobs: '+esc(e.message)+'<p><a href="'+esc(runURL||"#")+'" target="_blank" rel="noopener noreferrer">Open run on GitHub ↗</a></p></div>'}
 }
 async function githubIssues(){
   const repo=githubSelectedRepo();if(!repo){$("#githubIssuesList").innerHTML='<div class="ide-panel-empty">Choose a repository to view issues.</div>';return}
@@ -322,11 +341,13 @@ async function view(v,preferred){
   if(v==="activity")activity();
   if(v==="telemetry")telemetry();
   if(v==="github")loadGithub();
+  if(v==="github-profile")loadGithubProfile();
 }
 async function save(){try{await api("/v1/config",{method:"POST",body:JSON.stringify({provider:$("#settingsProvider").value,model:$("#settingsModel").value.trim()})});toast("Settings saved");await loadConfig()}catch(e){toast(e.message)}}
 document.querySelectorAll(".nav-item").forEach(b=>b.onclick=()=>view(b.dataset.view));$("#runtimeBtn")?.addEventListener("click",()=>view("settings"));
 document.querySelectorAll(".quick-actions button").forEach(b=>b.onclick=()=>{$("#prompt").value=b.dataset.prompt;$("#prompt").focus();$("#prompt").dispatchEvent(new Event("input"))});
 $("#githubRefresh").onclick=loadGithub;
+$("#githubProfileRefresh")?.addEventListener("click",loadGithubProfile);
 let githubLoginPoll=null;
 async function pollGitHubLogin(){
   if(githubLoginPoll)clearTimeout(githubLoginPoll);
@@ -362,7 +383,7 @@ $("#githubConnect").onclick=async()=>{
   try{
     const result=await api("/v1/github/auth/login",{method:"POST"});
     $("#githubStatus").textContent=result.message||"Complete GitHub sign-in in the terminal running FuzeCLI.";
-    toast("Follow the GitHub sign-in flow in the FuzeCLI terminal");
+    toast(result.authenticated?"Existing GitHub session reused":"Follow the GitHub sign-in flow in the FuzeCLI terminal");
     pollGitHubLogin();
   }catch(error){
     button.disabled=false;
@@ -394,7 +415,7 @@ async function githubLoadPRChecks(number){
  }catch(e){if(meta)meta.textContent="Could not load PR checks: "+e.message}
 }
 $("#githubPRList").onclick=e=>{const b=e.target.closest("[data-github-pr]");if(b){$("#githubPRNumber").value=b.dataset.githubPr;githubLoadComments();githubLoadPRChecks(Number(b.dataset.githubPr))}};
-$("#githubActionsList").onclick=async e=>{const b=e.target.closest("[data-github-rerun]");if(!b)return;try{await api("/v1/github/actions?repo="+encodeURIComponent(githubSelectedRepo()),{method:"POST",body:JSON.stringify({operation:"rerun",run_id:Number(b.dataset.githubRerun)})});toast("Workflow rerun requested");await githubActions()}catch(x){toast(x.message)}};
+$("#githubActionsList").onclick=async e=>{const details=e.target.closest("[data-github-details]");if(details){await githubActionDetails(details.dataset.githubDetails,details.dataset.githubUrl);return}const b=e.target.closest("[data-github-rerun]");if(!b)return;if(!confirm("Rerun this GitHub Actions workflow?"))return;try{await api("/v1/github/actions?repo="+encodeURIComponent(githubSelectedRepo()),{method:"POST",body:JSON.stringify({operation:"rerun",run_id:Number(b.dataset.githubRerun)})});toast("Workflow rerun requested");await githubActions()}catch(x){toast(x.message)}};
 $("#attachBtn").onclick=()=>$("#fileUpload").click();$("#fileUpload").onchange=async e=>{try{await uploadFiles(e.target.files)}catch(x){toast(x.message)}e.target.value=""};$("#providerSelect").onchange=()=>models($("#providerSelect").value,"main");$("#refreshMemoryBtn").onclick=async()=>{try{await api("/v1/memory/refresh",{method:"POST"});toast("Conversation memory refreshed")}catch(e){toast(e.message)}};$("#settingsProvider").onchange=()=>models($("#settingsProvider").value,"settings");$("#sendBtn").onclick=send;$("#saveProvider").onclick=save;$("#refreshBtn").onclick=()=>loadConfig().then(()=>toast("Runtime refreshed"));$("#projectHealthRefresh")?.addEventListener("click",loadProjectHealth);$("#workspaceRefresh").onclick=workspace;$("#activityRefresh").onclick=activity;$("#telemetryRefresh").onclick=telemetry;$("#previewFile").onchange=e=>openBuilderPage(e.target.value);$("#runRuntimePreview").onclick=runRuntimePreview;$("#openPreview").onclick=()=>window.open(runtimePreviewActive?$("#sitePreview").src:"/preview/"+encodeURI(currentPreview),"_blank","noopener");$("#savePreview").onclick=savePreview;$("#requestSavePreview").onclick=savePreview;$("#applyInspector").onclick=applyInspector;$("#deviceDesktop").onclick=()=>{$("#deviceFrame").className="device desktop"};$("#deviceMobile").onclick=()=>{$("#deviceFrame").className="device mobile"};document.querySelectorAll(".builder-add").forEach(b=>b.onclick=()=>{if(!currentPreview)return toast("Open an HTML page first");postEditor("add",{kind:b.dataset.builderAdd})});$("#builderMoveUp").onclick=()=>postEditor("move",{direction:"up"});$("#builderMoveDown").onclick=()=>postEditor("move",{direction:"down"});$("#builderDuplicate").onclick=()=>postEditor("duplicate");$("#builderDelete").onclick=()=>postEditor("delete");window.addEventListener("message",builderMessage);
 $("#prompt").onkeydown=e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send()}};$("#newSessionBtn").onclick=()=>{$("#messages").innerHTML='<div class="chat-empty" id="chatEmpty"><div class="chat-empty-mark">F</div><strong>What are we building?</strong><span>Ask FuzeCLI to inspect, create, fix, explain, or improve your project.</span></div>';$("#sessionTitle").textContent="New coding session";$("#prompt").focus()};$("#stopBtn").onclick=()=>chatAbort?.abort();$("#prompt").oninput=e=>{e.target.style.height="auto";e.target.style.height=Math.min(e.target.scrollHeight,180)+"px"};
 (async()=>{try{await loadConfig();await activity();await refreshLiveTelemetry();liveTelemetryTimer=setInterval(refreshLiveTelemetry,1000);const h=await api("/v1/history");(h.messages||[]).slice(-80).forEach(m=>msg(m.role,m.content))}catch(e){$("#statusText").textContent="Offline";toast(e.message)}})();
