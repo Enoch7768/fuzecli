@@ -169,7 +169,7 @@ Open `[http://127.0.0.1:8787](http://127.0.0.1:8787)`. The web UI is embedded in
 
 The web app provides provider/model selection, local provider-key management, saved chat history, file upload, workspace visibility, streaming responses, generated-file cards, and responsive mobile navigation. The interface uses the repository-root `icon.png` and `icon-mark.png` when those files are present.
 
-See [docs/WEB.md](https://www.google.com/search?q=docs/WEB.md) for the complete web workflow and [docs/API.md](https://www.google.com/search?q=docs/API.md) for API authentication.
+See [docs/WEB.md](docs/WEB.md) for the complete web workflow and [docs/API.md](docs/API.md) for API authentication.
 
 ## Interactive terminal
 
@@ -196,7 +196,7 @@ Inside chat:
 
 The terminal streams normal responses as they arrive. A complete generation JSON document is applied immediately, changed files are reported, and the prompt is ready for the next request when the response is complete.
 
-See [docs/TERMINAL.md](https://www.google.com/search?q=docs/TERMINAL.md).
+See [docs/TERMINAL.md](docs/TERMINAL.md).
 
 ## API
 
@@ -209,7 +209,7 @@ aicli api
 
 Default endpoint: `[http://127.0.0.1:8787](http://127.0.0.1:8787)`.
 
-See [docs/API.md](https://www.google.com/search?q=docs/API.md) for HTTP endpoints, request formats, authentication, and workspace access.
+See [docs/API.md](docs/API.md) for HTTP endpoints, request formats, authentication, and workspace access.
 
 ## MCP
 
@@ -222,7 +222,7 @@ aicli mcp
 
 The server communicates over stdio and exposes FuzeCLI chat, workspace file reading, and workspace file listing tools.
 
-See [docs/MCP.md](https://www.google.com/search?q=docs/MCP.md) for MCP client configuration and tool schemas.
+See [docs/MCP.md](docs/MCP.md) for MCP client configuration and tool schemas.
 
 ## Security model
 
@@ -232,7 +232,11 @@ Generated file paths are resolved inside the active workspace with traversal and
 
 These controls reduce the execution surface but cannot make arbitrary user workspaces, third-party dependencies, or provider-generated source code mathematically or operationally guaranteed to be malware-free. Normal endpoint security, source control, dependency review, and safe execution practices still apply.
 
-See [SECURITY.md](SECURITY.md) for vulnerability reporting and [docs/SECURITY.md](https://www.google.com/search?q=docs/SECURITY.md) for the detailed security model.
+See [SECURITY.md](SECURITY.md) for vulnerability reporting and [docs/SECURITY.md](docs/SECURITY.md) for the detailed security model.
+
+## Accessibility and contributions
+
+FuzeCLI is working toward more accessible keyboard, screen-reader, contrast, and responsive workflows. Known limitations and reporting guidance are documented in [ACCESSIBILITY.md](ACCESSIBILITY.md). Contributions should follow [CONTRIBUTING.md](CONTRIBUTING.md); pull requests use a quality checklist, and GitHub issue forms help collect reproducible bug reports and focused feature proposals.
 
 ## CI and releases
 
@@ -240,7 +244,7 @@ Every supported development build is validated with formatting checks, module co
 
 Tagged Windows releases are built from a clean checkout and publish both `aicli.exe` and a SHA-256 checksum. GitHub release notes are generated automatically.
 
-See [CONTRIBUTING.md](https://www.google.com/search?q=CONTRIBUTING.md) for the project quality bar, [CODE_OF_CONDUCT.md](https://www.google.com/search?q=CODE_OF_CONDUCT.md) for community standards, [SUPPORT.md](SUPPORT.md) for troubleshooting, [docs/ARCHITECTURE.md](https://www.google.com/search?q=docs/ARCHITECTURE.md) for the system boundaries and roadmap, and [evals/README.md](https://www.google.com/search?q=evals/README.md) for the coding-agent evaluation harness.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the project quality bar, [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) for community standards, [SUPPORT.md](SUPPORT.md) for troubleshooting, [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the system boundaries and roadmap, and [evals/README.md](evals/README.md) for the coding-agent evaluation harness.
 
 ## Project documentation
 
@@ -249,7 +253,11 @@ README.md
 CONTRIBUTING.md
 CODE_OF_CONDUCT.md
 SECURITY.md
+ACCESSIBILITY.md
 SUPPORT.md
+.github/ISSUE_TEMPLATE/bug_report.yml
+.github/ISSUE_TEMPLATE/feature_request.yml
+.github/pull_request_template.md
 CHANGELOG.md
 docs/README.md
 docs/API.md
