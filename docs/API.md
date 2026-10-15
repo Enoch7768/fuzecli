@@ -78,6 +78,14 @@ The browser application uses a short-lived local HttpOnly session cookie and str
 GET /v1/health
 ```
 
+### Project health
+
+```http
+GET /v1/project/health
+```
+
+Returns a read-only scan of common project manifests, Git metadata, relevant runtime availability, and likely test-file naming patterns. The endpoint does not execute project commands or run tests. The `overall` field is `attention` when a required manifest or runtime check needs attention; test-file detection is informational only.
+
 ### Configuration
 
 ```http

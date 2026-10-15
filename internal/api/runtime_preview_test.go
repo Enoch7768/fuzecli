@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"runtime"
 	"testing"
 )
@@ -134,5 +135,57 @@ func TestRuntimePreviewUsesPlatformSpecificNPMName(t *testing.T) {
 		if command != "cmd.exe" {
 			t.Fatalf("command = %q, want cmd.exe wrapper on Windows", command)
 		}
+	}
+}
+
+func TestNodePreviewRespectsPackageManagerAndLockfile(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		manifest string
+		lock string
+		wantManager string
+	}{
+		{name: "declared pnpm", manifest: `{"packageManager":"pnpm@9.0.0","scripts":{"dev":"vite"}}`, lock: "pnpm-lock.yaml", wantManager: "pnpm"},
+		{name: "declared yarn", manifest: `{"packageManager":"yarn@4.0.0","scripts":{"dev":"vite"}}`, lock: "yarn.lock", wantManager: "yarn"},
+		{name: "bun lock", manifest: `{"scripts":{"start":"node server.js"}}`, lock: "bun.lock", wantManager: "bun"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			if err := os.WriteFile(filepath.Join(root, "package.json"), []byte(tc.manifest), 0600); err != nil { t.Fatal(err) }
+			if err := os.WriteFile(filepath.Join(root, tc.lock), []byte(""), 0600); err != nil { t.Fatal(err) }
+			command, args, _, err := runtimeCommand(root, "node", 43131)
+			if err != nil { t.Fatal(err) }
+			wantArgs := []string{"run", "dev", "--", "--host", "127.0.0.1", "--port", "43131"}
+			if tc.wantManager == "bun" { wantArgs = []string{"run", "start"} }
+			wantCommand := tc.wantManager
+			if runtime.GOOS == "windows" {
+				wantCommand = "cmd.exe"
+				wantArgs = []string{"/d", "/s", "/c", nodeManagerWindowsCommand(tc.wantManager) + " " + strings.Join(wantArgs, " ")}
+			}
+			if command != wantCommand || !reflect.DeepEqual(args, wantArgs) {
+				t.Fatalf("command/args = %q %v, want %q %v", command, args, wantCommand, wantArgs)
+			}
+		})
+	}
+}
+
+
+func TestNodePreviewHonorsDeclaredManagerWithoutLockfile(t *testing.T) {
+	root := t.TempDir()
+	manifest := `{"packageManager":"pnpm@9.0.0","scripts":{"start":"node server.js"}}`
+	if err := os.WriteFile(filepath.Join(root, "package.json"), []byte(manifest), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if got := detectPreviewNodeManager(root, "pnpm@9.0.0"); got != "pnpm" {
+		t.Fatalf("manager = %q, want pnpm from packageManager", got)
+	}
+}
+
+func TestNodeManagerWindowsCommandUsesBunExecutable(t *testing.T) {
+	if got := nodeManagerWindowsCommand("bun"); got != "bun.exe" {
+		t.Fatalf("Windows Bun command = %q, want bun.exe", got)
+	}
+	if got := nodeManagerWindowsCommand("pnpm"); got != "pnpm.cmd" {
+		t.Fatalf("Windows pnpm command = %q, want pnpm.cmd", got)
 	}
 }

@@ -67,3 +67,24 @@ input::placeholder,textarea::placeholder{color:#a0a8c2}input:focus,select:focus,
 .github-device-code{font:700 25px/1.4 ui-monospace,SFMono-Regular,Consolas,monospace;letter-spacing:.16em;padding:16px;border-radius:12px;text-align:center;background:rgba(124,140,255,.12);border:1px solid rgba(124,140,255,.35);color:var(--text,#eef2ff);user-select:all}
 #githubAuthorizeLink{color:var(--accent,#9caaff);font-weight:600;text-decoration:none}
 #githubAuthorizeLink:hover{text-decoration:underline}
+
+
+.health-summary{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(240px,1fr);gap:24px;margin:20px 25px;padding:20px 22px;align-items:start}
+.health-summary strong{display:block;font-size:18px;letter-spacing:-.025em;margin-top:9px}
+.health-summary p{color:var(--muted,#788698);font-size:11px;line-height:1.6;margin:7px 0 0;overflow-wrap:anywhere}
+.health-overall.ok{color:var(--good,#65d39b)}
+.health-overall.attention{color:#f0bf73}
+.health-manifests{min-width:0}
+.health-tags{display:flex;flex-wrap:wrap;gap:7px;margin-top:10px}
+.health-tag{border:1px solid var(--line2,#2a3747);background:var(--panel2,#111923);border-radius:7px;padding:6px 8px;color:var(--text,#edf2f7);font:10px ui-monospace,SFMono-Regular,Consolas,monospace}
+.health-tag.muted{color:var(--muted,#788698)}
+.health-checks{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:12px;padding:0 25px 25px}
+.health-check{padding:15px 16px;min-width:0}
+.health-check-head{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.health-check-head strong{font-size:12px;font-weight:650}
+.health-check p{font-size:11px;color:var(--muted,#788698);line-height:1.65;margin:10px 0 0;overflow-wrap:anywhere}
+.health-state{font-size:9px;letter-spacing:.06em;text-transform:uppercase;padding:5px 7px;border-radius:6px;background:rgba(120,134,152,.12);color:var(--muted,#788698);flex:none}
+.health-state.ok{background:rgba(101,211,155,.1);color:var(--good,#65d39b)}
+.health-state.attention{background:rgba(240,191,115,.12);color:#f0bf73}
+.health-state.info{background:rgba(142,167,255,.1);color:var(--accent,#8ea7ff)}
+@media(max-width:720px){.health-summary{grid-template-columns:1fr;margin:14px;padding:16px}.health-checks{padding:0 14px 18px}.section-head{gap:12px;align-items:flex-start}}

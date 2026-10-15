@@ -93,3 +93,80 @@ func TestAttachmentLimitsAndDeduplication(t *testing.T) {
 		t.Fatal("expected total attachment limit error")
 	}
 }
+
+
+func TestResolveWorkspaceRootPathRejectsSymlinkEscape(t *testing.T) {
+	root := t.TempDir()
+	outside := t.TempDir()
+	if err := os.WriteFile(filepath.Join(outside, "secret.txt"), []byte("secret"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(root, "outside")
+	if err := os.Symlink(outside, link); err != nil {
+		t.Skipf("symlink creation is unavailable: %v", err)
+	}
+	server := &Server{roots: []string{root}}
+	if _, ok := server.resolveWorkspaceRootPath(filepath.Join(link, "secret.txt")); ok {
+		t.Fatal("workspace path resolver accepted a symlink that escapes the workspace")
+	}
+}
+
+func TestResolveWorkspaceRootPathAllowsNormalNestedFile(t *testing.T) {
+	root := t.TempDir()
+	nested := filepath.Join(root, "src")
+	if err := os.Mkdir(nested, 0700); err != nil {
+		t.Fatal(err)
+	}
+	file := filepath.Join(nested, "main.go")
+	if err := os.WriteFile(file, []byte("package main"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	server := &Server{roots: []string{root}}
+	got, ok := server.resolveWorkspaceRootPath(file)
+	if !ok {
+		t.Fatal("workspace path resolver rejected a normal nested file")
+	}
+	if !samePath(got, file) {
+		t.Fatalf("resolved path = %q, want %q", got, file)
+	}
+}
+
+
+func TestRuntimePreviewShutdownIsLocalOnly(t *testing.T) {
+	server := &Server{runtimePreview: &runtimePreviewManager{}}
+	request := httptest.NewRequest(http.MethodDelete, "http://example.test/v1/preview/runtime", nil)
+	request.RemoteAddr = "192.0.2.10:4000"
+	response := httptest.NewRecorder()
+	server.runtimePreviewHandler(response, request)
+	if response.Code != http.StatusForbidden {
+		t.Fatalf("remote shutdown status = %d, want %d", response.Code, http.StatusForbidden)
+	}
+
+	request = httptest.NewRequest(http.MethodDelete, "http://127.0.0.1/v1/preview/runtime", nil)
+	request.RemoteAddr = "127.0.0.1:4000"
+	response = httptest.NewRecorder()
+	server.runtimePreviewHandler(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("local shutdown status = %d, want %d", response.Code, http.StatusOK)
+	}
+}
+
+
+func TestResolveTerminalRootRequiresRegisteredWorkspace(t *testing.T) {
+	root := t.TempDir()
+	other := t.TempDir()
+	server := &Server{roots: []string{root}}
+	got, err := server.resolveTerminalRoot(root)
+	if err != nil {
+		t.Fatalf("registered root rejected: %v", err)
+	}
+	if !samePath(got, root) {
+		t.Fatalf("terminal root = %q, want %q", got, root)
+	}
+	if _, err := server.resolveTerminalRoot(other); err == nil {
+		t.Fatal("unregistered terminal root was accepted")
+	}
+	if _, err := server.resolveTerminalRoot(filepath.Join(root, "..", filepath.Base(other))); err == nil {
+		t.Fatal("path inside a workspace was accepted as a terminal root")
+	}
+}

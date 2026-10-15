@@ -13,48 +13,50 @@ const (
 	PhaseInspect    Phase = "inspect"
 	PhaseFormat     Phase = "format"
 	PhaseSummarize  Phase = "summarize"
-	PhasePlan      Phase = "plan"
-	PhaseContext   Phase = "context"
-	PhaseEdit      Phase = "edit"
-	PhaseVerify   Phase = "verify"
-	PhaseDiagnose Phase = "diagnose"
-	PhaseRepair   Phase = "repair"
-	PhaseComplete Phase = "complete"
-	PhaseFailed   Phase = "failed"
+	PhasePlan       Phase = "plan"
+	PhaseContext    Phase = "context"
+	PhaseEdit       Phase = "edit"
+	PhaseVerify     Phase = "verify"
+	PhaseDiagnose   Phase = "diagnose"
+	PhaseRepair     Phase = "repair"
+	PhaseComplete   Phase = "complete"
+	PhaseFailed     Phase = "failed"
 )
 
 type Event struct {
 	Phase   Phase
 	Message string
 	Attempt int
+	Error   string
 }
 
 type StepFunc func(context.Context) error
 
 type Loop struct {
-	MaxRepairAttempts int
-	Understand        StepFunc
-	Plan              StepFunc
-	Context           StepFunc
-	Inspect           StepFunc
-	Edit              StepFunc
-	Format            StepFunc
-	Verify            StepFunc
-	Diagnose          StepFunc
-	Repair            StepFunc
-	Summarize         StepFunc
-	OnEvent           func(Event)
-	Trace             *Trace
+	MaxRepairAttempts    int
+	Understand           StepFunc
+	Plan                 StepFunc
+	Context              StepFunc
+	Inspect              StepFunc
+	Edit                 StepFunc
+	Format               StepFunc
+	Verify               StepFunc
+	Diagnose              StepFunc
+	Repair                StepFunc
+	Summarize             StepFunc
+	OnEvent               func(Event)
+	Trace                 *Trace
+	VerificationError     string
 }
 
 func (l *Loop) Run(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-
 	if l.MaxRepairAttempts < 0 {
 		return errors.New("max repair attempts cannot be negative")
 	}
+	l.VerificationError = ""
 
 	if err := l.step(ctx, PhaseUnderstand, 0, l.Understand); err != nil {
 		return fmt.Errorf("understand: %w", err)
@@ -76,17 +78,27 @@ func (l *Loop) Run(ctx context.Context) error {
 		if err := l.step(ctx, PhaseFormat, attempt, l.Format); err != nil {
 			return fmt.Errorf("format: %w", err)
 		}
-		if err := l.step(ctx, PhaseVerify, attempt, l.Verify); err == nil {
+		verifyErr := l.step(ctx, PhaseVerify, attempt, l.Verify)
+		if verifyErr == nil {
+			l.VerificationError = ""
 			if err := l.step(ctx, PhaseSummarize, attempt, l.Summarize); err != nil {
 				return fmt.Errorf("summarize: %w", err)
 			}
 			l.emit(Event{Phase: PhaseComplete, Attempt: attempt, Message: "agent task verified"})
 			return nil
-		} else if attempt >= l.MaxRepairAttempts {
-			l.emit(Event{Phase: PhaseFailed, Attempt: attempt, Message: "verification failed and repair budget is exhausted"})
-			return fmt.Errorf("verify failed after %d repair attempts", attempt)
 		}
 
+		l.VerificationError = verifyErr.Error()
+		l.emit(Event{
+			Phase: PhaseVerify,
+			Attempt: attempt,
+			Message: "verification failed: " + l.VerificationError,
+			Error: l.VerificationError,
+		})
+		if attempt >= l.MaxRepairAttempts {
+			l.emit(Event{Phase: PhaseFailed, Attempt: attempt, Message: "verification failed and repair budget is exhausted", Error: l.VerificationError})
+			return fmt.Errorf("verify failed after %d repair attempts: %w", attempt, verifyErr)
+		}
 		if err := l.step(ctx, PhaseDiagnose, attempt, l.Diagnose); err != nil {
 			return fmt.Errorf("diagnose: %w", err)
 		}

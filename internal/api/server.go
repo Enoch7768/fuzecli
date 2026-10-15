@@ -57,6 +57,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/assets/styles.css", s.assetCSS)
 	mux.HandleFunc("/assets/premium.css", s.assetPremiumCSS)
 	mux.HandleFunc("/v1/health", s.health)
+	mux.HandleFunc("/v1/project/health", s.projectHealth)
 	mux.HandleFunc("/v1/config", s.config)
 	mux.HandleFunc("/v1/models", s.models)
 	mux.HandleFunc("/v1/memory/refresh", s.memoryRefresh)
@@ -368,6 +369,10 @@ func (s *Server) file(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) runtimePreviewHandler(w http.ResponseWriter, r *http.Request) {
+	if !isLoopbackRequest(r) {
+		writeError(w, http.StatusForbidden, "runtime preview is local-only")
+		return
+	}
 	if r.Method == http.MethodDelete {
 		if s.runtimePreview != nil {
 			s.runtimePreview.Stop()
@@ -377,10 +382,6 @@ func (s *Server) runtimePreviewHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if r.Method != http.MethodPost {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
-		return
-	}
-	if !isLoopbackRequest(r) {
-		writeError(w, http.StatusForbidden, "runtime preview is local-only")
 		return
 	}
 	if s.runtimePreview == nil {
@@ -521,15 +522,49 @@ func (s *Server) workspaceRoots(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) resolveWorkspaceRootPath(path string) (string, bool) {
 	candidate := strings.TrimSpace(path)
-	if candidate == "" { return "", false }
+	if candidate == "" {
+		return "", false
+	}
 	abs, err := filepath.Abs(candidate)
-	if err != nil { return "", false }
+	if err != nil {
+		return "", false
+	}
 	s.rootsMu.RLock()
 	defer s.rootsMu.RUnlock()
 	for _, root := range s.roots {
-		rel, err := filepath.Rel(root, abs)
-		if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) { continue }
-		return abs, true
+		rootAbs, err := filepath.Abs(root)
+		if err != nil {
+			continue
+		}
+		rel, err := filepath.Rel(rootAbs, abs)
+		if err != nil || rel == ".." || filepath.IsAbs(rel) || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
+			continue
+		}
+		resolvedRoot, err := filepath.EvalSymlinks(rootAbs)
+		if err != nil {
+			continue
+		}
+		current := resolvedRoot
+		safe := true
+		if rel != "." {
+			for _, part := range strings.Split(rel, string(os.PathSeparator)) {
+				if part == "" || part == "." {
+					continue
+				}
+				current = filepath.Join(current, part)
+				info, statErr := os.Lstat(current)
+				if os.IsNotExist(statErr) {
+					continue
+				}
+				if statErr != nil || info.Mode()&os.ModeSymlink != 0 {
+					safe = false
+					break
+				}
+			}
+		}
+		if safe {
+			return abs, true
+		}
 	}
 	return "", false
 }
@@ -670,12 +705,54 @@ func writeError(w http.ResponseWriter, status int, message string) {
 }
 
 func (s *Server) terminal(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet { writeError(w, http.StatusMethodNotAllowed, "method not allowed"); return }
-	if s.workbench == nil { writeError(w, http.StatusServiceUnavailable, "workbench runtime unavailable"); return }
-	if !isLoopbackRequest(r) && s.token == "" { writeError(w, http.StatusForbidden, "terminal is local-only"); return }
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	if s.workbench == nil {
+		writeError(w, http.StatusServiceUnavailable, "workbench runtime unavailable")
+		return
+	}
+	if !isLoopbackRequest(r) && s.token == "" {
+		writeError(w, http.StatusForbidden, "terminal is local-only")
+		return
+	}
+	root, err := s.resolveTerminalRoot(r.URL.Query().Get("root"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	conn, err := s.workbench.upgrader.Upgrade(w, r, nil)
-	if err != nil { return }
-	s.workbench.terminal.handleWS(conn, s.service.Root())
+	if err != nil {
+		return
+	}
+	s.workbench.terminal.handleWS(conn, root)
+}
+
+func (s *Server) resolveTerminalRoot(requested string) (string, error) {
+	requested = strings.TrimSpace(requested)
+	if requested == "" {
+		if s == nil || s.service == nil {
+			return "", errors.New("workspace service is unavailable")
+		}
+		return s.service.Root(), nil
+	}
+	abs, err := filepath.Abs(requested)
+	if err != nil {
+		return "", errors.New("invalid terminal workspace root")
+	}
+	s.rootsMu.RLock()
+	defer s.rootsMu.RUnlock()
+	for _, root := range s.roots {
+		if samePath(root, abs) {
+			info, statErr := os.Stat(root)
+			if statErr != nil || !info.IsDir() {
+				return "", errors.New("terminal workspace root is unavailable")
+			}
+			return root, nil
+		}
+	}
+	return "", errors.New("terminal root must be a registered workspace root")
 }
 
 func (s *Server) lsp(w http.ResponseWriter, r *http.Request) {

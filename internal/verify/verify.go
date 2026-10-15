@@ -2,6 +2,7 @@ package verify
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -20,29 +21,93 @@ type Result struct {
 	Diagnostics []diagnostics.Diagnostic
 }
 
+type packageManifest struct {
+	PackageManager string            `json:"packageManager"`
+	Scripts        map[string]string `json:"scripts"`
+}
+
 func Detect(root string, touched []string) (Result, error) {
 	has := func(name string) bool { _, e := os.Stat(filepath.Join(root, name)); return e == nil }
 	switch {
 	case has("go.mod"):
 		return verifyGo(root)
-	case has("package.json") && has("tsconfig.json"):
-		if has("package-lock.json") {
-			if result, err := run(root, "npm", "test", "--", "--runInBand"); err == nil && !result.Passed {
-				return result, nil
-			}
-		}
-		return run(root, "npx", "--yes", "tsc", "--noEmit")
 	case has("package.json"):
-		if has("package-lock.json") {
-			return run(root, "npm", "test", "--", "--runInBand")
-		}
-		return Result{Tool: "node", Passed: true, Output: "Node project detected; no lockfile-backed test command was inferred."}, nil
+		return verifyNode(root, has)
 	case has("composer.json"):
 		return lintPHP(root, touched)
 	case has("requirements.txt") || has("pyproject.toml"):
 		return lintPython(root, touched)
 	default:
 		return Result{Tool: "none", Passed: true, Output: "No supported toolchain detected; verification skipped."}, nil
+	}
+}
+
+func verifyNode(root string, has func(string) bool) (Result, error) {
+	data, err := os.ReadFile(filepath.Join(root, "package.json"))
+	if err != nil {
+		return Result{}, fmt.Errorf("read package.json: %w", err)
+	}
+	var manifest packageManifest
+	if err := json.Unmarshal(data, &manifest); err != nil {
+		return Result{Tool: "package.json", Passed: false, Output: "Could not parse package.json: " + err.Error()}, nil
+	}
+
+	manager := detectNodeManager(root, manifest.PackageManager, has)
+	if manager == "" {
+		return Result{Tool: "node", Passed: true, Output: "Node project detected; no supported lockfile was found, so package scripts were not executed."}, nil
+	}
+
+	if strings.TrimSpace(manifest.Scripts["test"]) != "" {
+		name, args := nodeManagerCommand(manager, "test")
+		return run(root, name, args...)
+	}
+	if has("tsconfig.json") && strings.TrimSpace(manifest.Scripts["typecheck"]) != "" {
+		name, args := nodeManagerCommand(manager, "typecheck")
+		return run(root, name, args...)
+	}
+	return Result{Tool: manager, Passed: true, Output: "Node project detected; package.json defines no test or typecheck script to run."}, nil
+}
+
+func detectNodeManager(root, declared string, has func(string) bool) string {
+	declared = strings.TrimSpace(declared)
+	if at := strings.IndexByte(declared, '@'); at > 0 {
+		declared = declared[:at]
+	}
+	locks := []struct {
+		name    string
+		manager string
+	}{
+		{name: "package-lock.json", manager: "npm"},
+		{name: "pnpm-lock.yaml", manager: "pnpm"},
+		{name: "yarn.lock", manager: "yarn"},
+		{name: "bun.lock", manager: "bun"},
+		{name: "bun.lockb", manager: "bun"},
+	}
+	if declared != "" {
+		for _, lock := range locks {
+			if lock.manager == declared && has(lock.name) {
+				return declared
+			}
+		}
+	}
+	for _, lock := range locks {
+		if has(lock.name) {
+			return lock.manager
+		}
+	}
+	return ""
+}
+
+func nodeManagerCommand(manager string, args ...string) (string, []string) {
+	switch manager {
+	case "npm", "pnpm":
+		return manager, append([]string{"run"}, args...)
+	case "yarn":
+		return "yarn", args
+	case "bun":
+		return "bun", append([]string{"run"}, args...)
+	default:
+		return manager, args
 	}
 }
 

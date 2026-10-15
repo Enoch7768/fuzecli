@@ -9,7 +9,13 @@ func TestAuthorizeAllowlistedCommands(t *testing.T) {
 		risk Risk
 	}{
 		{"go", []string{"test", "./..."}, RiskLow},
+		{"go", []string{"vet", "./..."}, RiskLow},
+		{"gofmt", []string{"-l", "."}, RiskLow},
 		{"npm", []string{"test", "--", "--runInBand"}, RiskLow},
+		{"npm", []string{"run", "test"}, RiskMedium},
+		{"pnpm", []string{"run", "test"}, RiskMedium},
+		{"yarn", []string{"test"}, RiskMedium},
+		{"bun", []string{"run", "typecheck"}, RiskMedium},
 		{"npx", []string{"--yes", "tsc", "--noEmit"}, RiskMedium},
 		{"php", []string{"-l", "index.php"}, RiskLow},
 		{"python", []string{"-m", "py_compile"}, RiskLow},

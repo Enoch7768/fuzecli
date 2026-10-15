@@ -1,5 +1,16 @@
 ## Unreleased
 
+- Fixed Studio provider/model selector races and kept the Settings model list tied to its own selected provider, so slower responses cannot overwrite a newer selection.
+- Fixed the Studio API client's timeout handling so caller-provided abort signals no longer disable request deadlines; timeout and caller cancellation remain distinguishable and abort listeners are cleaned up.
+- Added a pull-request checks endpoint that summarizes GitHub Actions check runs and commit statuses for the exact PR head SHA, including pending, failed, successful, and neutral states.
+- Improved live preview startup for npm, pnpm, Yarn, and Bun projects, including declared package-manager precedence and Windows Bun executable handling.
+- Hardened absolute workspace file operations against symlink escapes and restricted runtime-preview shutdown to loopback requests.
+- Bound terminal sessions to registered workspace roots and connected the Studio terminal to the configured workspace.
+- Added a read-only Project Health Center for detecting project manifests, relevant runtime availability, Git metadata, and likely test files.
+- Preserved the exact verification failure through the coding agent's Diagnose → Repair → Verify cycle, emitted structured failure events, and returned detailed errors when the bounded repair budget is exhausted.
+- Expanded structured diagnostics to locate TypeScript compiler errors, ESLint findings, and Python traceback frames; added regression coverage for these formats and long compiler output.
+- Added regression tests for workspace path containment, preview package-manager selection, Windows launch behavior, local-only preview shutdown, and agent repair failure reporting.
+
 - Replaced the Studio GitHub PAT form with official GitHub CLI browser sign-in.
 - Added observable sign-in progress and explicit Studio disconnect behavior.
 - Removed the standalone OAuth device-flow endpoints and PAT submission endpoint.

@@ -156,13 +156,14 @@ func runtimeCommand(root, kind string, port int) (string, []string, []string, er
 			}
 			return "", nil, nil, errors.New("Node project has no package.json or recognizable server entry point")
 		}
-		var pkg struct { Scripts map[string]string `json:"scripts"` }
+		var pkg struct { PackageManager string `json:"packageManager"`; Scripts map[string]string `json:"scripts"` }
 		if err := json.Unmarshal(data, &pkg); err != nil { return "", nil, nil, fmt.Errorf("parse package.json: %w", err) }
 		script := "dev"
 		if _, ok := pkg.Scripts[script]; !ok { script = "start" }
 		if _, ok := pkg.Scripts[script]; !ok { return "", nil, nil, errors.New("package.json has neither a dev nor start script") }
-		npm := "npm"
-		args := []string{"run", script}
+		manager := detectPreviewNodeManager(root, pkg.PackageManager)
+		command := manager
+		args := nodePreviewScriptArgs(manager, script)
 		commandText := strings.ToLower(pkg.Scripts[script])
 		if strings.Contains(commandText, "vite") {
 			args = append(args, "--", "--host", "127.0.0.1", "--port", fmt.Sprint(port))
@@ -172,9 +173,9 @@ func runtimeCommand(root, kind string, port int) (string, []string, []string, er
 			args = append(args, "--", "--host", "127.0.0.1", "--port", fmt.Sprint(port))
 		}
 		if runtime.GOOS == "windows" {
-			return "cmd.exe", []string{"/d", "/s", "/c", "npm.cmd " + strings.Join(args, " ")}, []string{"HOST=127.0.0.1", "PORT=" + fmt.Sprint(port)}, nil
+			return "cmd.exe", []string{"/d", "/s", "/c", nodeManagerWindowsCommand(manager) + " " + strings.Join(args, " ")}, []string{"HOST=127.0.0.1", "PORT=" + fmt.Sprint(port)}, nil
 		}
-		return npm, args, []string{"HOST=127.0.0.1", "PORT=" + fmt.Sprint(port)}, nil
+		return command, args, []string{"HOST=127.0.0.1", "PORT=" + fmt.Sprint(port)}, nil
 	case "python":
 		requirements, _ := os.ReadFile(filepath.Join(root, "requirements.txt"))
 		lower := strings.ToLower(string(requirements))
@@ -207,6 +208,54 @@ func runtimeCommand(root, kind string, port int) (string, []string, []string, er
 		return pythonExecutable(), []string{"-m", "http.server", fmt.Sprint(port), "--bind", "127.0.0.1"}, []string{"HOST=127.0.0.1", "PORT=" + fmt.Sprint(port)}, nil
 	default:
 		return "", nil, nil, fmt.Errorf("unsupported preview runtime %q", kind)
+	}
+}
+
+func detectPreviewNodeManager(root, declared string) string {
+	declared = strings.TrimSpace(declared)
+	if at := strings.IndexByte(declared, '@'); at > 0 {
+		declared = declared[:at]
+	}
+	switch declared {
+	case "npm", "pnpm", "yarn", "bun":
+		return declared
+	}
+	locks := []struct {
+		name    string
+		manager string
+	}{
+		{name: "package-lock.json", manager: "npm"},
+		{name: "pnpm-lock.yaml", manager: "pnpm"},
+		{name: "yarn.lock", manager: "yarn"},
+		{name: "bun.lock", manager: "bun"},
+		{name: "bun.lockb", manager: "bun"},
+	}
+	for _, lock := range locks {
+		info, err := os.Stat(filepath.Join(root, lock.name))
+		if err == nil && !info.IsDir() {
+			return lock.manager
+		}
+	}
+	return "npm"
+}
+
+func nodeManagerWindowsCommand(manager string) string {
+	if manager == "bun" {
+		return "bun.exe"
+	}
+	return manager + ".cmd"
+}
+
+func nodePreviewScriptArgs(manager, script string) []string {
+	switch manager {
+	case "yarn":
+		return []string{"run", script}
+	case "npm":
+		return []string{"run", script}
+	case "pnpm", "bun":
+		return []string{"run", script}
+	default:
+		return []string{"run", script}
 	}
 }
 
