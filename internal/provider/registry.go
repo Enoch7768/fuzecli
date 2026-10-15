@@ -916,6 +916,8 @@ func (r *Registry) continueStream(ctx context.Context, name string, messages []M
 				usage.PromptTokens += chunk.Usage.PromptTokens
 				usage.CompletionTokens += chunk.Usage.CompletionTokens
 				usage.TotalTokens += chunk.Usage.TotalTokens
+				usage.CostUSD += maxNonNegativeFloat(chunk.Usage.CostUSD)
+				usage.Estimated = usage.Estimated || chunk.Usage.Estimated
 				if chunk.Delta != "" {
 					combined.WriteString(chunk.Delta)
 					out <- StreamChunk{Delta: chunk.Delta, Usage: chunk.Usage}
@@ -988,6 +990,8 @@ func (r *Registry) continueResponse(ctx context.Context, name string, messages [
 		response.Usage.PromptTokens += next.Usage.PromptTokens
 		response.Usage.CompletionTokens += next.Usage.CompletionTokens
 		response.Usage.TotalTokens += next.Usage.TotalTokens
+		response.Usage.CostUSD += maxNonNegativeFloat(next.Usage.CostUSD)
+		response.Usage.Estimated = response.Usage.Estimated || next.Usage.Estimated
 		if !responseNeedsContinuation(combined) {
 			return response, nil
 		}
