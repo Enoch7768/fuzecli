@@ -39,6 +39,7 @@ type TelemetryEvent struct {
 	CompletionTokens uint64 `json:"completion_tokens"`
 	TotalTokens uint64 `json:"total_tokens"`
 	CostUSD float64 `json:"cost_usd"`
+	Estimated bool `json:"estimated,omitempty"`
 	LatencyMs  int64     `json:"latency_ms"`
 	Streaming  bool      `json:"streaming"`
 	Success    bool      `json:"success"`
@@ -83,10 +84,11 @@ func (t *Telemetry) RecordWithRequestID(requestID, provider string, err error, u
 	entry.PromptTokens += uint64(nonNegativeInt(usage.PromptTokens))
 	entry.CompletionTokens += uint64(nonNegativeInt(usage.CompletionTokens))
 	entry.TotalTokens += uint64(nonNegativeInt(usage.TotalTokens))
+	if usage.Estimated { entry.EstimatedTokens += uint64(nonNegativeInt(usage.TotalTokens)) }
 	if usage.CostUSD > 0 { entry.TotalCostUSD += usage.CostUSD }
 	entry.TotalLatency += latency
 	entry.LastLatency = latency
-	event := TelemetryEvent{RequestID: requestID, Time: time.Now(), Provider: provider, Model: modelName, PromptTokens: uint64(nonNegativeInt(usage.PromptTokens)), CompletionTokens: uint64(nonNegativeInt(usage.CompletionTokens)), TotalTokens: uint64(nonNegativeInt(usage.TotalTokens)), CostUSD: maxNonNegativeFloat(usage.CostUSD), LatencyMs: latency.Milliseconds(), Streaming: streaming, Success: err == nil}
+	event := TelemetryEvent{RequestID: requestID, Time: time.Now(), Provider: provider, Model: modelName, PromptTokens: uint64(nonNegativeInt(usage.PromptTokens)), CompletionTokens: uint64(nonNegativeInt(usage.CompletionTokens)), TotalTokens: uint64(nonNegativeInt(usage.TotalTokens)), CostUSD: maxNonNegativeFloat(usage.CostUSD), Estimated: usage.Estimated, LatencyMs: latency.Milliseconds(), Streaming: streaming, Success: err == nil}
 	if err != nil {
 		event.Error = err.Error()
 		var providerErr *ProviderError
