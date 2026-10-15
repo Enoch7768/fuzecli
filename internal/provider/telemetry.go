@@ -7,27 +7,28 @@ import (
 )
 
 type ProviderTelemetry struct {
-	Provider            string
-	Requests            uint64
-	Successes           uint64
-	Failures            uint64
-	RateLimited         uint64
-	QuotaExceeded       uint64
-	Unauthorized        uint64
-	Unavailable         uint64
-	BadRequests         uint64
-	ModelNotFound       uint64
-	UnknownErrors       uint64
-	StreamRequests      uint64
-	PromptTokens        uint64
-	CompletionTokens    uint64
-	TotalTokens         uint64
-	TotalCostUSD        float64
-	TotalLatency        time.Duration
-	LastLatency         time.Duration
-	LastSuccess         time.Time
-	LastFailure         time.Time
-	LastError           string
+	Provider         string        `json:"provider"`
+	Requests         uint64        `json:"requests"`
+	Successes        uint64        `json:"successes"`
+	Failures         uint64        `json:"failures"`
+	RateLimited      uint64        `json:"rate_limited"`
+	QuotaExceeded    uint64        `json:"quota_exceeded"`
+	Unauthorized     uint64        `json:"unauthorized"`
+	Unavailable      uint64        `json:"unavailable"`
+	BadRequests      uint64        `json:"bad_requests"`
+	ModelNotFound    uint64        `json:"model_not_found"`
+	UnknownErrors    uint64        `json:"unknown_errors"`
+	StreamRequests   uint64        `json:"stream_requests"`
+	PromptTokens     uint64        `json:"prompt_tokens"`
+	CompletionTokens uint64        `json:"completion_tokens"`
+	TotalTokens      uint64        `json:"total_tokens"`
+	EstimatedTokens  uint64        `json:"estimated_tokens"`
+	TotalCostUSD     float64       `json:"total_cost_usd"`
+	TotalLatency     time.Duration `json:"total_latency"`
+	LastLatency      time.Duration `json:"last_latency"`
+	LastSuccess      time.Time     `json:"last_success"`
+	LastFailure      time.Time     `json:"last_failure"`
+	LastError        string        `json:"last_error"`
 }
 
 type TelemetryEvent struct {
