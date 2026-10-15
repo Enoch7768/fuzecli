@@ -80,7 +80,7 @@ async function refreshLiveTelemetry(){
     const tokens=providers.reduce((n,p)=>n+Number(p.total_tokens||0),0);
     const cost=providers.reduce((n,p)=>n+Number(p.total_cost_usd||0),0);
     if($("#liveRequests"))$("#liveRequests").textContent=requests.toLocaleString();
-    if($("#liveTokens"))$("#liveTokens").textContent=tokens.toLocaleString();
+    if($("#liveTokens"))$("#liveTokens").textContent=(providers.some(p=>Number(p.estimated_tokens||0)>0)?"~":"")+tokens.toLocaleString();
     if($("#liveCost"))$("#liveCost").textContent=cost>0?"$"+cost.toFixed(4):"Cost pending";
     if(document.querySelector("#view-telemetry.active"))renderTelemetrySnapshot(d);
   }catch(e){}
@@ -97,7 +97,7 @@ function renderTelemetrySnapshot(d){
   const events=d.events||[];
   $("#telemetryEvents").innerHTML=events.slice().reverse().map(e=>{
     const cost=Number(e.cost_usd||0);
-    return '<div class="telemetry-event"><div><b>'+esc(e.provider)+'</b><span>'+esc(e.model||"automatic")+'</span></div><div><b>'+Number(e.total_tokens||0).toLocaleString()+' tokens</b><span>'+(cost>0?"$"+cost.toFixed(4):"Cost pending")+'</span></div><div class="'+(e.success?"event-ok":"event-error")+'">'+esc(e.success?"OK":(e.error_kind||"error"))+'</div><div class="event-error-text">'+esc(e.error||"")+'</div></div>';
+    return '<div class="telemetry-event"><div><b>'+esc(e.provider)+'</b><span>'+esc(e.model||"automatic")+'</span></div><div><b>'+(e.estimated?"~":"")+Number(e.total_tokens||0).toLocaleString()+' tokens</b><span>'+(cost>0?"$"+cost.toFixed(4):"Cost pending")+'</span></div><div class="'+(e.success?"event-ok":"event-error")+'">'+esc(e.success?"OK":(e.error_kind||"error"))+'</div><div class="event-error-text">'+esc(e.error||"")+'</div></div>';
   }).join("")||'<div class="telemetry-empty">No request events yet.</div>';
 }
 function eventLabel(e){
