@@ -3,7 +3,8 @@ package api
 import (
 	"os"
 	"path/filepath"
-	"reflect"\n\t"strings"
+	"reflect"
+	"strings"
 	"runtime"
 	"testing"
 )
