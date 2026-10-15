@@ -238,3 +238,41 @@ func TestRegistryRecoversEmptyStream(t *testing.T) {
 		t.Fatalf("stream response = %q, want recovered response", got)
 	}
 }
+
+
+type streamFallbackSuccessProvider struct{}
+
+func (p *streamFallbackSuccessProvider) Name() string { return "stream-fallback-test" }
+func (p *streamFallbackSuccessProvider) ListModels(context.Context) ([]string, error) { return []string{"test-model"}, nil }
+func (p *streamFallbackSuccessProvider) Send(context.Context, []Message, RequestOptions) (*Response, error) {
+	return &Response{Content: "Fallback response", Model: "test-model", ProviderName: p.Name()}, nil
+}
+func (p *streamFallbackSuccessProvider) Stream(context.Context, []Message, RequestOptions) (<-chan StreamChunk, error) {
+	ch := make(chan StreamChunk, 2)
+	ch <- StreamChunk{Delta: "Fallback stream response"}
+	ch <- StreamChunk{Done: true}
+	close(ch)
+	return ch, nil
+}
+
+func TestRegistryAutoStreamFallsBackAfterPrimaryTimeout(t *testing.T) {
+	primary := &deadlineProvider{}
+	fallback := &streamFallbackSuccessProvider{}
+	registry := NewRegistry([]string{primary.Name(), fallback.Name()}, map[string]string{
+		primary.Name(): "test-model", fallback.Name(): "test-model",
+	}, primary, fallback)
+	stream, err := registry.Stream(context.Background(), "auto", []Message{{Role: "user", Content: "hello"}}, RequestOptions{Model: "auto"})
+	if err != nil {
+		t.Fatalf("Stream returned error instead of trying fallback: %v", err)
+	}
+	var got string
+	for chunk := range stream {
+		if chunk.Error != nil {
+			t.Fatalf("fallback stream returned error: %v", chunk.Error)
+		}
+		got += chunk.Delta
+	}
+	if got != "Fallback stream response" {
+		t.Fatalf("stream response = %q, want fallback response", got)
+	}
+}
