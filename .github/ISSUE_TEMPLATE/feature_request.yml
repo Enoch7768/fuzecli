@@ -1,0 +1,43 @@
+name: Feature request
+description: Suggest a focused improvement to FuzeCLI.
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please describe the problem first. Requests should fit FuzeCLI's local-first, workspace-aware development focus.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem to solve
+      description: What are you trying to do that is currently difficult or impossible?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Describe the behavior you want, without prescribing unnecessary implementation details.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+    validations:
+      required: false
+  - type: textarea
+    id: impact
+    attributes:
+      label: Users and workflows affected
+      description: Who benefits, and how would success be measured?
+    validations:
+      required: true
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Project fit
+      options:
+        - label: I considered local-first operation, workspace safety, and privacy implications.
+          required: false
