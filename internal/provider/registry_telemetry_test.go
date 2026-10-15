@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 )
 
@@ -72,5 +73,36 @@ func TestRegistryTelemetrySinkReceivesExactEvent(t *testing.T) {
 	}
 	if events[0].TotalTokens != 2 || !events[0].Success {
 		t.Fatalf("unexpected usage/success: %#v", events[0])
+	}
+}
+
+
+func TestRegistryEstimatesMissingUsage(t *testing.T) {
+	p := conformanceProvider{name: "test"}
+	registry := NewRegistry([]string{"test"}, map[string]string{"test": "test-model"}, p)
+	response, err := registry.Send(context.Background(), "test", []Message{{Role: "user", Content: "hello there"}}, RequestOptions{})
+	if err != nil { t.Fatal(err) }
+	if response.Usage.PromptTokens <= 0 || response.Usage.CompletionTokens <= 0 || response.Usage.TotalTokens != response.Usage.PromptTokens+response.Usage.CompletionTokens {
+		t.Fatalf("missing or inconsistent usage estimate: %#v", response.Usage)
+	}
+	if !response.Usage.Estimated { t.Fatalf("expected estimated usage when provider omits it: %#v", response.Usage) }
+	entry, ok := registry.ProviderTelemetry("test")
+	if !ok || entry.TotalTokens == 0 || entry.EstimatedTokens != entry.TotalTokens {
+		t.Fatalf("estimated usage not reflected in telemetry: %#v", entry)
+	}
+}
+
+func TestProviderTelemetryUsesWebJSONFieldNames(t *testing.T) {
+	telemetry := NewTelemetry()
+	telemetry.Record("test", nil, Usage{PromptTokens: 3, CompletionTokens: 4, TotalTokens: 7, Estimated: true}, 10, false)
+	data, err := json.Marshal(telemetry.Snapshot())
+	if err != nil { t.Fatal(err) }
+	var decoded map[string]any
+	if err := json.Unmarshal(data, &decoded); err != nil { t.Fatal(err) }
+	providers, ok := decoded["providers"].(map[string]any)
+	if !ok { t.Fatalf("missing providers object: %s", data) }
+	entry, ok := providers["test"].(map[string]any)
+	if !ok || entry["total_tokens"] != float64(7) || entry["estimated_tokens"] != float64(7) || entry["prompt_tokens"] != float64(3) {
+		t.Fatalf("web telemetry field names/values incorrect: %s", data)
 	}
 }
