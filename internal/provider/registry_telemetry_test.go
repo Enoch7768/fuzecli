@@ -78,7 +78,7 @@ func TestRegistryTelemetrySinkReceivesExactEvent(t *testing.T) {
 
 
 func TestRegistryEstimatesMissingUsage(t *testing.T) {
-	p := conformanceProvider{name: "test"}
+	p := emptyUsageProvider{}
 	registry := NewRegistry([]string{"test"}, map[string]string{"test": "test-model"}, p)
 	response, err := registry.Send(context.Background(), "test", []Message{{Role: "user", Content: "hello there"}}, RequestOptions{})
 	if err != nil { t.Fatal(err) }
@@ -105,4 +105,20 @@ func TestProviderTelemetryUsesWebJSONFieldNames(t *testing.T) {
 	if !ok || entry["total_tokens"] != float64(7) || entry["estimated_tokens"] != float64(7) || entry["prompt_tokens"] != float64(3) {
 		t.Fatalf("web telemetry field names/values incorrect: %s", data)
 	}
+}
+
+
+type emptyUsageProvider struct{}
+
+func (emptyUsageProvider) Name() string { return "test" }
+func (emptyUsageProvider) ListModels(context.Context) ([]string, error) { return []string{"test-model"}, nil }
+func (emptyUsageProvider) Send(context.Context, []Message, RequestOptions) (*Response, error) {
+	return &Response{Content: "A generated answer with several words.", Model: "test-model"}, nil
+}
+func (emptyUsageProvider) Stream(ctx context.Context, _ []Message, _ RequestOptions) (<-chan StreamChunk, error) {
+	ch := make(chan StreamChunk, 2)
+	ch <- StreamChunk{Delta: "A generated answer with several words."}
+	ch <- StreamChunk{Done: true}
+	close(ch)
+	return ch, nil
 }
