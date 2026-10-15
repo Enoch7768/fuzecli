@@ -1,11 +1,11 @@
 package provider
 
 import (
-	"errors"
 	"encoding/json"
+	"errors"
+	"strings"
 	"testing"
 	"time"
-	"strings"
 )
 
 func TestTelemetryRecordsSuccessAndUsage(t *testing.T) {
