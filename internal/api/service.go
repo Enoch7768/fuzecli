@@ -47,6 +47,7 @@ type ChatResponse struct {
 	PromptTokens  int            `json:"prompt_tokens"`
 	CompletionTokens int         `json:"completion_tokens"`
 	TotalTokens   int            `json:"total_tokens"`
+	UsageEstimated bool          `json:"usage_estimated,omitempty"`
 	WrittenFiles  []string       `json:"written_files,omitempty"`
 	Applied       bool           `json:"applied"`
 }
@@ -63,6 +64,7 @@ type StudioEvent struct {
 	PromptTokens int `json:"prompt_tokens,omitempty"`
 	CompletionTokens int `json:"completion_tokens,omitempty"`
 	TotalTokens int `json:"total_tokens,omitempty"`
+	UsageEstimated bool `json:"usage_estimated,omitempty"`
 	CostUSD float64 `json:"cost_usd,omitempty"`
 	Timestamp time.Time `json:"timestamp"`
 }
@@ -147,8 +149,9 @@ func (s *Service) Chat(ctx context.Context, req ChatRequest) (ChatResponse, erro
 			usage.CompletionTokens += chunk.Usage.CompletionTokens
 			usage.TotalTokens += chunk.Usage.TotalTokens
 			usage.CostUSD += chunk.Usage.CostUSD
+			usage.Estimated = usage.Estimated || chunk.Usage.Estimated
 			if chunk.Usage.PromptTokens > 0 || chunk.Usage.CompletionTokens > 0 || chunk.Usage.TotalTokens > 0 || chunk.Usage.CostUSD > 0 {
-				s.emitEvent(StudioEvent{RequestID:requestID, Type:"generation.usage", Phase:"generation", Message:"Usage updated", Provider:name, Model:model, PromptTokens:usage.PromptTokens, CompletionTokens:usage.CompletionTokens, TotalTokens:usage.TotalTokens, CostUSD:usage.CostUSD, Percent:58})
+				s.emitEvent(StudioEvent{RequestID:requestID, Type:"generation.usage", Phase:"generation", Message:"Usage updated", Provider:name, Model:model, PromptTokens:usage.PromptTokens, CompletionTokens:usage.CompletionTokens, TotalTokens:usage.TotalTokens, UsageEstimated:usage.Estimated, CostUSD:usage.CostUSD, Percent:58})
 			}
 			if chunk.Delta != "" {
 				raw.WriteString(chunk.Delta)
@@ -162,7 +165,7 @@ func (s *Service) Chat(ctx context.Context, req ChatRequest) (ChatResponse, erro
 		raw.WriteString(resp.Content)
 		usage = resp.Usage
 		if usage.PromptTokens > 0 || usage.CompletionTokens > 0 || usage.TotalTokens > 0 || usage.CostUSD > 0 {
-			s.emitEvent(StudioEvent{RequestID:requestID, Type:"generation.usage", Phase:"generation", Message:"Usage received", Provider:name, Model:model, PromptTokens:usage.PromptTokens, CompletionTokens:usage.CompletionTokens, TotalTokens:usage.TotalTokens, CostUSD:usage.CostUSD, Percent:58})
+			s.emitEvent(StudioEvent{RequestID:requestID, Type:"generation.usage", Phase:"generation", Message:"Usage received", Provider:name, Model:model, PromptTokens:usage.PromptTokens, CompletionTokens:usage.CompletionTokens, TotalTokens:usage.TotalTokens, UsageEstimated:usage.Estimated, CostUSD:usage.CostUSD, Percent:58})
 		}
 	}
 	s.emitEvent(StudioEvent{RequestID:requestID, Type:"generation.completed", Phase:"validation", Message:"Response generated; validating structured output", Provider:name, Model:model, Percent:62})
@@ -172,7 +175,7 @@ func (s *Service) Chat(ctx context.Context, req ChatRequest) (ChatResponse, erro
 	if parsed.Response != "" { content = parsed.Response } else if parsed.Message != "" { content = parsed.Message } else if parsed.Explanation != "" { content = parsed.Explanation }
 	if err := s.App.Store.AddMessage(provider.Message{Role:"assistant", Content:content}); err != nil { return ChatResponse{}, err }
 	s.emitEvent(StudioEvent{RequestID:requestID, Type:"validation.completed", Phase:"validation", Message:"Structured response validated", Provider:name, Model:model, Percent:72})
-	result := ChatResponse{Content:content, Provider:name, Model:model, PromptTokens:usage.PromptTokens, CompletionTokens:usage.CompletionTokens, TotalTokens:usage.TotalTokens}
+	result := ChatResponse{Content:content, Provider:name, Model:model, PromptTokens:usage.PromptTokens, CompletionTokens:usage.CompletionTokens, TotalTokens:usage.TotalTokens, UsageEstimated:usage.Estimated}
 	if parsed.Plan != nil && req.Apply {
 		s.emitEvent(StudioEvent{RequestID:requestID, Type:"apply.started", Phase:"files", Message:"Applying workspace changes", Percent:78})
 		written, applyErr := generation.ApplyChatPlan(s.App.Store.Root, *parsed.Plan)

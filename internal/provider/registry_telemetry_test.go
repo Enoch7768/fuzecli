@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 )
 
@@ -72,5 +73,80 @@ func TestRegistryTelemetrySinkReceivesExactEvent(t *testing.T) {
 	}
 	if events[0].TotalTokens != 2 || !events[0].Success {
 		t.Fatalf("unexpected usage/success: %#v", events[0])
+	}
+}
+
+
+func TestRegistryEstimatesMissingUsage(t *testing.T) {
+	p := emptyUsageProvider{}
+	registry := NewRegistry([]string{"test"}, map[string]string{"test": "test-model"}, p)
+	response, err := registry.Send(context.Background(), "test", []Message{{Role: "user", Content: "hello there"}}, RequestOptions{})
+	if err != nil { t.Fatal(err) }
+	if response.Usage.PromptTokens <= 0 || response.Usage.CompletionTokens <= 0 || response.Usage.TotalTokens != response.Usage.PromptTokens+response.Usage.CompletionTokens {
+		t.Fatalf("missing or inconsistent usage estimate: %#v", response.Usage)
+	}
+	if !response.Usage.Estimated { t.Fatalf("expected estimated usage when provider omits it: %#v", response.Usage) }
+	entry, ok := registry.ProviderTelemetry("test")
+	if !ok || entry.TotalTokens == 0 || entry.EstimatedTokens != entry.TotalTokens {
+		t.Fatalf("estimated usage not reflected in telemetry: %#v", entry)
+	}
+}
+
+func TestProviderTelemetryUsesWebJSONFieldNames(t *testing.T) {
+	telemetry := NewTelemetry()
+	telemetry.Record("test", nil, Usage{PromptTokens: 3, CompletionTokens: 4, TotalTokens: 7, Estimated: true}, 10, false)
+	data, err := json.Marshal(telemetry.Snapshot())
+	if err != nil { t.Fatal(err) }
+	var decoded map[string]any
+	if err := json.Unmarshal(data, &decoded); err != nil { t.Fatal(err) }
+	providers, ok := decoded["providers"].(map[string]any)
+	if !ok { t.Fatalf("missing providers object: %s", data) }
+	entry, ok := providers["test"].(map[string]any)
+	if !ok || entry["total_tokens"] != float64(7) || entry["estimated_tokens"] != float64(7) || entry["prompt_tokens"] != float64(3) {
+		t.Fatalf("web telemetry field names/values incorrect: %s", data)
+	}
+}
+
+
+type emptyUsageProvider struct{}
+
+func (emptyUsageProvider) Name() string { return "test" }
+func (emptyUsageProvider) ListModels(context.Context) ([]string, error) { return []string{"test-model"}, nil }
+func (emptyUsageProvider) Send(context.Context, []Message, RequestOptions) (*Response, error) {
+	return &Response{Content: "A generated answer with several words.", Model: "test-model"}, nil
+}
+func (emptyUsageProvider) Stream(ctx context.Context, _ []Message, _ RequestOptions) (<-chan StreamChunk, error) {
+	ch := make(chan StreamChunk, 2)
+	ch <- StreamChunk{Delta: "A generated answer with several words."}
+	ch <- StreamChunk{Done: true}
+	close(ch)
+	return ch, nil
+}
+
+
+func TestRegistryStreamEstimatesMissingUsage(t *testing.T) {
+	p := emptyUsageProvider{}
+	registry := NewRegistry([]string{"test"}, map[string]string{"test": "test-model"}, p)
+	stream, err := registry.Stream(context.Background(), "test", []Message{{Role: "user", Content: "hello there"}}, RequestOptions{})
+	if err != nil { t.Fatal(err) }
+	var final Usage
+	for chunk := range stream {
+		if chunk.Done { final = chunk.Usage }
+	}
+	if final.PromptTokens <= 0 || final.CompletionTokens <= 0 || final.TotalTokens != final.PromptTokens+final.CompletionTokens || !final.Estimated {
+		t.Fatalf("stream did not return estimated usage: %#v", final)
+	}
+	entry, ok := registry.ProviderTelemetry("test")
+	if !ok || entry.TotalTokens != uint64(final.TotalTokens) || entry.EstimatedTokens != uint64(final.TotalTokens) {
+		t.Fatalf("stream telemetry does not match returned usage: %#v / %#v", entry, final)
+	}
+}
+
+func TestAdaptRequestReservesCompletionBudget(t *testing.T) {
+	messages := []Message{{Role: "system", Content: "You are a coding assistant."}, {Role: "user", Content: "Explain the project."}}
+	_, opts := adaptRequest("openai", messages, RequestOptions{MaxTokens: 1200})
+	if opts.MaxTokens <= 0 { t.Fatalf("completion budget is not positive: %#v", opts) }
+	if opts.RequestTokenLimit < estimateMessageTokens(messages)+opts.MaxTokens+256 {
+		t.Fatalf("request token budget does not reserve prompt, output, and safety margin: %#v", opts)
 	}
 }

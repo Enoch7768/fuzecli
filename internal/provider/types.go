@@ -35,6 +35,7 @@ type Usage struct {
 	CompletionTokens int     `json:"completion_tokens"`
 	TotalTokens      int     `json:"total_tokens"`
 	CostUSD          float64 `json:"cost"`
+	Estimated        bool    `json:"estimated,omitempty"`
 }
 
 type StreamChunk struct {

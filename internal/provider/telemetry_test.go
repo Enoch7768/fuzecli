@@ -1,7 +1,9 @@
 package provider
 
 import (
+	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 )
@@ -61,5 +63,16 @@ func TestTelemetrySnapshotIsIndependent(t *testing.T) {
 	telemetry.Reset()
 	if _, ok := telemetry.Provider("test"); ok {
 		t.Fatal("telemetry was not reset")
+	}
+}
+
+
+func TestTelemetryJSONIncludesSnakeCaseAndEstimatedTokens(t *testing.T) {
+	telemetry := NewTelemetry()
+	telemetry.Record("sample", nil, Usage{PromptTokens: 5, CompletionTokens: 6, TotalTokens: 11, Estimated: true}, time.Millisecond, false)
+	data, err := json.Marshal(telemetry.Snapshot())
+	if err != nil { t.Fatal(err) }
+	for _, field := range []string{`"total_tokens":11`, `"prompt_tokens":5`, `"estimated_tokens":11`} {
+		if !strings.Contains(string(data), field) { t.Fatalf("missing %s in %s", field, data) }
 	}
 }
