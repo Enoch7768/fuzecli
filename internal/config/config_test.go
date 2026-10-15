@@ -46,14 +46,7 @@ func TestDefaultConfigShape(t *testing.T) {
 
 func TestSaveLoadRoundTrip(t *testing.T) {
 	tmp := t.TempDir()
-	oldAppData := os.Getenv("APPDATA")
-	oldXDG := os.Getenv("XDG_CONFIG_HOME")
-	_ = os.Setenv("APPDATA", tmp)
-	_ = os.Setenv("XDG_CONFIG_HOME", tmp)
-	defer func() {
-		_ = os.Setenv("APPDATA", oldAppData)
-		_ = os.Setenv("XDG_CONFIG_HOME", oldXDG)
-	}()
+	setTestConfigHome(t, tmp)
 
 	c := Default()
 	c.Providers["openai"] = ProviderConfig{APIKey: "secret", DefaultModel: "model"}
@@ -76,21 +69,14 @@ func TestSaveLoadRoundTrip(t *testing.T) {
 	if got.DefaultProvider != c.DefaultProvider {
 		t.Fatal("default provider round trip failed")
 	}
-	if _, err := os.Stat(filepath.Join(tmp, "aicli", "config.yaml")); err != nil {
+	if _, err := os.Stat(Path()); err != nil {
 		t.Fatal(err)
 	}
 }
 
 func TestSetFallbackOrder(t *testing.T) {
 	tmp := t.TempDir()
-	oldAppData := os.Getenv("APPDATA")
-	oldXDG := os.Getenv("XDG_CONFIG_HOME")
-	_ = os.Setenv("APPDATA", tmp)
-	_ = os.Setenv("XDG_CONFIG_HOME", tmp)
-	defer func() {
-		_ = os.Setenv("APPDATA", oldAppData)
-		_ = os.Setenv("XDG_CONFIG_HOME", oldXDG)
-	}()
+	setTestConfigHome(t, tmp)
 
 	if err := Set("fallback_order", "[gemini, groq, openai, llamacpp]"); err != nil {
 		t.Fatal(err)
@@ -167,4 +153,31 @@ func TestGitHubTokenConfiguredOverridesEnvironment(t *testing.T) {
 	if got != "" {
 		t.Fatalf("explicit disconnect should not return a token, got %q", got)
 	}
+}
+
+
+func setTestConfigHome(t *testing.T, dir string) {
+	t.Helper()
+	type environmentValue struct {
+		name string
+		value string
+		set bool
+	}
+	values := make([]environmentValue, 0, 3)
+	for _, name := range []string{"APPDATA", "XDG_CONFIG_HOME", "HOME"} {
+		value, set := os.LookupEnv(name)
+		values = append(values, environmentValue{name: name, value: value, set: set})
+		if err := os.Setenv(name, dir); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Cleanup(func() {
+		for _, value := range values {
+			if value.set {
+				_ = os.Setenv(value.name, value.value)
+			} else {
+				_ = os.Unsetenv(value.name)
+			}
+		}
+	})
 }
