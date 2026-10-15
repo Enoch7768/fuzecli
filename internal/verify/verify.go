@@ -62,7 +62,7 @@ func verifyNode(root string, has func(string) bool) (Result, error) {
 		return run(root, name, args...)
 	}
 	if has("tsconfig.json") && strings.TrimSpace(manifest.Scripts["typecheck"]) != "" {
-		name, args := nodeManagerCommand(manager, "run", "typecheck")
+		name, args := nodeManagerCommand(manager, "typecheck")
 		return run(root, name, args...)
 	}
 	return Result{Tool: manager, Passed: true, Output: "Node project detected; package.json defines no test or typecheck script to run."}, nil
