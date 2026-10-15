@@ -369,6 +369,10 @@ func (s *Server) file(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) runtimePreviewHandler(w http.ResponseWriter, r *http.Request) {
+	if !isLoopbackRequest(r) {
+		writeError(w, http.StatusForbidden, "runtime preview is local-only")
+		return
+	}
 	if r.Method == http.MethodDelete {
 		if s.runtimePreview != nil {
 			s.runtimePreview.Stop()
@@ -378,10 +382,6 @@ func (s *Server) runtimePreviewHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if r.Method != http.MethodPost {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
-		return
-	}
-	if !isLoopbackRequest(r) {
-		writeError(w, http.StatusForbidden, "runtime preview is local-only")
 		return
 	}
 	if s.runtimePreview == nil {
