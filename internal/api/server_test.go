@@ -130,3 +130,23 @@ func TestResolveWorkspaceRootPathAllowsNormalNestedFile(t *testing.T) {
 		t.Fatalf("resolved path = %q, want %q", got, file)
 	}
 }
+
+
+func TestRuntimePreviewShutdownIsLocalOnly(t *testing.T) {
+	server := &Server{runtimePreview: &runtimePreviewManager{}}
+	request := httptest.NewRequest(http.MethodDelete, "http://example.test/v1/preview/runtime", nil)
+	request.RemoteAddr = "192.0.2.10:4000"
+	response := httptest.NewRecorder()
+	server.runtimePreviewHandler(response, request)
+	if response.Code != http.StatusForbidden {
+		t.Fatalf("remote shutdown status = %d, want %d", response.Code, http.StatusForbidden)
+	}
+
+	request = httptest.NewRequest(http.MethodDelete, "http://127.0.0.1/v1/preview/runtime", nil)
+	request.RemoteAddr = "127.0.0.1:4000"
+	response = httptest.NewRecorder()
+	server.runtimePreviewHandler(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("local shutdown status = %d, want %d", response.Code, http.StatusOK)
+	}
+}
