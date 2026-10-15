@@ -25,12 +25,12 @@ func TestParsePlanDetectsTruncatedJSON(t *testing.T) {
 }
 
 func TestParsePlanRepairsTrailingCommasWithoutChangingStrings(t *testing.T) {
-	raw := "{\"files\":[{\"path\":\"index.html\",\"content\":\"comma ,] and escaped quote \\\\\"\",\"action\":\"create\",}],\"explanation\":\"done,\",\"commands\":[],}"
+	raw := `{"files":[{"path":"index.html","content":"comma ,] and escaped quote \"","action":"create",}],"explanation":"done,","commands":[],}`
 	plan, err := ParsePlan(raw)
 	if err != nil {
 		t.Fatalf("ParsePlan should repair trailing commas: %v", err)
 	}
-	if len(plan.Files) != 1 || plan.Files[0].Content != "comma ,] and escaped quote \\\"" {
+	if len(plan.Files) != 1 || plan.Files[0].Content != `comma ,] and escaped quote "` {
 		t.Fatalf("JSON string content changed during repair: %#v", plan.Files)
 	}
 }
