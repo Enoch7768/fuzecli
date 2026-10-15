@@ -122,3 +122,31 @@ func (emptyUsageProvider) Stream(ctx context.Context, _ []Message, _ RequestOpti
 	close(ch)
 	return ch, nil
 }
+
+
+func TestRegistryStreamEstimatesMissingUsage(t *testing.T) {
+	p := emptyUsageProvider{}
+	registry := NewRegistry([]string{"test"}, map[string]string{"test": "test-model"}, p)
+	stream, err := registry.Stream(context.Background(), "test", []Message{{Role: "user", Content: "hello there"}}, RequestOptions{})
+	if err != nil { t.Fatal(err) }
+	var final Usage
+	for chunk := range stream {
+		if chunk.Done { final = chunk.Usage }
+	}
+	if final.PromptTokens <= 0 || final.CompletionTokens <= 0 || final.TotalTokens != final.PromptTokens+final.CompletionTokens || !final.Estimated {
+		t.Fatalf("stream did not return estimated usage: %#v", final)
+	}
+	entry, ok := registry.ProviderTelemetry("test")
+	if !ok || entry.TotalTokens != final.TotalTokens || entry.EstimatedTokens != final.TotalTokens {
+		t.Fatalf("stream telemetry does not match returned usage: %#v / %#v", entry, final)
+	}
+}
+
+func TestAdaptRequestReservesCompletionBudget(t *testing.T) {
+	messages := []Message{{Role: "system", Content: "You are a coding assistant."}, {Role: "user", Content: "Explain the project."}}
+	_, opts := adaptRequest("openai", messages, RequestOptions{MaxTokens: 1200})
+	if opts.MaxTokens <= 0 { t.Fatalf("completion budget is not positive: %#v", opts) }
+	if opts.RequestTokenLimit < estimateMessageTokens(messages)+opts.MaxTokens+256 {
+		t.Fatalf("request token budget does not reserve prompt, output, and safety margin: %#v", opts)
+	}
+}
