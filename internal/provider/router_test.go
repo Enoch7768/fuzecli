@@ -132,3 +132,29 @@ func TestRegistryRouteUsesTelemetryHealth(t *testing.T) {
 		t.Fatalf("expected telemetry-healthy provider, got %q", decision.Provider)
 	}
 }
+
+type unavailableRoutingProvider struct {
+	routingProvider
+}
+
+func (p unavailableRoutingProvider) Send(context.Context, []Message, RequestOptions) (*Response, error) {
+	return nil, &ProviderError{Kind: ErrorProviderUnavailable, Provider: p.name, Message: "simulated outage"}
+}
+
+func TestRegistrySendFallsBackAfterProviderFailure(t *testing.T) {
+	capabilities := Capabilities{Streaming: true, StructuredJSON: true, ListModels: true, MaxInputChars: 100000, MaxOutputTokens: 16000, JSONOutputTokens: 12000}
+	registry := NewRegistry(
+		[]string{"primary", "backup"},
+		map[string]string{"primary": "primary-model", "backup": "backup-model"},
+		unavailableRoutingProvider{routingProvider{name: "primary", cap: capabilities}},
+		routingProvider{name: "backup", cap: capabilities},
+	)
+
+	response, err := registry.Send(context.Background(), "primary", []Message{{Role: "user", Content: "hello"}}, RequestOptions{})
+	if err != nil {
+		t.Fatalf("expected fallback response, got error: %v", err)
+	}
+	if response == nil || response.ProviderName != "backup" || response.Content != "ok" {
+		t.Fatalf("unexpected fallback response: %#v", response)
+	}
+}
