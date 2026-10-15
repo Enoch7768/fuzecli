@@ -93,3 +93,40 @@ func TestAttachmentLimitsAndDeduplication(t *testing.T) {
 		t.Fatal("expected total attachment limit error")
 	}
 }
+
+
+func TestResolveWorkspaceRootPathRejectsSymlinkEscape(t *testing.T) {
+	root := t.TempDir()
+	outside := t.TempDir()
+	if err := os.WriteFile(filepath.Join(outside, "secret.txt"), []byte("secret"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(root, "outside")
+	if err := os.Symlink(outside, link); err != nil {
+		t.Skipf("symlink creation is unavailable: %v", err)
+	}
+	server := &Server{roots: []string{root}}
+	if _, ok := server.resolveWorkspaceRootPath(filepath.Join(link, "secret.txt")); ok {
+		t.Fatal("workspace path resolver accepted a symlink that escapes the workspace")
+	}
+}
+
+func TestResolveWorkspaceRootPathAllowsNormalNestedFile(t *testing.T) {
+	root := t.TempDir()
+	nested := filepath.Join(root, "src")
+	if err := os.Mkdir(nested, 0700); err != nil {
+		t.Fatal(err)
+	}
+	file := filepath.Join(nested, "main.go")
+	if err := os.WriteFile(file, []byte("package main"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	server := &Server{roots: []string{root}}
+	got, ok := server.resolveWorkspaceRootPath(file)
+	if !ok {
+		t.Fatal("workspace path resolver rejected a normal nested file")
+	}
+	if !samePath(got, file) {
+		t.Fatalf("resolved path = %q, want %q", got, file)
+	}
+}
