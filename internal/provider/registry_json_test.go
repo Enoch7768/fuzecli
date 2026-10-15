@@ -33,6 +33,9 @@ func TestRegistryContinuesTruncatedStructuredJSON(t *testing.T) {
 	want := "{\"type\":\"edit\",\"files\":[{\"path\":\"index.html\",\"content\":\"<div>div</div>\"}],\"explanation\":\"complete\",\"commands\":[]}"
 	if got == nil || got.Content != want { t.Fatalf("unexpected combined JSON: %q", got.Content) }
 	if p.calls != 2 { t.Fatalf("provider calls = %d, want 2", p.calls) }
+	if !got.Usage.Estimated || got.Usage.TotalTokens != got.Usage.PromptTokens+got.Usage.CompletionTokens {
+		t.Fatalf("continuation usage lost its estimate or became inconsistent: %#v", got.Usage)
+	}
 }
 
 
