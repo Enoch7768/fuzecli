@@ -23,6 +23,7 @@ FuzeCLI (`aicli.exe`) is a Windows-native Go CLI for chatting with multiple AI p
 - Project memory, workspace context graphs, project rules, and reusable skills.
 - Background job tracking, local diff review, proof-of-work artifacts, and provider benchmarking.
 - Local-only browser inspection and inline code completion through authenticated API endpoints.
+- Project Health Center with read-only project-manifest, runtime-availability, Git metadata, and test-file diagnostics.
 - Structured diagnostics for verification failures, including stage and severity.
 - Versioned Fuze response protocol with compatibility normalization.
 - Explicit agent capability boundaries and a bounded task trace.
