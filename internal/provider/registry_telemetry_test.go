@@ -150,3 +150,49 @@ func TestAdaptRequestReservesCompletionBudget(t *testing.T) {
 		t.Fatalf("request token budget does not reserve prompt, output, and safety margin: %#v", opts)
 	}
 }
+
+
+type estimatedUsageStreamProvider struct{}
+
+func (estimatedUsageStreamProvider) Name() string { return "estimated-stream" }
+func (estimatedUsageStreamProvider) ListModels(context.Context) ([]string, error) {
+	return []string{"test-model"}, nil
+}
+func (estimatedUsageStreamProvider) Send(context.Context, []Message, RequestOptions) (*Response, error) {
+	return &Response{Content: "unused"}, nil
+}
+func (estimatedUsageStreamProvider) Stream(context.Context, []Message, RequestOptions) (<-chan StreamChunk, error) {
+	ch := make(chan StreamChunk, 2)
+	ch <- StreamChunk{Delta: "answer", Usage: Usage{PromptTokens: 2, CompletionTokens: 3, TotalTokens: 5, CostUSD: 0.1, Estimated: true}}
+	ch <- StreamChunk{Done: true, Usage: Usage{CostUSD: 0.2, Estimated: true}}
+	close(ch)
+	return ch, nil
+}
+
+func TestRegistryPreservesEstimatedUsageAndCostFromStreamChunks(t *testing.T) {
+	p := estimatedUsageStreamProvider{}
+	registry := NewRegistry([]string{p.Name()}, map[string]string{p.Name(): "test-model"}, p)
+	stream, err := registry.Stream(context.Background(), p.Name(), []Message{{Role: "user", Content: "hello"}}, RequestOptions{Model: "test-model"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var final Usage
+	for chunk := range stream {
+		if chunk.Error != nil {
+			t.Fatal(chunk.Error)
+		}
+		if chunk.Done {
+			final = chunk.Usage
+		}
+	}
+	if !final.Estimated {
+		t.Fatalf("estimated usage flag was lost: %#v", final)
+	}
+	if final.TotalTokens != 5 || final.CostUSD < 0.299 || final.CostUSD > 0.301 {
+		t.Fatalf("stream usage/cost aggregation incorrect: %#v", final)
+	}
+	entry, ok := registry.ProviderTelemetry(p.Name())
+	if !ok || entry.EstimatedTokens != 5 || entry.TotalTokens != 5 {
+		t.Fatalf("telemetry did not preserve estimated stream usage: %#v", entry)
+	}
+}
