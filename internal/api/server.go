@@ -705,12 +705,54 @@ func writeError(w http.ResponseWriter, status int, message string) {
 }
 
 func (s *Server) terminal(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet { writeError(w, http.StatusMethodNotAllowed, "method not allowed"); return }
-	if s.workbench == nil { writeError(w, http.StatusServiceUnavailable, "workbench runtime unavailable"); return }
-	if !isLoopbackRequest(r) && s.token == "" { writeError(w, http.StatusForbidden, "terminal is local-only"); return }
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	if s.workbench == nil {
+		writeError(w, http.StatusServiceUnavailable, "workbench runtime unavailable")
+		return
+	}
+	if !isLoopbackRequest(r) && s.token == "" {
+		writeError(w, http.StatusForbidden, "terminal is local-only")
+		return
+	}
+	root, err := s.resolveTerminalRoot(r.URL.Query().Get("root"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	conn, err := s.workbench.upgrader.Upgrade(w, r, nil)
-	if err != nil { return }
-	s.workbench.terminal.handleWS(conn, s.service.Root())
+	if err != nil {
+		return
+	}
+	s.workbench.terminal.handleWS(conn, root)
+}
+
+func (s *Server) resolveTerminalRoot(requested string) (string, error) {
+	requested = strings.TrimSpace(requested)
+	if requested == "" {
+		if s == nil || s.service == nil {
+			return "", errors.New("workspace service is unavailable")
+		}
+		return s.service.Root(), nil
+	}
+	abs, err := filepath.Abs(requested)
+	if err != nil {
+		return "", errors.New("invalid terminal workspace root")
+	}
+	s.rootsMu.RLock()
+	defer s.rootsMu.RUnlock()
+	for _, root := range s.roots {
+		if samePath(root, abs) {
+			info, statErr := os.Stat(root)
+			if statErr != nil || !info.IsDir() {
+				return "", errors.New("terminal workspace root is unavailable")
+			}
+			return root, nil
+		}
+	}
+	return "", errors.New("terminal root must be a registered workspace root")
 }
 
 func (s *Server) lsp(w http.ResponseWriter, r *http.Request) {
