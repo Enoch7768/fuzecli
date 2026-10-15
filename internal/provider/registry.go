@@ -476,7 +476,7 @@ func (r *Registry) wait(ctx context.Context, name string) error {
 }
 
 func (r *Registry) recordTelemetry(event TelemetryEvent, err error) {
-	usage := Usage{PromptTokens: int(event.PromptTokens), CompletionTokens: int(event.CompletionTokens), TotalTokens: int(event.TotalTokens), CostUSD: event.CostUSD}
+	usage := Usage{PromptTokens: int(event.PromptTokens), CompletionTokens: int(event.CompletionTokens), TotalTokens: int(event.TotalTokens), CostUSD: event.CostUSD, Estimated: event.Estimated}
 	latency := time.Duration(event.LatencyMs) * time.Millisecond
 	r.telemetry.RecordWithRequestID(event.RequestID, event.Provider, err, usage, latency, event.Streaming, event.Model)
 	if r.telemetrySink != nil {
