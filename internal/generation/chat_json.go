@@ -62,6 +62,14 @@ func ChatResponseSchema() map[string]any {
 func ParseChatResponse(raw string) (ChatResponse, error) {
 	clean, err := normalizeJSONDocument(raw)
 	if err != nil {
+		text := strings.TrimSpace(strings.TrimPrefix(raw, "\ufeff"))
+		// Some providers ignore structured-output settings and return ordinary
+		// prose. Preserve that useful answer as chat instead of surfacing a JSON
+		// parsing error. JSON-shaped or empty output still fails validation so
+		// edit operations never silently accept malformed structured data.
+		if text != "" && !strings.HasPrefix(text, "{") && !strings.HasPrefix(text, "[") && !strings.HasPrefix(strings.ToLower(text), "```json") {
+			return ChatResponse{Type: "chat", Response: text, Message: text}, nil
+		}
 		return ChatResponse{}, fmt.Errorf("invalid chat JSON: %w", err)
 	}
 	return parseChatResponseDocument(normalizeChatResponseEnvelope(clean))
