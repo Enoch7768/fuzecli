@@ -1,5 +1,6 @@
 ## Unreleased
 
+- Added a pull-request checks endpoint that summarizes GitHub Actions check runs and commit statuses for the exact PR head SHA, including pending, failed, successful, and neutral states.
 - Improved live preview startup for npm, pnpm, Yarn, and Bun projects, including declared package-manager precedence and Windows Bun executable handling.
 - Hardened absolute workspace file operations against symlink escapes and restricted runtime-preview shutdown to loopback requests.
 - Bound terminal sessions to registered workspace roots and connected the Studio terminal to the configured workspace.
