@@ -137,7 +137,7 @@ func TestRegistryStreamEstimatesMissingUsage(t *testing.T) {
 		t.Fatalf("stream did not return estimated usage: %#v", final)
 	}
 	entry, ok := registry.ProviderTelemetry("test")
-	if !ok || entry.TotalTokens != final.TotalTokens || entry.EstimatedTokens != final.TotalTokens {
+	if !ok || entry.TotalTokens != uint64(final.TotalTokens) || entry.EstimatedTokens != uint64(final.TotalTokens) {
 		t.Fatalf("stream telemetry does not match returned usage: %#v / %#v", entry, final)
 	}
 }
