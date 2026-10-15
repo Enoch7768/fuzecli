@@ -271,6 +271,26 @@ async function loadGithub(){
  await githubRepos();
  await Promise.all([githubPRs(),githubActions(),githubIssues()]);
 }
+async function loadProjectHealth(){
+  const overall=$("#projectHealthOverall"),workspace=$("#projectHealthWorkspace"),manifests=$("#projectHealthManifests"),container=$("#projectHealthChecks");
+  if(!overall||!workspace||!manifests||!container)return;
+  overall.textContent="Checking…";
+  container.innerHTML='<div class="panel health-check"><strong>Inspecting workspace</strong><p>Checking project files and available runtimes. No commands are being executed.</p></div>';
+  try{
+    const result=await api("/v1/project/health",{timeoutMs:30000});
+    overall.textContent=result.overall==="healthy"?"No configuration blockers detected":"Attention recommended";
+    overall.className="health-overall "+(result.overall==="healthy"?"ok":"attention");
+    workspace.textContent=result.workspace||"Active workspace";
+    manifests.innerHTML=(result.manifests||[]).map(name=>'<span class="health-tag">'+esc(name)+'</span>').join("")||'<span class="health-tag muted">No common manifest detected</span>';
+    container.innerHTML=(result.checks||[]).map(check=>'<article class="panel health-check"><div class="health-check-head"><strong>'+esc(check.label)+'</strong><span class="health-state '+esc(check.status)+'">'+esc(check.status)+'</span></div><p>'+esc(check.detail)+'</p></article>').join("")||'<div class="panel health-check"><strong>No checks returned</strong></div>';
+  }catch(error){
+    overall.textContent="Checks unavailable";
+    overall.className="health-overall attention";
+    workspace.textContent=error.message;
+    manifests.innerHTML='<span class="health-tag muted">Unavailable</span>';
+    container.innerHTML='<div class="panel health-check"><strong>Could not inspect workspace</strong><p>'+esc(error.message)+'</p></div>';
+  }
+}
 async function view(v,preferred){
   document.body.classList.toggle("command-mode",v==="chat");
   document.querySelectorAll(".nav-item").forEach(b=>b.classList.toggle("active",b.dataset.view===v));
@@ -279,6 +299,7 @@ async function view(v,preferred){
   if(v==="ide")loadIDE();
   if(v==="builder")await loadBuilder(preferred??currentPreview);
   if(v==="workspace")workspace();
+  if(v==="health")loadProjectHealth();
   if(v==="activity")activity();
   if(v==="telemetry")telemetry();
   if(v==="github")loadGithub();
@@ -345,7 +366,7 @@ $("#githubApprovePR").onclick=()=>githubReview("APPROVE");$("#githubCommentPR").
 $("#githubSendComment").onclick=async()=>{const n=Number($("#githubPRNumber").value),repo=githubSelectedRepo(),body=$("#githubComment").value.trim();if(!n||!body)return toast("Enter a PR number and comment");if(!repo)return toast("Choose a repository first");try{await api("/v1/github/comments?repo="+encodeURIComponent(repo)+"&number="+n,{method:"POST",body:JSON.stringify({body})});$("#githubComment").value="";toast("Comment posted");await githubLoadComments()}catch(e){toast(e.message)}};
 $("#githubPRList").onclick=e=>{const b=e.target.closest("[data-github-pr]");if(b){$("#githubPRNumber").value=b.dataset.githubPr;githubLoadComments()}};
 $("#githubActionsList").onclick=async e=>{const b=e.target.closest("[data-github-rerun]");if(!b)return;try{await api("/v1/github/actions?repo="+encodeURIComponent(githubSelectedRepo()),{method:"POST",body:JSON.stringify({operation:"rerun",run_id:Number(b.dataset.githubRerun)})});toast("Workflow rerun requested");await githubActions()}catch(x){toast(x.message)}};
-$("#attachBtn").onclick=()=>$("#fileUpload").click();$("#fileUpload").onchange=async e=>{try{await uploadFiles(e.target.files)}catch(x){toast(x.message)}e.target.value=""};$("#providerSelect").onchange=()=>models($("#providerSelect").value);$("#refreshMemoryBtn").onclick=async()=>{try{await api("/v1/memory/refresh",{method:"POST"});toast("Conversation memory refreshed")}catch(e){toast(e.message)}};$("#settingsProvider").onchange=()=>models($("#settingsProvider").value);$("#sendBtn").onclick=send;$("#saveProvider").onclick=save;$("#refreshBtn").onclick=()=>loadConfig().then(()=>toast("Runtime refreshed"));$("#workspaceRefresh").onclick=workspace;$("#activityRefresh").onclick=activity;$("#telemetryRefresh").onclick=telemetry;$("#previewFile").onchange=e=>openBuilderPage(e.target.value);$("#runRuntimePreview").onclick=runRuntimePreview;$("#openPreview").onclick=()=>window.open(runtimePreviewActive?$("#sitePreview").src:"/preview/"+encodeURI(currentPreview),"_blank","noopener");$("#savePreview").onclick=savePreview;$("#requestSavePreview").onclick=savePreview;$("#applyInspector").onclick=applyInspector;$("#deviceDesktop").onclick=()=>{$("#deviceFrame").className="device desktop"};$("#deviceMobile").onclick=()=>{$("#deviceFrame").className="device mobile"};document.querySelectorAll(".builder-add").forEach(b=>b.onclick=()=>{if(!currentPreview)return toast("Open an HTML page first");postEditor("add",{kind:b.dataset.builderAdd})});$("#builderMoveUp").onclick=()=>postEditor("move",{direction:"up"});$("#builderMoveDown").onclick=()=>postEditor("move",{direction:"down"});$("#builderDuplicate").onclick=()=>postEditor("duplicate");$("#builderDelete").onclick=()=>postEditor("delete");window.addEventListener("message",builderMessage);
+$("#attachBtn").onclick=()=>$("#fileUpload").click();$("#fileUpload").onchange=async e=>{try{await uploadFiles(e.target.files)}catch(x){toast(x.message)}e.target.value=""};$("#providerSelect").onchange=()=>models($("#providerSelect").value);$("#refreshMemoryBtn").onclick=async()=>{try{await api("/v1/memory/refresh",{method:"POST"});toast("Conversation memory refreshed")}catch(e){toast(e.message)}};$("#settingsProvider").onchange=()=>models($("#settingsProvider").value);$("#sendBtn").onclick=send;$("#saveProvider").onclick=save;$("#refreshBtn").onclick=()=>loadConfig().then(()=>toast("Runtime refreshed"));$("#projectHealthRefresh")?.addEventListener("click",loadProjectHealth);$("#workspaceRefresh").onclick=workspace;$("#activityRefresh").onclick=activity;$("#telemetryRefresh").onclick=telemetry;$("#previewFile").onchange=e=>openBuilderPage(e.target.value);$("#runRuntimePreview").onclick=runRuntimePreview;$("#openPreview").onclick=()=>window.open(runtimePreviewActive?$("#sitePreview").src:"/preview/"+encodeURI(currentPreview),"_blank","noopener");$("#savePreview").onclick=savePreview;$("#requestSavePreview").onclick=savePreview;$("#applyInspector").onclick=applyInspector;$("#deviceDesktop").onclick=()=>{$("#deviceFrame").className="device desktop"};$("#deviceMobile").onclick=()=>{$("#deviceFrame").className="device mobile"};document.querySelectorAll(".builder-add").forEach(b=>b.onclick=()=>{if(!currentPreview)return toast("Open an HTML page first");postEditor("add",{kind:b.dataset.builderAdd})});$("#builderMoveUp").onclick=()=>postEditor("move",{direction:"up"});$("#builderMoveDown").onclick=()=>postEditor("move",{direction:"down"});$("#builderDuplicate").onclick=()=>postEditor("duplicate");$("#builderDelete").onclick=()=>postEditor("delete");window.addEventListener("message",builderMessage);
 $("#prompt").onkeydown=e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send()}};$("#newSessionBtn").onclick=()=>{$("#messages").innerHTML='<div class="chat-empty" id="chatEmpty"><div class="chat-empty-mark">F</div><strong>What are we building?</strong><span>Ask FuzeCLI to inspect, create, fix, explain, or improve your project.</span></div>';$("#sessionTitle").textContent="New coding session";$("#prompt").focus()};$("#stopBtn").onclick=()=>chatAbort?.abort();$("#prompt").oninput=e=>{e.target.style.height="auto";e.target.style.height=Math.min(e.target.scrollHeight,180)+"px"};
 (async()=>{try{await loadConfig();await activity();await refreshLiveTelemetry();liveTelemetryTimer=setInterval(refreshLiveTelemetry,1000);const h=await api("/v1/history");(h.messages||[]).slice(-80).forEach(m=>msg(m.role,m.content))}catch(e){$("#statusText").textContent="Offline";toast(e.message)}})();
 let ideEditor=null,ideFiles=[],ideOpen=[],ideActive="",ideSaveTimer=null,ideWorkspaceRoots=[];
