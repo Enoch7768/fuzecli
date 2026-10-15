@@ -1,5 +1,8 @@
 ## Unreleased
 
+- Improved live preview startup for npm, pnpm, Yarn, and Bun projects, including declared package-manager precedence and Windows Bun executable handling.
+- Hardened absolute workspace file operations against symlink escapes and restricted runtime-preview shutdown to loopback requests.
+- Added regression tests for workspace path containment, preview package-manager selection, Windows launch behavior, and local-only preview shutdown.
 - Added a read-only Project Health Center for detecting project manifests, relevant runtime availability, Git metadata, and likely test files.
 
 - Replaced the Studio GitHub PAT form with official GitHub CLI browser sign-in.
