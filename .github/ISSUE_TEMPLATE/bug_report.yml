@@ -1,0 +1,68 @@
+name: Bug report
+description: Report a reproducible defect in FuzeCLI.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please search existing issues first. Never include API keys, access tokens, private source code, or personal data.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Affected area
+      options:
+        - CLI
+        - Web Studio
+        - AI provider or response handling
+        - File editing or snapshots
+        - Terminal or runtime
+        - Debugger or diagnostics
+        - GitHub integration
+        - API or MCP
+        - Installation or release
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: FuzeCLI version or commit
+      placeholder: "e.g. v0.1.0 or commit SHA"
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, architecture, terminal/browser, Go version if relevant, and provider/model if relevant. Do not include secrets.
+      placeholder: "Windows version, browser, runtime versions..."
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Give the smallest reliable sequence of steps.
+      placeholder: "1. Run ...\n2. Open ...\n3. Observe ..."
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs or screenshots
+      description: Remove credentials, private code, and sensitive paths before posting.
+    validations:
+      required: false
