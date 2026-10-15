@@ -449,6 +449,15 @@ func githubCommand(args []string) error {
 	}
 	token, err := config.GitHubToken()
 	if err != nil { return err }
+	if _, lookErr := exec.LookPath("gh"); lookErr == nil {
+		statusCtx, statusCancel := context.WithTimeout(context.Background(), 4*time.Second)
+		statusErr := exec.CommandContext(statusCtx, "gh", "auth", "status", "--hostname", "github.com").Run()
+		statusCancel()
+		if statusErr == nil {
+			if err := config.ClearGitHubToken(); err != nil { return fmt.Errorf("migrate to the existing GitHub CLI session: %w", err) }
+			token = ""
+		}
+	}
 	client := github.New(token)
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
