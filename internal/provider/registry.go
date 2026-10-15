@@ -266,7 +266,7 @@ func (r *Registry) Stream(ctx context.Context, name string, messages []Message, 
 		if err == nil {
 			return r.continueStream(ctx, candidate, streamMessages, streamOptions, stream), nil
 		}
-		if errors.Is(err, ErrRateLimited) || errors.Is(err, ErrProviderUnavailable) || errors.Is(err, ErrRequestTooLarge) {
+		if shouldFallbackProviderError(err) {
 			last = err
 			continue
 		}
