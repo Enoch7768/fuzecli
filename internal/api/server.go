@@ -522,15 +522,49 @@ func (s *Server) workspaceRoots(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) resolveWorkspaceRootPath(path string) (string, bool) {
 	candidate := strings.TrimSpace(path)
-	if candidate == "" { return "", false }
+	if candidate == "" {
+		return "", false
+	}
 	abs, err := filepath.Abs(candidate)
-	if err != nil { return "", false }
+	if err != nil {
+		return "", false
+	}
 	s.rootsMu.RLock()
 	defer s.rootsMu.RUnlock()
 	for _, root := range s.roots {
-		rel, err := filepath.Rel(root, abs)
-		if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) { continue }
-		return abs, true
+		rootAbs, err := filepath.Abs(root)
+		if err != nil {
+			continue
+		}
+		rel, err := filepath.Rel(rootAbs, abs)
+		if err != nil || rel == ".." || filepath.IsAbs(rel) || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
+			continue
+		}
+		resolvedRoot, err := filepath.EvalSymlinks(rootAbs)
+		if err != nil {
+			continue
+		}
+		current := resolvedRoot
+		safe := true
+		if rel != "." {
+			for _, part := range strings.Split(rel, string(os.PathSeparator)) {
+				if part == "" || part == "." {
+					continue
+				}
+				current = filepath.Join(current, part)
+				info, statErr := os.Lstat(current)
+				if os.IsNotExist(statErr) {
+					continue
+				}
+				if statErr != nil || info.Mode()&os.ModeSymlink != 0 {
+					safe = false
+					break
+				}
+			}
+		}
+		if safe {
+			return abs, true
+		}
 	}
 	return "", false
 }
