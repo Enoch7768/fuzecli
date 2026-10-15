@@ -173,7 +173,7 @@ func runtimeCommand(root, kind string, port int) (string, []string, []string, er
 			args = append(args, "--", "--host", "127.0.0.1", "--port", fmt.Sprint(port))
 		}
 		if runtime.GOOS == "windows" {
-			return "cmd.exe", []string{"/d", "/s", "/c", manager + ".cmd " + strings.Join(args, " ")}, []string{"HOST=127.0.0.1", "PORT=" + fmt.Sprint(port)}, nil
+			return "cmd.exe", []string{"/d", "/s", "/c", nodeManagerWindowsCommand(manager) + " " + strings.Join(args, " ")}, []string{"HOST=127.0.0.1", "PORT=" + fmt.Sprint(port)}, nil
 		}
 		return command, args, []string{"HOST=127.0.0.1", "PORT=" + fmt.Sprint(port)}, nil
 	case "python":
@@ -216,8 +216,12 @@ func detectPreviewNodeManager(root, declared string) string {
 	if at := strings.IndexByte(declared, '@'); at > 0 {
 		declared = declared[:at]
 	}
+	switch declared {
+	case "npm", "pnpm", "yarn", "bun":
+		return declared
+	}
 	locks := []struct {
-		name string
+		name    string
 		manager string
 	}{
 		{name: "package-lock.json", manager: "npm"},
@@ -226,21 +230,20 @@ func detectPreviewNodeManager(root, declared string) string {
 		{name: "bun.lock", manager: "bun"},
 		{name: "bun.lockb", manager: "bun"},
 	}
-	has := func(name string) bool {
-		info, err := os.Stat(filepath.Join(root, name))
-		return err == nil && !info.IsDir()
-	}
 	for _, lock := range locks {
-		if lock.manager == declared && has(lock.name) {
-			return declared
-		}
-	}
-	for _, lock := range locks {
-		if has(lock.name) {
+		info, err := os.Stat(filepath.Join(root, lock.name))
+		if err == nil && !info.IsDir() {
 			return lock.manager
 		}
 	}
 	return "npm"
+}
+
+func nodeManagerWindowsCommand(manager string) string {
+	if manager == "bun" {
+		return "bun.exe"
+	}
+	return manager + ".cmd"
 }
 
 func nodePreviewScriptArgs(manager, script string) []string {
