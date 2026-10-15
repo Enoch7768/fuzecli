@@ -23,6 +23,7 @@
     <button class="nav-item" data-view="activity"><span>◷</span><div><b>Activity</b><small>What changed</small></div></button>
     <button class="nav-item" data-view="telemetry"><span>◌</span><div><b>Usage</b><small>Tokens · cost · health</small></div></button>
     <button class="nav-item" data-view="github"><span>⑂</span><div><b>GitHub</b><small>Repo · branch · PRs</small></div></button>
+    <button class="nav-item" data-view="github-profile"><span>◎</span><div><b>GitHub Profile</b><small>Account · activity</small></div></button>
     <button class="nav-item" data-view="settings"><span>⚙</span><div><b>Settings</b><small>Preferences</small></div></button>
   </nav>
   <div class="side-bottom"><div class="status-pill"><i></i><span id="statusText">Connecting</span></div><div class="side-note">Built for people who ship.</div></div>
@@ -91,9 +92,15 @@
 <div class="panel github-sync-panel"><div class="panel-title">Workspace sync <span id="githubRemote">No origin</span></div><div class="github-row"><button class="primary" id="githubPull">Pull</button><button class="primary" id="githubPush">Push</button></div><p id="githubSyncOutput" class="github-output">Git output will appear here.</p></div>
 <div class="panel github-repos-panel"><div class="panel-title">Repositories <button class="ghost small" id="githubCreateRepo">Create</button></div><div id="githubRepoList" class="github-list"></div></div>
 <div class="panel github-pr-panel"><div class="panel-title">Pull requests <button class="ghost small" id="githubCreatePR">New PR</button></div><div class="github-inline"><input id="githubPRNumber" type="number" min="1" placeholder="PR #"><button class="ghost small" id="githubLoadComments">Comments</button></div><div id="githubPRList" class="github-list"></div><div id="githubComments" class="github-comments"></div><div class="github-inline"><input id="githubComment" placeholder="Write a PR comment…"><button class="primary small" id="githubSendComment">Send</button></div><div class="github-row"><button class="ghost small" id="githubApprovePR">Approve</button><button class="ghost small" id="githubCommentPR">Review comment</button><button class="ghost small" id="githubRequestChangesPR">Request changes</button></div></div>
-<div class="panel github-actions-panel"><div class="panel-title">GitHub Actions <button class="ghost small" id="githubRefreshActions">Refresh</button></div><div id="githubActionsList" class="github-list"></div></div>
+<div class="panel github-actions-panel"><div class="panel-title">GitHub Actions <button class="ghost small" id="githubRefreshActions">Refresh</button></div><div id="githubActionsList" class="github-list"></div><div id="githubActionDetails" class="github-action-details" hidden></div></div>
 <div class="panel github-issues-panel"><div class="panel-title">Issues <button class="ghost small" id="githubCreateIssue">New issue</button></div><div id="githubIssuesList" class="github-list"></div></div>
 </div></section>
+
+<section class="view" id="view-github-profile">
+<div class="section-head"><div><span class="eyebrow">ACCOUNT</span><h2>GitHub Profile</h2><p>Your authenticated GitHub identity, shared by the CLI and Studio through GitHub CLI.</p></div><button class="ghost" id="githubProfileRefresh" type="button">Refresh profile</button></div>
+<div class="panel github-profile-panel" id="githubProfileCard"><div class="ide-panel-empty">Loading your GitHub profile…</div></div>
+<div class="panel"><div class="panel-title">Session continuity</div><p class="muted">FuzeCLI reuses the existing GitHub CLI login on this machine. Signing in once with <code>gh auth login</code> keeps both the CLI and Studio connected until you explicitly sign out or revoke access.</p><a href="https://github.com/settings/applications" target="_blank" rel="noopener noreferrer">Manage GitHub application access</a></div>
+</section>
 
 <section class="view" id="view-settings"><div class="section-head"><div><span class="eyebrow">CONTROL</span><h2>Settings</h2></div></div><div class="settings-grid"><div class="panel"><div class="panel-title">Runtime</div><label>Default provider<select id="settingsProvider"></select></label><label>Default model<select id="settingsModel"></select></label><button class="primary" id="saveProvider">Save provider</button></div><div class="panel"><div class="panel-title">Provider keys</div><p class="muted">Credentials stay on the machine. The UI only reports whether a provider is configured.</p><div id="keyRows"></div></div></div></section>
 </main>
