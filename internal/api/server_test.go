@@ -150,3 +150,23 @@ func TestRuntimePreviewShutdownIsLocalOnly(t *testing.T) {
 		t.Fatalf("local shutdown status = %d, want %d", response.Code, http.StatusOK)
 	}
 }
+
+
+func TestResolveTerminalRootRequiresRegisteredWorkspace(t *testing.T) {
+	root := t.TempDir()
+	other := t.TempDir()
+	server := &Server{roots: []string{root}}
+	got, err := server.resolveTerminalRoot(root)
+	if err != nil {
+		t.Fatalf("registered root rejected: %v", err)
+	}
+	if !samePath(got, root) {
+		t.Fatalf("terminal root = %q, want %q", got, root)
+	}
+	if _, err := server.resolveTerminalRoot(other); err == nil {
+		t.Fatal("unregistered terminal root was accepted")
+	}
+	if _, err := server.resolveTerminalRoot(filepath.Join(root, "..", filepath.Base(other))); err == nil {
+		t.Fatal("path inside a workspace was accepted as a terminal root")
+	}
+}
