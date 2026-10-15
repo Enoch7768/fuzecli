@@ -57,6 +57,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/assets/styles.css", s.assetCSS)
 	mux.HandleFunc("/assets/premium.css", s.assetPremiumCSS)
 	mux.HandleFunc("/v1/health", s.health)
+	mux.HandleFunc("/v1/project/health", s.projectHealth)
 	mux.HandleFunc("/v1/config", s.config)
 	mux.HandleFunc("/v1/models", s.models)
 	mux.HandleFunc("/v1/memory/refresh", s.memoryRefresh)
