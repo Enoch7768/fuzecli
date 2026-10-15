@@ -1,5 +1,6 @@
 ## Unreleased
 
+- Fixed Studio provider/model selector races and kept the Settings model list tied to its own selected provider, so slower responses cannot overwrite a newer selection.
 - Fixed the Studio API client's timeout handling so caller-provided abort signals no longer disable request deadlines; timeout and caller cancellation remain distinguishable and abort listeners are cleaned up.
 - Added a pull-request checks endpoint that summarizes GitHub Actions check runs and commit statuses for the exact PR head SHA, including pending, failed, successful, and neutral states.
 - Improved live preview startup for npm, pnpm, Yarn, and Bun projects, including declared package-manager precedence and Windows Bun executable handling.
