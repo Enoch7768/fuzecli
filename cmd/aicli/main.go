@@ -459,6 +459,19 @@ func githubCommand(args []string) error {
 		case "login":
 			if len(args) != 2 { return fmt.Errorf("usage: aicli github auth login") }
 			if _, err := exec.LookPath("gh"); err != nil { return fmt.Errorf("install GitHub CLI from https://cli.github.com, then retry") }
+			// Reuse a valid GitHub CLI session so web and terminal workflows share
+			// one durable login and repeated login commands remain idempotent.
+			statusCtx, statusCancel := context.WithTimeout(context.Background(), 4*time.Second)
+			statusErr := exec.CommandContext(statusCtx, "gh", "auth", "status", "--hostname", "github.com").Run()
+			statusCancel()
+			if statusErr == nil {
+				cliClient := github.New("")
+				if user, profileErr := cliClient.Profile(ctx); profileErr == nil {
+					if err := config.ClearGitHubToken(); err != nil { return fmt.Errorf("remove legacy saved GitHub token: %w", err) }
+					fmt.Printf("GitHub already connected as %s; reusing the existing session.\n", user.Login)
+					return nil
+				}
+			}
 			cmd := exec.Command("gh", "auth", "login", "--hostname", "github.com", "--web", "--git-protocol", "https")
 			cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 			if err := cmd.Run(); err != nil { return fmt.Errorf("GitHub sign-in failed: %w", err) }
