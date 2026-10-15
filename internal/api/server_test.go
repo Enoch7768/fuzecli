@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Enoch7768/fuzecli/internal/app"
@@ -47,6 +48,56 @@ func TestSecurityHeaders(t *testing.T) {
 	}
 }
 
+
+func TestOriginMiddlewareRejectsLookalikeHosts(t *testing.T) {
+	server := &Server{}
+	handler := server.origin(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	cases := []struct {
+		origin string
+		want   int
+	}{
+		{origin: "http://localhost:8787", want: http.StatusNoContent},
+		{origin: "http://127.0.0.1:8787", want: http.StatusNoContent},
+		{origin: "http://[::1]:8787", want: http.StatusNoContent},
+		{origin: "http://localhost.evil:8787", want: http.StatusForbidden},
+		{origin: "http://127.0.0.1.evil:8787", want: http.StatusForbidden},
+		{origin: "http://localhost:8787.evil", want: http.StatusForbidden},
+		{origin: "https://localhost:8787", want: http.StatusForbidden},
+		{origin: "http://user@localhost:8787", want: http.StatusForbidden},
+		{origin: "http://localhost:8787/path", want: http.StatusForbidden},
+		{origin: "http://localhost:70000", want: http.StatusForbidden},
+	}
+	for _, tc := range cases {
+		t.Run(tc.origin, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodPost, "http://127.0.0.1:8787/v1/config", nil)
+			request.Header.Set("Origin", tc.origin)
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, request)
+			if response.Code != tc.want {
+				t.Fatalf("origin %q status = %d, want %d", tc.origin, response.Code, tc.want)
+			}
+		})
+	}
+}
+
+func TestSecurityPolicyKeepsInlineScriptsDisabled(t *testing.T) {
+	server := &Server{}
+	handler := server.securityHeaders(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	request := httptest.NewRequest(http.MethodGet, "http://127.0.0.1:8787/", nil)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	policy := response.Header().Get("Content-Security-Policy")
+	if !strings.Contains(policy, "style-src-attr 'unsafe-inline'") {
+		t.Fatal("CSP must explicitly permit the Studio's dynamic style attributes")
+	}
+	if strings.Contains(policy, "script-src 'self' 'unsafe-inline'") {
+		t.Fatal("CSP must not enable inline scripts")
+	}
+}
 
 func TestGitHubStatusSubrouteIsRegistered(t *testing.T) {
 	root := t.TempDir()

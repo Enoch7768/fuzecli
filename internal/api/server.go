@@ -9,7 +9,9 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
+	"strconv"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -142,12 +144,37 @@ func (s *Server) origin(next http.Handler) http.Handler {
 			writeError(w, http.StatusForbidden, "browser origin is required")
 			return
 		}
-		if !strings.HasPrefix(origin, "http://127.0.0.1:") && !strings.HasPrefix(origin, "http://localhost:") && !strings.HasPrefix(origin, "http://[::1]:") {
+		if !isAllowedBrowserOrigin(origin) {
 			writeError(w, http.StatusForbidden, "origin not allowed")
 			return
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+func isAllowedBrowserOrigin(origin string) bool {
+	parsed, err := url.Parse(origin)
+	if err != nil || parsed.Opaque != "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" || parsed.Path != "" {
+		return false
+	}
+	if !strings.EqualFold(parsed.Scheme, "http") || parsed.Host == "" {
+		return false
+	}
+	host := parsed.Hostname()
+	if host == "" {
+		return false
+	}
+	if port := parsed.Port(); port != "" {
+		value, err := strconv.Atoi(port)
+		if err != nil || value < 1 || value > 65535 {
+			return false
+		}
+	}
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 func (s *Server) securityHeaders(next http.Handler) http.Handler {
