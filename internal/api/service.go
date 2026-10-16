@@ -186,13 +186,20 @@ func (s *Service) Chat(ctx context.Context, req ChatRequest) (ChatResponse, erro
 		for attempt := 0; attempt <= repairBudget; attempt++ {
 			s.emitEvent(StudioEvent{RequestID:requestID, Type:"verification.started", Phase:"verification", Message:fmt.Sprintf("Verification pass %d/%d", attempt+1, repairBudget+1), Percent:78})
 			executor := agent.Executor{Root:s.App.Store.Root}
-			verification, err = executor.Execute(*parsed.Plan, func() agent.VerificationResult {
+			verification, executeErr := executor.Execute(*parsed.Plan, func() agent.VerificationResult {
 				paths := make([]string, 0, len(parsed.Plan.Files))
 				for _, file := range parsed.Plan.Files { paths = append(paths, file.Path) }
 				vr, verifyErr := verify.Detect(s.App.Store.Root, paths)
 				if verifyErr != nil { return agent.VerificationResult{Passed:false, Output:verifyErr.Error()} }
 				return agent.VerificationResult{Passed:vr.Passed, Output:vr.Output}
 			})
+			if executeErr != nil && !strings.HasPrefix(executeErr.Error(), "verification failed:") {
+				s.emitEvent(StudioEvent{RequestID:requestID, Type:"apply.failed", Phase:"files", Message:executeErr.Error()})
+				return ChatResponse{}, fmt.Errorf("workspace transaction failed: %w", executeErr)
+			}
+			if executeErr != nil && strings.TrimSpace(verification.Output) == "" {
+				verification.Output = executeErr.Error()
+			}
 			if verification.Passed {
 				written = verification.Changed
 				s.emitEvent(StudioEvent{RequestID:requestID, Type:"verification.completed", Phase:"verification", Message:"Verification passed; workspace changes committed", Percent:86})
