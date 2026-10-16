@@ -43,7 +43,14 @@ func TestDeterministicAgentEvaluationHarness(t *testing.T) {
 			const unrelatedPath = "notes.txt"
 			const unrelatedContent = "keep this unrelated user content unchanged\n"
 			writeFixture(t, root, unrelatedPath, unrelatedContent)
-			files := []generation.FileChange{{Path: sourcePath, Content: fixture.after, Action: "modify"}}
+			plannedContent := fixture.after
+			if fixture.scenario == "behavior-preserving-refactor" {
+				plannedContent = refactoredSource(fixture.language)
+			}
+			files := []generation.FileChange{{Path: sourcePath, Content: plannedContent, Action: "modify"}}
+			if fixture.scenario == "clean-feature" {
+				files = []generation.FileChange{{Path: filepath.ToSlash(filepath.Join("src", "feature"+fixture.extension)), Content: fixture.after, Action: "create"}}
+			}
 			if fixture.scenario == "multi-file-change" {
 				files = append(files, generation.FileChange{Path: filepath.ToSlash(filepath.Join("src", "feature"+fixture.extension)), Content: fixture.after, Action: "create"})
 			}
@@ -61,6 +68,18 @@ func TestDeterministicAgentEvaluationHarness(t *testing.T) {
 						return VerificationResult{Passed: false, Output: fmt.Sprintf("verification mismatch for %s", change.Path)}
 					}
 				}
+				if fixture.scenario == "clean-feature" {
+					original, readErr := os.ReadFile(filepath.Join(root, filepath.FromSlash(sourcePath)))
+					if readErr != nil || string(original) != fixture.before {
+						return VerificationResult{Passed: false, Output: "feature addition modified the existing source file"}
+					}
+				}
+				if fixture.scenario == "behavior-preserving-refactor" && !preservesZeroBehavior(fixture.language, plan.Files[0].Content) {
+					return VerificationResult{Passed: false, Output: "refactor changed the expected observable result"}
+				}
+				if fixture.scenario == "bug-fix" && !strings.Contains(plan.Files[0].Content, "42") {
+					return VerificationResult{Passed: false, Output: "bug fix did not change the failing return value"}
+				}
 				data, readErr := os.ReadFile(filepath.Join(root, unrelatedPath))
 				if readErr != nil || string(data) != unrelatedContent {
 					unrelatedChanges++
@@ -73,10 +92,10 @@ func TestDeterministicAgentEvaluationHarness(t *testing.T) {
 				initialPlan := plan
 				initialPlan.Files = append([]generation.FileChange(nil), plan.Files...)
 				initialPlan.Files[0].Content += "invalid repair candidate"
-				result, executeErr := executor.Execute(initialPlan, func() VerificationResult {
-					return VerificationResult{Passed: false, Output: "injected deterministic verification failure"}
-				})
-				if executeErr == nil || result.Passed { t.Fatal("injected failure must not commit the plan") }
+				result, executeErr := executor.Execute(initialPlan, verify)
+				if executeErr == nil || result.Passed { t.Fatal("invalid repair candidate must fail verification") }
+				original, readErr := os.ReadFile(filepath.Join(root, filepath.FromSlash(sourcePath)))
+				if readErr != nil || string(original) != fixture.before { t.Fatal("failed repair candidate did not roll back") }
 				repairAttempts++
 			}
 			if fixture.scenario == "verification-rollback" {
@@ -121,6 +140,39 @@ func TestDeterministicAgentEvaluationHarness(t *testing.T) {
 	t.Logf("FUZECLI_AGENT_EVALUATION %s", encoded)
 	if unrelatedChanges != 0 { t.Fatalf("detected %d unrelated file changes", unrelatedChanges) }
 	if passed != total { t.Fatalf("only %d of %d fixture assertion groups passed", passed, total) }
+}
+
+func refactoredSource(language string) string {
+	switch language {
+	case "go":
+		return "package fixture\\nfunc Value() int { result := 0; return result }\\n"
+	case "javascript":
+		return "function value() { const result = 0; return result; }\\n"
+	case "typescript":
+		return "export function value(): number { const result = 0; return result; }\\n"
+	case "python":
+		return "def value():\\n    result = 0\\n    return result\\n"
+	case "php":
+		return "<?php\\nfunction value(): int { $result = 0; return $result; }\\n"
+	default:
+		return ""
+	}
+}
+
+func preservesZeroBehavior(language, content string) bool {
+	if strings.Contains(content, "return 42") || strings.Contains(content, "return 0") {
+		return false
+	}
+	switch language {
+	case "go":
+		return strings.Contains(content, "result := 0") && strings.Contains(content, "return result")
+	case "javascript", "typescript", "python":
+		return strings.Contains(content, "result = 0") && strings.Contains(content, "return result")
+	case "php":
+		return strings.Contains(content, "$result = 0") && strings.Contains(content, "return $result")
+	default:
+		return false
+	}
 }
 
 func writeFixture(t *testing.T, root, relative, content string) {

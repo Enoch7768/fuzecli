@@ -59,6 +59,8 @@ jobs:
           New-Item -ItemType Directory -Force artifacts | Out-Null
           go test -v ./internal/agent -run TestDeterministicAgentEvaluationHarness 2>&1 | Tee-Object -FilePath artifacts/agent-evaluation.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          go test -v ./internal/provider -run TestRegistryAutoStreamFallsBackAfterPrimaryTimeout 2>&1 | Tee-Object -FilePath artifacts/agent-evaluation.log -Append
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Upload agent evaluation report
         if: always()
         uses: actions/upload-artifact@v4
