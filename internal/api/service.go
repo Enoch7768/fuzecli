@@ -14,6 +14,8 @@ import (
 	"unicode/utf8"
 
 	"github.com/Enoch7768/fuzecli/internal/app"
+	"github.com/Enoch7768/fuzecli/internal/agent"
+	"github.com/Enoch7768/fuzecli/internal/verify"
 	"github.com/Enoch7768/fuzecli/internal/config"
 	"github.com/Enoch7768/fuzecli/internal/generation"
 	"github.com/Enoch7768/fuzecli/internal/provider"
@@ -177,14 +179,64 @@ func (s *Service) Chat(ctx context.Context, req ChatRequest) (ChatResponse, erro
 	s.emitEvent(StudioEvent{RequestID:requestID, Type:"validation.completed", Phase:"validation", Message:"Structured response validated", Provider:name, Model:model, Percent:72})
 	result := ChatResponse{Content:content, Provider:name, Model:model, PromptTokens:usage.PromptTokens, CompletionTokens:usage.CompletionTokens, TotalTokens:usage.TotalTokens, UsageEstimated:usage.Estimated}
 	if parsed.Plan != nil && req.Apply {
-		s.emitEvent(StudioEvent{RequestID:requestID, Type:"apply.started", Phase:"files", Message:"Applying workspace changes", Percent:78})
-		written, applyErr := generation.ApplyChatPlan(s.App.Store.Root, *parsed.Plan)
-		if applyErr != nil { s.emitEvent(StudioEvent{RequestID:requestID, Type:"apply.failed", Phase:"files", Message:applyErr.Error()}); return ChatResponse{}, applyErr }
+		repairBudget := s.App.Config.Verification.SelfCorrectionAttempts
+		s.emitEvent(StudioEvent{RequestID:requestID, Type:"verification.budget", Phase:"verification", Message:fmt.Sprintf("Verification budget: %d repair attempt(s)", repairBudget), Percent:76})
+		var written []string
+		var verification agent.VerificationResult
+		for attempt := 0; attempt <= repairBudget; attempt++ {
+			s.emitEvent(StudioEvent{RequestID:requestID, Type:"verification.started", Phase:"verification", Message:fmt.Sprintf("Verification pass %d/%d", attempt+1, repairBudget+1), Percent:78})
+			executor := agent.Executor{Root:s.App.Store.Root}
+			verification, err = executor.Execute(*parsed.Plan, func() agent.VerificationResult {
+				paths := make([]string, 0, len(parsed.Plan.Files))
+				for _, file := range parsed.Plan.Files { paths = append(paths, file.Path) }
+				vr, verifyErr := verify.Detect(s.App.Store.Root, paths)
+				if verifyErr != nil { return agent.VerificationResult{Passed:false, Output:verifyErr.Error()} }
+				return agent.VerificationResult{Passed:vr.Passed, Output:vr.Output}
+			})
+			if verification.Passed {
+				written = verification.Changed
+				s.emitEvent(StudioEvent{RequestID:requestID, Type:"verification.completed", Phase:"verification", Message:"Verification passed; workspace changes committed", Percent:86})
+				break
+			}
+			diagnostic := strings.TrimSpace(verification.Output)
+			if diagnostic == "" { diagnostic = "Verification failed without diagnostic output." }
+			if len(diagnostic) > 1600 { diagnostic = diagnostic[:1600] + "\\n[diagnostic truncated]" }
+			s.emitEvent(StudioEvent{RequestID:requestID, Type:"verification.failed", Phase:"verification", Message:diagnostic, Percent:80})
+			if attempt == repairBudget {
+				err := fmt.Errorf("verification failed after %d repair attempt(s). Last diagnostics:\\n%s", attempt, diagnostic)
+				s.emitEvent(StudioEvent{RequestID:requestID, Type:"apply.failed", Phase:"verification", Message:err.Error()})
+				return ChatResponse{}, err
+			}
+			s.emitEvent(StudioEvent{RequestID:requestID, Type:"repair.started", Phase:"repair", Message:fmt.Sprintf("Repair %d/%d using verification diagnostics", attempt+1, repairBudget), Percent:82})
+			correction := generation.BuildCorrectionPrompt(*parsed.Plan, verification.Output)
+			repairMessages := append([]provider.Message(nil), msgs...)
+			repairMessages = append(repairMessages,
+				provider.Message{Role:"assistant", Content:raw.String()},
+				provider.Message{Role:"user", Content:correction},
+			)
+			repaired, repairErr := s.App.Registry.Send(ctx, name, repairMessages, provider.RequestOptions{Model:model, Temperature:0, MaxTokens:32768, JSONMode:true, JSONSchema:generation.ChatResponseSchema(), BillingMode:req.BillingMode, RequestID:requestID})
+			if repairErr != nil {
+				s.emitEvent(StudioEvent{RequestID:requestID, Type:"repair.failed", Phase:"repair", Message:repairErr.Error()})
+				return ChatResponse{}, fmt.Errorf("repair attempt %d/%d failed: %w; verification diagnostics: %s", attempt+1, repairBudget, repairErr, diagnostic)
+			}
+			repairedResponse, repairedParseErr := engine.ParseChatResponse(ctx, repaired.Content)
+			if repairedParseErr != nil || repairedResponse.Plan == nil {
+				message := "repair response did not contain a valid edit plan"
+				if repairedParseErr != nil { message = repairedParseErr.Error() }
+				s.emitEvent(StudioEvent{RequestID:requestID, Type:"repair.failed", Phase:"repair", Message:message})
+				return ChatResponse{}, fmt.Errorf("repair attempt %d/%d returned an invalid plan: %s", attempt+1, repairBudget, message)
+			}
+			raw.Reset()
+			raw.WriteString(repaired.Content)
+			parsed = repairedResponse
+			result.Provider = repaired.ProviderName
+			result.Model = repaired.Model
+		}
 		if err := s.App.Store.MarkTouched(written); err != nil { return ChatResponse{}, err }
-		_ = s.App.Store.RefreshHashes(written)
+		if err := s.App.Store.RefreshHashes(written); err != nil { return ChatResponse{}, err }
 		result.WrittenFiles = written
 		result.Applied = true
-		for _, path := range written { s.emitEvent(StudioEvent{RequestID:requestID, Type:"generation.file_applied", Phase:"files", Message:"File applied", Path:path, Percent:84}) }
+		for _, path := range written { s.emitEvent(StudioEvent{RequestID:requestID, Type:"generation.file_applied", Phase:"files", Message:"Verified file applied", Path:path, Percent:94}) }
 	}
 	s.emitEvent(StudioEvent{RequestID:requestID, Type:"session.completed", Phase:"complete", Message:"Request completed", Provider:result.Provider, Model:result.Model, Percent:100})
 	return result, nil
