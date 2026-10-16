@@ -186,7 +186,8 @@ func (s *Service) Chat(ctx context.Context, req ChatRequest) (ChatResponse, erro
 		for attempt := 0; attempt <= repairBudget; attempt++ {
 			s.emitEvent(StudioEvent{RequestID:requestID, Type:"verification.started", Phase:"verification", Message:fmt.Sprintf("Verification pass %d/%d", attempt+1, repairBudget+1), Percent:78})
 			executor := agent.Executor{Root:s.App.Store.Root}
-			verification, executeErr := executor.Execute(*parsed.Plan, func() agent.VerificationResult {
+			var executeErr error
+			verification, executeErr = executor.Execute(*parsed.Plan, func() agent.VerificationResult {
 				paths := make([]string, 0, len(parsed.Plan.Files))
 				for _, file := range parsed.Plan.Files { paths = append(paths, file.Path) }
 				vr, verifyErr := verify.Detect(s.App.Store.Root, paths)
