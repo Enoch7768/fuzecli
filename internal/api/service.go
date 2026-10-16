@@ -175,7 +175,6 @@ func (s *Service) Chat(ctx context.Context, req ChatRequest) (ChatResponse, erro
 	if parseErr != nil { s.emitEvent(StudioEvent{RequestID:requestID, Type:"validation.failed", Phase:"validation", Message:parseErr.Error(), Provider:name, Model:model}); return ChatResponse{}, fmt.Errorf("complete assistant response could not be validated: %w", parseErr) }
 	content := raw.String()
 	if parsed.Response != "" { content = parsed.Response } else if parsed.Message != "" { content = parsed.Message } else if parsed.Explanation != "" { content = parsed.Explanation }
-	if err := s.App.Store.AddMessage(provider.Message{Role:"assistant", Content:content}); err != nil { return ChatResponse{}, err }
 	s.emitEvent(StudioEvent{RequestID:requestID, Type:"validation.completed", Phase:"validation", Message:"Structured response validated", Provider:name, Model:model, Percent:72})
 	result := ChatResponse{Content:content, Provider:name, Model:model, PromptTokens:usage.PromptTokens, CompletionTokens:usage.CompletionTokens, TotalTokens:usage.TotalTokens, UsageEstimated:usage.Estimated}
 	if parsed.Plan != nil && req.Apply {
@@ -241,6 +240,11 @@ func (s *Service) Chat(ctx context.Context, req ChatRequest) (ChatResponse, erro
 			raw.Reset()
 			raw.WriteString(repaired.Content)
 			parsed = repairedResponse
+			usage.PromptTokens += repaired.Usage.PromptTokens
+			usage.CompletionTokens += repaired.Usage.CompletionTokens
+			usage.TotalTokens += repaired.Usage.TotalTokens
+			usage.CostUSD += repaired.Usage.CostUSD
+			usage.Estimated = usage.Estimated || repaired.Usage.Estimated
 			result.Provider = repaired.ProviderName
 			result.Model = repaired.Model
 		}
@@ -250,7 +254,22 @@ func (s *Service) Chat(ctx context.Context, req ChatRequest) (ChatResponse, erro
 		result.Applied = true
 		for _, path := range written { s.emitEvent(StudioEvent{RequestID:requestID, Type:"generation.file_applied", Phase:"files", Message:"Verified file applied", Path:path, Percent:94}) }
 	}
-	s.emitEvent(StudioEvent{RequestID:requestID, Type:"session.completed", Phase:"complete", Message:"Request completed", Provider:result.Provider, Model:result.Model, Percent:100})
+	if parsed.Response != "" {
+		content = parsed.Response
+	} else if parsed.Message != "" {
+		content = parsed.Message
+	} else if parsed.Explanation != "" {
+		content = parsed.Explanation
+	} else {
+		content = raw.String()
+	}
+	result.Content = content
+	result.PromptTokens = usage.PromptTokens
+	result.CompletionTokens = usage.CompletionTokens
+	result.TotalTokens = usage.TotalTokens
+	result.UsageEstimated = usage.Estimated
+	if err := s.App.Store.AddMessage(provider.Message{Role:"assistant", Content:content}); err != nil { return ChatResponse{}, err }
+	s.emitEvent(StudioEvent{RequestID:requestID, Type:"session.completed", Phase:"complete", Message:"Request completed", Provider:result.Provider, Model:result.Model, PromptTokens:result.PromptTokens, CompletionTokens:result.CompletionTokens, TotalTokens:result.TotalTokens, UsageEstimated:result.UsageEstimated, CostUSD:usage.CostUSD, Percent:100})
 	return result, nil
 }
 func (s *Service) RefreshMemory() error {
