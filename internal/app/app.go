@@ -317,7 +317,10 @@ func (a *App) askOnce(
 	}
 
 	written := []string{}
-	for attempt := 0; attempt <= a.Config.Verification.SelfCorrectionAttempts; attempt++ {
+	repairBudget := a.Config.Verification.SelfCorrectionAttempts
+	fmt.Printf("Verification budget: %d repair attempt(s) after the initial apply.\n", repairBudget)
+	for attempt := 0; attempt <= repairBudget; attempt++ {
+		fmt.Printf("Verification pass %d/%d...\n", attempt+1, repairBudget+1)
 		executor := agent.Executor{Root: a.Store.Root}
 		verification := agent.VerificationResult{}
 		written = nil
@@ -333,9 +336,17 @@ func (a *App) askOnce(
 			written = verification.Changed
 			break
 		}
-		if attempt == a.Config.Verification.SelfCorrectionAttempts {
-			return nil, fmt.Errorf("verification failed after %d self-correction attempts", attempt)
+		diagnostic := strings.TrimSpace(verification.Output)
+		if diagnostic == "" {
+			diagnostic = "Verification failed without diagnostic output."
 		}
+		if len(diagnostic) > 1600 {
+			diagnostic = diagnostic[:1600] + "\\n[diagnostic truncated]"
+		}
+		if attempt == repairBudget {
+			return nil, fmt.Errorf("verification failed after %d repair attempt(s). Last diagnostics:\\n%s", attempt, diagnostic)
+		}
+		fmt.Printf("Verification failed; repair %d/%d will use these diagnostics:\\n%s\\n", attempt+1, repairBudget, diagnostic)
 
 		correction := generation.BuildCorrectionPrompt(plan, verification.Output)
 		history, _ = a.Store.History(400)
