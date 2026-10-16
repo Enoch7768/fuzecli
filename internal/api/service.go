@@ -194,6 +194,10 @@ func (s *Service) Chat(ctx context.Context, req ChatRequest) (ChatResponse, erro
 				if verifyErr != nil { return agent.VerificationResult{Passed:false, Output:verifyErr.Error()} }
 				return agent.VerificationResult{Passed:vr.Passed, Output:vr.Output}
 			})
+			if executeErr != nil && strings.Contains(executeErr.Error(), "rollback failed:") {
+				s.emitEvent(StudioEvent{RequestID:requestID, Type:"apply.failed", Phase:"rollback", Message:executeErr.Error()})
+				return ChatResponse{}, fmt.Errorf("workspace rollback failed; stop further edits and inspect the workspace: %w", executeErr)
+			}
 			if executeErr != nil && !strings.HasPrefix(executeErr.Error(), "verification failed:") {
 				s.emitEvent(StudioEvent{RequestID:requestID, Type:"apply.failed", Phase:"files", Message:executeErr.Error()})
 				return ChatResponse{}, fmt.Errorf("workspace transaction failed: %w", executeErr)
