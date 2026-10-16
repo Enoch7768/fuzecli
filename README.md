@@ -1,8 +1,34 @@
 # FuzeCLI
 
-FuzeCLI (`aicli.exe`) is a Windows-native Go CLI for chatting with multiple AI providers and generating code directly into a workspace. It is local-first, workspace-aware, and designed to ship as a single Windows executable with no Go runtime or CGO dependency at runtime.
+**FuzeCLI is a terminal-first, safety-focused coding agent with a lightweight local Studio.** It edits real project files, runs bounded verification, explains failures, and can retry repairs without silently executing model-suggested shell commands.
 
-## What FuzeCLI does
+## Try it
+
+Requirements: Go 1.25+ for source builds. A provider API key is needed for hosted models; local OpenAI-compatible providers can be configured instead.
+
+```powershell
+git clone https://github.com/Enoch7768/fuzecli.git
+cd fuzecli
+go run ./cmd/aicli --help
+go run ./cmd/aicli init
+go run ./cmd/aicli chat
+```
+
+For an existing workspace, run `aicli status` and `aicli diff` before applying changes. Use `aicli snapshot` to create a recovery point and `aicli restore` to restore one. Review the proposed diff before trusting an edit.
+
+## Why try it?
+
+FuzeCLI's focus is the verifiable edit loop: workspace-scoped changes, explicit command authorization, diagnostics from verification, bounded repair attempts, and recovery tools. Compared with Aider, Claude Code, Cursor, or Continue, it is not yet a proven replacement; use it when you want to inspect and test a local Go-based agent and help improve its safety.
+
+## Current status
+
+- **Primary interface:** terminal/CLI; Studio is a local companion, not a replacement IDE.
+- **Reliability work:** deterministic safety and transaction fixtures run in CI and publish a test artifact. These fixtures measure implementation safeguards, not the success rate of live AI coding tasks.
+- **Cross-platform:** Windows is the primary supported experience. Linux/macOS CI and CGO-free build validation are being added; do not assume every integration behaves identically on all systems.
+- **Experimental:** broad provider compatibility, Studio integrations, project intelligence, MCP, and benchmark comparisons. Live-model quality, cost, and latency vary by provider and have not yet been independently benchmarked against competitors.
+- **Safety:** model-suggested shell commands are informational only and are not automatically executed. Verification commands are subject to the app's command policy. Always review diffs and keep version control backups.
+
+## Additional capabilities
 
 - Unified provider interface with native providers plus 40+ OpenAI-compatible and local inference backends, including OpenAI, Gemini, Groq, Anthropic, OpenRouter, DeepSeek, Mistral, Together, Fireworks, Cerebras, xAI, Ollama, vLLM, LM Studio, LiteLLM, and custom OpenAI-compatible endpoints.
 - Configurable provider API keys and models from the local web Settings screen or CLI configuration.
