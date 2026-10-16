@@ -145,15 +145,15 @@ func TestDeterministicAgentEvaluationHarness(t *testing.T) {
 func refactoredSource(language string) string {
 	switch language {
 	case "go":
-		return "package fixture\\nfunc Value() int { result := 0; return result }\\n"
+		return "package fixture\nfunc Value() int { result := 0; return result }\n"
 	case "javascript":
-		return "function value() { const result = 0; return result; }\\n"
+		return "function value() { const result = 0; return result; }\n"
 	case "typescript":
-		return "export function value(): number { const result = 0; return result; }\\n"
+		return "export function value(): number { const result = 0; return result; }\n"
 	case "python":
-		return "def value():\\n    result = 0\\n    return result\\n"
+		return "def value():\n    result = 0\n    return result\n"
 	case "php":
-		return "<?php\\nfunction value(): int { $result = 0; return $result; }\\n"
+		return "<?php\nfunction value(): int { $result = 0; return $result; }\n"
 	default:
 		return ""
 	}
