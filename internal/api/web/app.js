@@ -41,7 +41,7 @@ function startStudioEvents(){
     const consume=e=>{try{handleStudioEvent(JSON.parse(e.data))}catch(_){}};
     es.onopen=()=>{clearTimeout(timer);studioEvents=es;settle(resolve)};
     es.onmessage=consume;
-    ["session.started","provider.selected","generation.started","generation.usage","generation.completed","generation.streaming_unavailable","validation.failed","validation.completed","apply.started","apply.failed","generation.file_applied","session.completed","generation.failed"].forEach(type=>es.addEventListener(type,consume));
+    ["session.started","provider.selected","generation.started","generation.usage","generation.completed","generation.streaming_unavailable","validation.failed","validation.completed","apply.started","apply.failed","verification.budget","verification.started","verification.completed","verification.failed","repair.started","repair.failed","generation.file_applied","session.completed","generation.failed"].forEach(type=>es.addEventListener(type,consume));
     es.addEventListener("generation.chunk",e=>{try{const d=JSON.parse(e.data);studioStreamChunks++;studioStreamBytes+=String(d.message||"").length;handleStudioEvent(d)}catch(_){}});
     es.onerror=()=>{if(!settled){clearTimeout(timer);try{es.close()}catch(_){};studioEvents=null;studioEventsReady=null;settle(reject,Error("Agent event stream connection failed"))}else if(studioRequestID)$("#chatState").textContent="Reconnecting to agent…"};
   });
@@ -61,6 +61,12 @@ function handleStudioEvent(e){
   else if(e.type==="generation.chunk")$("#chatState").textContent="Generating…";
   else if(e.type==="generation.completed")$("#chatState").textContent="Validating structured response…";
   else if(e.type==="validation.completed")$("#chatState").textContent="Validated response";
+  else if(e.type==="verification.budget")$("#chatState").textContent=e.message||"Repair budget set";
+  else if(e.type==="verification.started")$("#chatState").textContent=e.message||"Verifying changes…";
+  else if(e.type==="verification.completed")$("#chatState").textContent="Verification passed";
+  else if(e.type==="verification.failed")$("#chatState").textContent="Verification failed: "+String(e.message||"No diagnostics").slice(0,180);
+  else if(e.type==="repair.started")$("#chatState").textContent=e.message||"Repairing…";
+  else if(e.type==="repair.failed")$("#chatState").textContent="Repair failed: "+String(e.message||"Unknown error").slice(0,180);
   else if(e.type==="apply.started")$("#chatState").textContent="Applying files…";
   else if(e.type==="generation.file_applied")$("#chatState").textContent="Applied "+(e.path||"file");
   else if(e.type==="session.completed")$("#chatState").textContent="Complete";
@@ -109,6 +115,12 @@ function eventLabel(e){
     case "generation.completed":return "Validating structured response";
     case "generation.streaming_unavailable":return "Using standard provider response";
     case "validation.completed":return "Validated response";
+    case "verification.budget":return e.message||"Repair budget set";
+    case "verification.started":return e.message||"Verifying workspace changes";
+    case "verification.completed":return "Verification passed";
+    case "verification.failed":return "Verification failed: "+String(e.message||"no diagnostics").slice(0,180);
+    case "repair.started":return e.message||"Repairing verification failure";
+    case "repair.failed":return "Repair failed: "+String(e.message||"unknown error").slice(0,180);
     case "apply.started":return "Applying workspace changes";
     case "generation.file_applied":return "Applied "+(e.path||"file");
     case "session.completed":return "Complete";
