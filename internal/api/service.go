@@ -134,8 +134,7 @@ func (s *Service) Chat(ctx context.Context, req ChatRequest) (ChatResponse, erro
 		for _, file := range attachments { system += "\n" + attachmentSummary(file) + "\n" }
 	}
 	engine := generation.Engine{Registry:s.App.Registry, Profile:&s.App.Profile, MaxContextChars:240000}
-	msgs := engine.Messages(s.App.Profile.Condensed(), workspaceContext, history, req.Prompt)
-	msgs[0].Content = system
+	msgs := engine.MessagesWithSystem(system, s.App.Profile.Condensed(), history, req.Prompt)
 	if err := s.App.Store.AddMessage(provider.Message{Role:"user", Content:req.Prompt}); err != nil { return ChatResponse{}, err }
 	s.emitEvent(StudioEvent{RequestID:requestID, Type:"generation.started", Phase:"generation", Message:"Generating response", Provider:name, Model:model, Percent:15})
 	stream, streamErr := s.App.Registry.Stream(ctx, name, msgs, provider.RequestOptions{Model:model, Temperature:0.3, MaxTokens:32768, JSONMode:true, JSONSchema:generation.ChatResponseSchema(), BillingMode:req.BillingMode, RequestID:requestID})
