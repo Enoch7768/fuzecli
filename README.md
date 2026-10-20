@@ -30,7 +30,7 @@ FuzeCLI's focus is the verifiable edit loop: workspace-scoped changes, explicit 
 
 ## FuzeAI development
 
-The [FuzeAI Phase 1 audit](docs/FUZEAi_PHASE_1_AUDIT.md) defines the integration boundary, training-data contract, evaluation scorecard, and acceptance gates. It explicitly distinguishes repository CI results from live-model coding benchmarks; base-model and fine-tuned-model scores must be measured and recorded before claiming an improvement.
+The [FuzeAI Phase 1 audit](docs/FUZEAi_PHASE_1_AUDIT.md) defines the integration boundary, training-data contract, evaluation scorecard, and acceptance gates. It explicitly distinguishes repository CI results from live-model coding benchmarks; base-model and fine-tuned-model scores must be measured and recorded before claiming an improvement. The [reproducible audit and baseline toolkit](training/fuzeai/README.md) contains the JSONL dataset auditor, pinned-revision model runner, unit tests, and instructions for the frozen [20-task evaluation set](evals/fuzeai_baseline_v1.jsonl).
 
 ## Additional capabilities
 
