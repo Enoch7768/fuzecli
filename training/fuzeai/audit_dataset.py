@@ -78,8 +78,8 @@ def inspect_record(record: Any, line_number: int) -> tuple[list[str], list[str],
         errors.append("no_user_message")
     if not roles or roles[-1] != "assistant":
         errors.append("assistant_target_not_last")
-    if roles.count("assistant") != 1:
-        errors.append("expected_exactly_one_assistant_target")
+    if roles.count("assistant") < 1:
+        errors.append("no_assistant_target")
     if not isinstance(record.get("metadata", {}), dict):
         errors.append("metadata_not_object")
 
