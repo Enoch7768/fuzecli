@@ -14,6 +14,7 @@ Phase 1 is complete when all of the following are recorded:
 - [x] Define a deterministic, repeatable evaluation set and scorecard.
 - [x] Identify baseline measurements that exist versus measurements still required.
 - [x] Define pass/fail gates before any training dataset or model recipe is changed.
+- [x] Commit a standard-library JSONL audit tool, frozen v1 prompt set, pinned-revision generation runner, and Python unit tests.
 - [ ] Run the base-model evaluation on the pinned checkpoint and save raw results.
 - [ ] Run the current FuzeCLI provider/model baseline on the same tasks and save raw results.
 - [ ] Audit the full training JSONL for schema errors, duplicates, leakage, malformed targets, and unsafe edits.
