@@ -259,7 +259,7 @@ func completeJSONCandidate(raw string) bool {
 }
 
 func validateChatFile(i int, file chatFileChange) error {
-	if file.Path == "" {
+	if strings.TrimSpace(file.Path) == "" {
 		return fmt.Errorf("file %d has empty path", i)
 	}
 	if file.LineStart < 0 || file.LineEnd < 0 || (file.LineStart > 0 && file.LineEnd > 0 && file.LineEnd < file.LineStart) {

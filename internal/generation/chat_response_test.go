@@ -109,6 +109,7 @@ func TestParseChatPlanRejectsUnsafePaths(t *testing.T) {
 		`{"files":[{"path":"../outside.txt","content":"x"}],"explanation":"x"}`,
 		`{"files":[{"path":"C:\\outside.txt","content":"x"}],"explanation":"x"}`,
 		`{"files":[{"path":"/outside.txt","content":"x"}],"explanation":"x"}`,
+		`{"files":[{"path":"   ","content":"x"}],"explanation":"x"}`,
 	} {
 		if _, err := ParseChatPlan(raw); err == nil {
 			t.Fatalf("unsafe path accepted: %s", raw)
