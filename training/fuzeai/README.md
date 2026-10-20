@@ -51,7 +51,17 @@ The prompt runner is a **generation baseline**, not a verified coding-success be
 
 At minimum, record for each task: rubric pass/fail per criterion, overall pass/fail, failure category, whether an unsafe action was suggested, and reviewer notes. Keep raw outputs. Do not change the v1 prompts between base and adapter runs; changes require a new evaluation version.
 
-## 4. Test the audit utility\n\nRun the standard-library unit tests from the repository root:\n\n```bash\npython -m unittest discover -s training/fuzeai -p 'test_*.py' -v\n```\n\nThe same command runs in the `fuzeai-tools` GitHub Actions job.\n\n## 5. Phase 1 completion checklist
+## 4. Test the audit utility
+
+Run the standard-library unit tests from the repository root:
+
+```bash
+python -m unittest discover -s training/fuzeai -p 'test_*.py' -v
+```
+
+The same command runs in the `fuzeai-tools` GitHub Actions job.
+
+## 5. Phase 1 completion checklist
 
 - [x] Repository/runtime boundary and response contract documented.
 - [x] Context-budget regression tests added.
