@@ -88,16 +88,23 @@ func SessionSystemPrompt() string {
 
 func (e *Engine) Messages(profileText string, workspaceContext string, conversation []provider.Message, prompt string) []provider.Message {
 	system := SessionSystemPrompt()
-	if profileText != "" {
-		system += "\nDeveloper profile:\n" + profileText
-	}
 	if workspaceContext != "" {
 		system += "\nWorkspace context:\n" + workspaceContext
 	}
-	msgs := []provider.Message{{Role: "system", Content: system}}
-	msgs = append(msgs, conversation...)
-	msgs = append(msgs, provider.Message{Role: "user", Content: prompt})
-	return trimMessages(msgs, e.MaxContextChars)
+	return e.MessagesWithSystem(system, profileText, conversation, prompt)
+}
+
+// MessagesWithSystem builds the final system prompt before applying the context
+// budget. The latest user prompt is always retained, even if it alone exceeds
+// the configured budget.
+func (e *Engine) MessagesWithSystem(systemText, profileText string, conversation []provider.Message, prompt string) []provider.Message {
+	if profileText != "" {
+		systemText += "\nDeveloper profile:\n" + profileText
+	}
+	messages := []provider.Message{{Role: "system", Content: systemText}}
+	messages = append(messages, conversation...)
+	messages = append(messages, provider.Message{Role: "user", Content: prompt})
+	return trimMessages(messages, e.MaxContextChars)
 }
 
 func trimMessages(messages []provider.Message, maxChars int) []provider.Message {
@@ -105,21 +112,29 @@ func trimMessages(messages []provider.Message, maxChars int) []provider.Message 
 		return messages
 	}
 	total := 0
-	for _, m := range messages {
-		total += len(m.Content)
+	for _, message := range messages {
+		total += len(message.Content)
 	}
-	if total <= maxChars {
+	if total <= maxChars || len(messages) == 1 {
 		return messages
 	}
-	out := []provider.Message{messages[0]}
-	used := len(messages[0].Content)
-	for i := len(messages) - 1; i >= 1; i-- {
-		m := messages[i]
-		if used+len(m.Content) > maxChars {
-			continue
+
+	system := messages[0]
+	recent := []provider.Message{messages[len(messages)-1]}
+	used := len(system.Content) + len(recent[0].Content)
+	for i := len(messages) - 2; i >= 1; i-- {
+		message := messages[i]
+		if used+len(message.Content) > maxChars {
+			break
 		}
-		out = append([]provider.Message{m}, out...)
-		used += len(m.Content)
+		recent = append(recent, message)
+		used += len(message.Content)
+	}
+
+	out := make([]provider.Message, 1, len(recent)+1)
+	out[0] = system
+	for i := len(recent) - 1; i >= 0; i-- {
+		out = append(out, recent[i])
 	}
 	return out
 }
