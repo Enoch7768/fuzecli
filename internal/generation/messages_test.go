@@ -35,3 +35,31 @@ func TestMessagesWithSystemPreservesProfileAndAppliesContextBudget(t *testing.T)
 		t.Fatal("old conversation unexpectedly entered the system prompt")
 	}
 }
+
+func TestTrimMessagesRetainsLatestPromptWhenItExceedsBudget(t *testing.T) {
+	system := provider.Message{Role: "system", Content: "system"}
+	old := provider.Message{Role: "user", Content: "old context"}
+	prompt := provider.Message{Role: "user", Content: "a prompt larger than the remaining context budget"}
+
+	messages := trimMessages([]provider.Message{system, old, prompt}, len(system.Content)+4)
+	if len(messages) != 2 {
+		t.Fatalf("message count = %d, want system and latest prompt", len(messages))
+	}
+	if messages[1] != prompt {
+		t.Fatalf("latest prompt was dropped or reordered: %#v", messages)
+	}
+}
+
+func TestTrimMessagesKeepsOnlyContiguousRecentHistory(t *testing.T) {
+	system := provider.Message{Role: "system", Content: "sys"}
+	old := provider.Message{Role: "user", Content: "old"}
+	tooLarge := provider.Message{Role: "assistant", Content: strings.Repeat("x", 40)}
+	recent := provider.Message{Role: "assistant", Content: "recent"}
+	prompt := provider.Message{Role: "user", Content: "next"}
+	budget := len(system.Content) + len(recent.Content) + len(prompt.Content)
+
+	messages := trimMessages([]provider.Message{system, old, tooLarge, recent, prompt}, budget)
+	if len(messages) != 3 || messages[1] != recent || messages[2] != prompt {
+		t.Fatalf("expected contiguous recent history and latest prompt, got %#v", messages)
+	}
+}
