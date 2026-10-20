@@ -88,16 +88,22 @@ func SessionSystemPrompt() string {
 
 func (e *Engine) Messages(profileText string, workspaceContext string, conversation []provider.Message, prompt string) []provider.Message {
 	system := SessionSystemPrompt()
-	if profileText != "" {
-		system += "\nDeveloper profile:\n" + profileText
-	}
 	if workspaceContext != "" {
 		system += "\nWorkspace context:\n" + workspaceContext
 	}
-	msgs := []provider.Message{{Role: "system", Content: system}}
-	msgs = append(msgs, conversation...)
-	msgs = append(msgs, provider.Message{Role: "user", Content: prompt})
-	return trimMessages(msgs, e.MaxContextChars)
+	return e.MessagesWithSystem(system, profileText, conversation, prompt)
+}
+
+// MessagesWithSystem builds a request from the final system prompt before applying
+// the context budget, so callers cannot accidentally trim against an outdated prompt.
+func (e *Engine) MessagesWithSystem(systemText, profileText string, conversation []provider.Message, prompt string) []provider.Message {
+	if profileText != "" {
+		systemText += "\nDeveloper profile:\n" + profileText
+	}
+	messages := []provider.Message{{Role: "system", Content: systemText}}
+	messages = append(messages, conversation...)
+	messages = append(messages, provider.Message{Role: "user", Content: prompt})
+	return trimMessages(messages, e.MaxContextChars)
 }
 
 func trimMessages(messages []provider.Message, maxChars int) []provider.Message {
