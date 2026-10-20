@@ -139,3 +139,13 @@ jobs:
         run: go install golang.org/x/vuln/cmd/govulncheck@latest
       - name: Scan dependencies and code
         run: govulncheck ./...
+
+  fuzeai-tools:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Test FuzeAI dataset audit tooling
+        run: python -m unittest discover -s training/fuzeai -p 'test_*.py' -v
