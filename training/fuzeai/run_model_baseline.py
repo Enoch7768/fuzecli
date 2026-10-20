@@ -10,6 +10,7 @@ import argparse
 import hashlib
 import json
 import platform
+import re
 import sys
 import time
 from datetime import datetime, timezone
@@ -60,8 +61,8 @@ def main() -> int:
 
     if args.max_new_tokens < 1 or args.max_new_tokens > 8192:
         parser.error("--max-new-tokens must be between 1 and 8192")
-    if len(args.revision) < 7 or args.revision.lower() in {"main", "master", "latest"}:
-        parser.error("--revision must be an immutable revision/commit, not a moving branch name")
+    if not re.fullmatch(r"[0-9a-fA-F]{40}", args.revision):
+        parser.error("--revision must be the full 40-character immutable Hugging Face commit SHA")
 
     tasks_path = args.tasks.resolve()
     if not tasks_path.is_file():
@@ -121,6 +122,7 @@ def main() -> int:
         "started_at_utc": datetime.now(timezone.utc).isoformat(),
         "model": args.model,
         "revision": args.revision,
+        "system_prompt": "You are FuzeAI, a practical coding assistant. Provide clear and secure solutions, state important assumptions, and never claim code was executed unless it actually was.",
         "adapter": args.adapter,
         "tasks_path": str(tasks_path),
         "tasks_sha256": sha256(tasks_path),
@@ -138,7 +140,10 @@ def main() -> int:
         out.write(json.dumps(run_info, ensure_ascii=False) + "\n")
         for index, task in enumerate(tasks, 1):
             prompt = task["prompt"]
-            messages = [{"role": "user", "content": prompt}]
+            messages = [
+                {"role": "system", "content": "You are FuzeAI, a practical coding assistant. Provide clear and secure solutions, state important assumptions, and never claim code was executed unless it actually was."},
+                {"role": "user", "content": prompt},
+            ]
             if hasattr(tokenizer, "apply_chat_template") and tokenizer.chat_template:
                 encoded = tokenizer.apply_chat_template(messages, tokenize=True, add_generation_prompt=True, return_tensors="pt")
             else:
