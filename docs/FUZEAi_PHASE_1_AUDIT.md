@@ -1,6 +1,6 @@
 # FuzeAI Phase 1 — Repository Audit and Baseline Specification
 
-**Status:** Phase 1 audit/specification in progress  
+**Status:** Repository-side Phase 1 implementation complete; empirical validation remains pending  
 **Scope:** Establish the integration contract and reproducible baseline before changing the training dataset or fine-tuning recipe.  
 **Repository:** `Enoch7768/fuzecli`  
 **Important:** This document does not claim that a live-model benchmark or a new fine-tuning run has been executed.
@@ -18,7 +18,7 @@ Phase 1 is complete when all of the following are recorded:
 - [ ] Run the current FuzeCLI provider/model baseline on the same tasks and save raw results.
 - [ ] Audit the full training JSONL for schema errors, duplicates, leakage, malformed targets, and unsafe edits.
 
-The unchecked items require access to the actual training checkpoint/data and execution environment. They must not be replaced with guessed scores.
+The unchecked items require execution against the actual Drive dataset, a pinned model checkpoint, configured provider access, and the relevant CI runs. The repository-side tools are committed under `training/fuzeai/` and the frozen prompt set is `evals/fuzeai_baseline_v1.jsonl`. The prompt runner records raw generations but is not itself a verified coding-success score. These items must not be replaced with guessed scores.
 
 ## 2. Runtime architecture and integration boundary
 
@@ -180,10 +180,10 @@ Keep raw task results. A single overall score is not sufficient to hide safety r
 |---|---|---|
 | FuzeCLI unit/integration safety tests | Present in repository and CI configuration | Exact successful CI run for the commit under evaluation |
 | Deterministic agent evaluation | Existing CI harness is configured | Uploaded artifact for the exact commit; inspect task results |
-| Base checkpoint coding score | Not measured in this audit | Run frozen task set with pinned base checkpoint |
-| Current provider/model score | Not measured in this audit | Run identical tasks with recorded provider/model and settings |
+| Base checkpoint generation baseline | Runner and frozen 19-task prompt set committed; not executed here | Run `training/fuzeai/run_model_baseline.py` with full immutable checkpoint SHA and archive raw outputs; manually score rubrics |
+| Current provider/model score | Not measured in this audit | Run identical prompts/settings through current FuzeCLI provider/model and record raw outputs plus model/provider IDs |
 | Fine-tuned FuzeAI score | Not measured in this audit | Run only after the base baseline and dataset audit are saved |
-| Training dataset quality | Sample structure inspected; full dataset not audited here | Machine-readable validation report over every JSONL line |
+| Training dataset quality | Audit tool committed; full dataset not audited here | Run `training/fuzeai/audit_dataset.py` on the complete Drive JSONL and archive the report |
 | Cost/latency comparison | Not measured | Repeatable runs with provider, model, token, hardware, and network details |
 
 Do not infer live-model coding quality from a green unit-test suite. CI validates software behavior and safety fixtures; it does not establish that a model reliably solves real coding tasks.
@@ -217,7 +217,7 @@ A candidate must meet all of these before it is promoted for normal FuzeCLI use:
 
 ## 9. Phase 2 handoff
 
-Phase 2 should build a dataset-validation and split pipeline that emits:
+Phase 2 should extend the committed Phase 1 auditor into a dataset-validation and leakage-resistant split pipeline that emits:
 
 - `dataset_report.json`: counts, schema errors, duplicates, split sizes, token-length distribution, and rejection reasons;
 - `train.jsonl`, `validation.jsonl`, and `eval.jsonl` with stable, recorded hashes;
