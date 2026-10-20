@@ -28,6 +28,10 @@ FuzeCLI's focus is the verifiable edit loop: workspace-scoped changes, explicit 
 - **Experimental:** broad provider compatibility, Studio integrations, project intelligence, MCP, and benchmark comparisons. Live-model quality, cost, and latency vary by provider and have not yet been independently benchmarked against competitors.
 - **Safety:** model-suggested shell commands are informational only and are not automatically executed. Verification commands are subject to the app's command policy. Always review diffs and keep version control backups.
 
+## FuzeAI development
+
+The [FuzeAI Phase 1 audit](docs/FUZEAi_PHASE_1_AUDIT.md) defines the integration boundary, training-data contract, evaluation scorecard, and acceptance gates. It explicitly distinguishes repository CI results from live-model coding benchmarks; base-model and fine-tuned-model scores must be measured and recorded before claiming an improvement.
+
 ## Additional capabilities
 
 - Unified provider interface with native providers plus 40+ OpenAI-compatible and local inference backends, including OpenAI, Gemini, Groq, Anthropic, OpenRouter, DeepSeek, Mistral, Together, Fireworks, Cerebras, xAI, Ollama, vLLM, LM Studio, LiteLLM, and custom OpenAI-compatible endpoints.
