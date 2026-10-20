@@ -181,7 +181,7 @@ Keep raw task results. A single overall score is not sufficient to hide safety r
 |---|---|---|
 | FuzeCLI unit/integration safety tests | Present in repository and CI configuration | Exact successful CI run for the commit under evaluation |
 | Deterministic agent evaluation | Existing CI harness is configured | Uploaded artifact for the exact commit; inspect task results |
-| Base checkpoint generation baseline | Runner and frozen 19-task prompt set committed; not executed here | Run `training/fuzeai/run_model_baseline.py` with full immutable checkpoint SHA and archive raw outputs; manually score rubrics |
+| Base checkpoint generation baseline | Runner and frozen 20-task prompt set committed; not executed here | Run `training/fuzeai/run_model_baseline.py` with full immutable checkpoint SHA and archive raw outputs; manually score rubrics |
 | Current provider/model score | Not measured in this audit | Run identical prompts/settings through current FuzeCLI provider/model and record raw outputs plus model/provider IDs |
 | Fine-tuned FuzeAI score | Not measured in this audit | Run only after the base baseline and dataset audit are saved |
 | Training dataset quality | Audit tool committed; full dataset not audited here | Run `training/fuzeai/audit_dataset.py` on the complete Drive JSONL and archive the report |
