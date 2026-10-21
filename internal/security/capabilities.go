@@ -50,20 +50,30 @@ func ValidateWorkspacePath(root, relative string, allowDelete bool) error {
 	if strings.TrimSpace(relative) == "" {
 		return errors.New("workspace path is required")
 	}
-	normalized := filepath.ToSlash(relative)
-	portable := strings.ReplaceAll(relative, "\\", "/")
-	if filepath.IsAbs(relative) || filepath.IsAbs(portable) || strings.HasPrefix(normalized, "/") || strings.HasPrefix(portable, "/") || strings.HasPrefix(normalized, "../") || strings.HasPrefix(portable, "../") || strings.Contains(normalized, "/../") || strings.Contains(portable, "/../") || filepath.VolumeName(relative) != "" || windowsVolumeName(portable) != "" {
-		return fmt.Errorf("workspace path escapes the workspace: %q", relative)
-	}
-	if strings.ContainsRune(relative, rune(0)) {
+	if strings.ContainsRune(relative, 0) {
 		return errors.New("workspace path contains a NUL byte")
 	}
-	if !allowDelete && strings.EqualFold(filepath.Base(relative), ".git") {
+
+	normalized := filepath.ToSlash(relative)
+	portable := strings.ReplaceAll(relative, "\\", "/")
+	if filepath.IsAbs(relative) ||
+		filepath.IsAbs(portable) ||
+		strings.HasPrefix(normalized, "/") ||
+		strings.HasPrefix(portable, "/") ||
+		filepath.VolumeName(relative) != "" ||
+		windowsVolumeName(portable) != "" {
+		return fmt.Errorf("workspace path escapes the workspace: %q", relative)
+	}
+	for _, component := range strings.Split(portable, "/") {
+		if component == ".." {
+			return fmt.Errorf("workspace path escapes the workspace: %q", relative)
+		}
+	}
+	if !allowDelete && strings.EqualFold(filepath.Base(portable), ".git") {
 		return errors.New("protected workspace path")
 	}
 	return nil
 }
-
 
 func windowsVolumeName(path string) string {
 	if len(path) >= 2 && ((path[0] >= 'A' && path[0] <= 'Z') || (path[0] >= 'a' && path[0] <= 'z')) && path[1] == ':' {

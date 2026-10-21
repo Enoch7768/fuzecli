@@ -13,12 +13,35 @@ func TestSafeCapabilities(t *testing.T) {
 }
 
 func TestValidateWorkspacePath(t *testing.T) {
-	for _, path := range []string{"../secret", "/tmp/secret", "C:\\secret", "src/../secret"} {
-		if err := ValidateWorkspacePath("workspace", path, false); err == nil {
-			t.Fatalf("expected path rejection for %q", path)
-		}
+	for _, path := range []string{
+		"../secret",
+		"/tmp/secret",
+		"C:\\secret",
+		"src/../secret",
+		"src/..",
+		"src/nested/..",
+		"src\\..",
+		"src\\nested\\..",
+	} {
+		t.Run(path, func(t *testing.T) {
+			if err := ValidateWorkspacePath("workspace", path, false); err == nil {
+				t.Fatalf("expected path rejection for %q", path)
+			}
+		})
 	}
 	if err := ValidateWorkspacePath("workspace", "src/main.go", false); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestValidateWorkspacePathRejectsNUL(t *testing.T) {
+	if err := ValidateWorkspacePath("workspace", "src/main.go\x00.txt", false); err == nil {
+		t.Fatal("expected NUL byte to be rejected")
+	}
+}
+
+func TestValidateWorkspacePathRejectsPortableGitMetadataPath(t *testing.T) {
+	if err := ValidateWorkspacePath("workspace", "src\\.git", false); err == nil {
+		t.Fatal("expected portable .git path to be rejected")
 	}
 }
