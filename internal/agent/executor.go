@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 
 	"github.com/Enoch7768/fuzecli/internal/generation"
-	"github.com/Enoch7768/fuzecli/internal/transaction"
 	"github.com/Enoch7768/fuzecli/internal/security"
+	"github.com/Enoch7768/fuzecli/internal/transaction"
 )
 
 type VerificationResult struct {
@@ -17,7 +17,7 @@ type VerificationResult struct {
 }
 
 type Executor struct {
-	Root string
+	Root         string
 	Capabilities security.CapabilitySet
 }
 
@@ -25,21 +25,24 @@ func (e Executor) Execute(plan generation.Plan, verify func() VerificationResult
 	if e.Root == "" {
 		return VerificationResult{}, fmt.Errorf("workspace root is required")
 	}
+	capabilities := e.Capabilities
+	if capabilities == nil {
+		capabilities = security.SafeCapabilities()
+	}
+	if err := capabilities.Require(security.WriteWorkspace); err != nil {
+		return VerificationResult{}, err
+	}
+
 	tx := transaction.New()
 	changed := make([]string, 0, len(plan.Files))
 
-	if e.Capabilities != nil {
-		if err := e.Capabilities.Require(security.WriteWorkspace); err != nil {
-			return VerificationResult{}, err
-		}
-	}
 	for _, file := range plan.Files {
 		if err := security.ValidateWorkspacePath(e.Root, file.Path, file.Action == "delete"); err != nil {
 			_ = tx.Rollback()
 			return VerificationResult{}, err
 		}
-		if file.Action == "delete" && e.Capabilities != nil {
-			if err := e.Capabilities.Require(security.DeleteFile); err != nil {
+		if file.Action == "delete" {
+			if err := capabilities.Require(security.DeleteFile); err != nil {
 				_ = tx.Rollback()
 				return VerificationResult{}, err
 			}

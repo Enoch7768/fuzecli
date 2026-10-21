@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/Enoch7768/fuzecli/internal/generation"
+	"github.com/Enoch7768/fuzecli/internal/security"
 )
 
 func TestExecutorRollsBackFailedVerification(t *testing.T) {
@@ -66,6 +67,49 @@ func TestExecutorCommitsVerifiedPlan(t *testing.T) {
 	}
 	if string(content) != "ready" {
 		t.Fatalf("unexpected committed content: %q", content)
+	}
+}
+
+func TestExecutorDeniesDeleteByDefault(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "keep.txt")
+	if err := os.WriteFile(path, []byte("keep me"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := (Executor{Root: root}).Execute(generation.Plan{Files: []generation.FileChange{
+		{Path: "keep.txt", Action: "delete"},
+	}}, nil)
+	if err == nil || !strings.Contains(err.Error(), string(security.DeleteFile)) {
+		t.Fatalf("expected delete capability denial, got %v", err)
+	}
+	if content, readErr := os.ReadFile(path); readErr != nil || string(content) != "keep me" {
+		t.Fatalf("file should remain untouched after denied delete: content=%q err=%v", content, readErr)
+	}
+}
+
+func TestExecutorDeletesWhenExplicitlyAuthorized(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "remove.txt")
+	if err := os.WriteFile(path, []byte("remove me"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	capabilities := security.SafeCapabilities()
+	capabilities[security.DeleteFile] = true
+
+	result, err := (Executor{Root: root, Capabilities: capabilities}).Execute(generation.Plan{Files: []generation.FileChange{
+		{Path: "remove.txt", Action: "delete"},
+	}}, func() VerificationResult {
+		return VerificationResult{Passed: true, Output: "ok"}
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.Passed {
+		t.Fatal("authorized delete was not reported as verified")
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("expected file to be deleted, got stat error %v", err)
 	}
 }
 
