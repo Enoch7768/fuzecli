@@ -136,6 +136,27 @@ aicli benchmark "Explain this repository architecture"
 
 ```
 
+## Run FuzeAI locally
+
+FuzeCLI includes first-class commands for your published FuzeAI GGUF model. Install a compatible build of [llama.cpp](https://github.com/ggml-org/llama.cpp/releases) that provides `llama-server`, then run:
+
+```powershell
+aicli fuzeai setup
+aicli fuzeai start
+```
+
+The first start downloads/caches the GGUF from [Hugging Face](https://huggingface.co/r7194714R/fuzeai-qwen-7b-gguf) through llama.cpp. Keep that terminal open while the model server is running; in a second terminal, run `aicli chat` or `aicli app`. FuzeAI is selected as the default provider by `aicli fuzeai setup`.
+
+Useful commands:
+
+```powershell
+aicli fuzeai status
+aicli fuzeai start --port 8080 --context 4096
+aicli fuzeai help
+```
+
+The GGUF is intentionally downloaded on demand rather than committed to Git history. It is several gigabytes, and the local llama.cpp cache avoids repeated downloads. The default 4096-token context is a conservative starting point for machines with limited RAM; larger contexts require more memory. The local API binds to loopback, not the public network.
+
 ## Configuration
 
 FuzeCLI stores provider configuration in `%APPDATA%\\aicli\\config.yaml`.
