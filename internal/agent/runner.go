@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/Enoch7768/fuzecli/internal/provider"
+	"github.com/Enoch7768/fuzecli/internal/config"
 )
 
 const (
@@ -117,6 +118,17 @@ func hasNonEmptyJSONValue(raw json.RawMessage) bool {
 	return true
 }
 
+func diagnosticError(err error, raw string) error {
+	if err == nil { return nil }
+	cfg, cfgErr := config.Load()
+	if cfgErr != nil || !cfg.DebugMode { return err }
+	for _, p := range cfg.Providers {
+		if key := strings.TrimSpace(p.APIKey); key != "" { raw = strings.ReplaceAll(raw, key, "[REDACTED_API_KEY]") }
+	}
+	if strings.TrimSpace(raw) == "" { return fmt.Errorf("%w\\nDEBUG MODE: no raw AI response was received", err) }
+	return fmt.Errorf("%w\\n\\nDEBUG MODE - RAW AI RESPONSE:\\n%s", err, raw)
+}
+
 func (r *Runner) Run(
 	ctx context.Context,
 	providerName string,
@@ -202,7 +214,7 @@ func (r *Runner) Run(
 
 		var agentResponse AgentResponse
 		if err := json.Unmarshal([]byte(response.Content), &agentResponse); err != nil {
-			return result, fmt.Errorf("agent model returned invalid %s JSON at step %d: %w", ToolProtocolVersion, step, err)
+			return result, diagnosticError(fmt.Errorf("agent model returned invalid %s JSON at step %d: %w", ToolProtocolVersion, step, err), response.Content)
 		}
 		// Older FuzeAI checkpoints may emit a plain "chat" envelope instead
 		// of the fuze-agent-v1 "final" envelope. Safely accept it as a final
@@ -210,7 +222,7 @@ func (r *Runner) Run(
 		// execute actions from an ambiguous response.
 		normalizeChatResponse(response.Content, &agentResponse)
 		if err := ValidateAgentResponse(agentResponse); err != nil {
-			return result, fmt.Errorf("invalid agent response at step %d: %w", step, err)
+			return result, diagnosticError(fmt.Errorf("invalid agent response at step %d: %w", step, err), response.Content)
 		}
 		result.Steps = step
 
