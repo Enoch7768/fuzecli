@@ -132,7 +132,7 @@ func isUTF8Text(data []byte) bool { return !bytes.Contains(data, []byte{0}) && u
 func (rt ToolRuntime) searchCode(ctx context.Context,a map[string]any)(any,error){
 	query:=stringArg(a,"query");max:=intArg(a,"max_results",50);caseSensitive:=boolArg(a,"case_sensitive",false);isRegex:=boolArg(a,"is_regex",false)
 	var re *regexp.Regexp;var err error
-	if isRegex {re,err=regexp.Compile(query);if err!=nil{return nil,fmt.Errorf("invalid regex: %w",err)}}
+	if isRegex {pattern:=query;if !caseSensitive{pattern="(?i)"+pattern};re,err=regexp.Compile(pattern);if err!=nil{return nil,fmt.Errorf("invalid regex: %w",err)}}
 	paths:=stringArray(a["paths"]);pathSet:=map[string]bool{};for _,p:=range paths{if _,e:=rt.resolve(p,false);e!=nil{return nil,e};pathSet[filepath.ToSlash(p)]=true}
 	policy,err:=workspace.LoadIgnorePolicy(rt.Root);if err!=nil{return nil,err}
 	type match struct{Path string `json:"path"`;Line int `json:"line"`;Text string `json:"text"`}
@@ -231,6 +231,7 @@ func (rt ToolRuntime) projectHealth(a map[string]any)(any,error){
 
 func (rt ToolRuntime) terminalRun(ctx context.Context,a map[string]any)(any,error){
 	exe:=stringArg(a,"executable");args:=stringArray(a["args"]);if err:=rt.Capabilities.Require(security.RunBuild);err!=nil&&exe!="go"&&exe!="npm"&&exe!="node"&&exe!="python"&&exe!="python3"&&exe!="php"&&exe!="make"&&exe!="cargo"{return nil,err}
+	if exe=="php"&&len(args)==2&&args[0]=="-l"{resolved,err:=rt.resolve(args[1],false);if err!=nil{return nil,err};args[1]=resolved}
 	decision:=security.Authorize(security.Command{Name:exe,Args:args});if !decision.Allowed{return nil,fmt.Errorf("command blocked by security policy: %s",decision.Reason)}
 	cwd:=rt.Root;if rel:=stringArg(a,"cwd");rel!=""{p,e:=rt.resolve(rel,false);if e!=nil{return nil,e};info,e:=os.Stat(p);if e!=nil||!info.IsDir(){return nil,errors.New("cwd must be an existing workspace directory")};cwd=p}
 	timeout:=time.Duration(intArg(a,"timeout_seconds",60))*time.Second;cctx,cancel:=context.WithTimeout(ctx,timeout);defer cancel()
