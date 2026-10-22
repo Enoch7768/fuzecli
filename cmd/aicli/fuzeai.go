@@ -40,6 +40,16 @@ func fuzeAICommand(args []string) error {
 		return configureFuzeAI()
 	case "start", "run":
 		return startFuzeAI(args[1:])
+	case "connect":
+		if len(args) != 2 {
+			return fmt.Errorf("usage: aicli fuzeai connect https://YOUR-TUNNEL.trycloudflare.com")
+		}
+		return connectFuzeAI(args[1])
+	case "disconnect":
+		if len(args) != 1 {
+			return fmt.Errorf("usage: aicli fuzeai disconnect")
+		}
+		return disconnectFuzeAI()
 	case "status":
 		if len(args) != 1 {
 			return fmt.Errorf("usage: aicli fuzeai status")
@@ -187,6 +197,91 @@ func startFuzeAI(args []string) error {
 	return nil
 }
 
+func connectFuzeAI(rawURL string) error {
+	parsed, err := url.Parse(strings.TrimSpace(rawURL))
+	if err != nil || parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
+		return fmt.Errorf("endpoint must be a clean HTTPS URL, for example https://your-name.trycloudflare.com")
+	}
+	endpoint := strings.TrimRight(parsed.String(), "/")
+	if !isPublicHTTPSHost(parsed.Hostname()) {
+		return fmt.Errorf("endpoint must use a public HTTPS hostname")
+	}
+	cfg, err := config.Load()
+	if err != nil {
+		return err
+	}
+	local := cfg.Providers["llamacpp"]
+	if local.DefaultModel == "" || local.DefaultModel == "local" {
+		local.DefaultModel = fuzeAIModel
+	}
+	local.BaseURL = endpoint
+	cfg.Providers["llamacpp"] = local
+	cfg.DefaultProvider = "llamacpp"
+	if err := config.Save(cfg); err != nil {
+		return err
+	}
+	fmt.Println("FuzeAI remote endpoint configured.")
+	fmt.Printf("  Model:    %s\n  Endpoint: %s/v1\n", local.DefaultModel, endpoint)
+	fmt.Println("Run 'aicli fuzeai status' to test it, then 'aicli chat' in your project.")
+	fmt.Println("No model API key is configured. Keep this tunnel URL private: anyone who obtains it may use the model.")
+	return nil
+}
+
+func disconnectFuzeAI() error {
+	cfg, err := config.Load()
+	if err != nil {
+		return err
+	}
+	local := cfg.Providers["llamacpp"]
+	local.BaseURL = fuzeAIURL
+	if local.DefaultModel == "" {
+		local.DefaultModel = fuzeAIModel
+	}
+	cfg.Providers["llamacpp"] = local
+	cfg.DefaultProvider = "llamacpp"
+	if err := config.Save(cfg); err != nil {
+		return err
+	}
+	fmt.Println("FuzeAI endpoint reset to local mode at http://127.0.0.1:8080.")
+	fmt.Println("Run 'aicli fuzeai start' to use the model on this computer.")
+	return nil
+}
+
+func isPublicHTTPSHost(host string) bool {
+	host = strings.ToLower(strings.TrimSpace(host))
+	if host == "" || host == "localhost" || strings.HasSuffix(host, ".localhost") {
+		return false
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		return !ip.IsLoopback() && !ip.IsPrivate() && !ip.IsUnspecified()
+	}
+	return strings.Contains(host, ".")
+}
+
+func remoteServerResponds(endpoint string) (bool, error) {
+	parsed, err := url.Parse(strings.TrimRight(endpoint, "/"))
+	if err != nil || parsed.Scheme != "https" || parsed.Host == "" || !isPublicHTTPSHost(parsed.Hostname()) {
+		return false, fmt.Errorf("remote FuzeAI endpoint must be a public HTTPS URL")
+	}
+	modelsURL := strings.TrimRight(endpoint, "/")
+	if !strings.HasSuffix(modelsURL, "/v1") {
+		modelsURL += "/v1"
+	}
+	modelsURL += "/models"
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, modelsURL, nil)
+	if err != nil {
+		return false, err
+	}
+	resp, err := (&http.Client{Timeout: 8 * time.Second}).Do(req)
+	if err != nil {
+		return false, nil
+	}
+	defer resp.Body.Close()
+	return resp.StatusCode >= 200 && resp.StatusCode < 300, nil
+}
+
 func fuzeAIStatus() error {
 	cfg, err := config.Load()
 	if err != nil {
@@ -202,7 +297,12 @@ func fuzeAIStatus() error {
 	fmt.Printf("  Endpoint:        %s/v1\n", endpoint)
 	fmt.Printf("  Default provider: %s\n", cfg.DefaultProvider)
 
-	running, err := serverResponds(endpoint)
+	var running bool
+	if parsed, parseErr := url.Parse(endpoint); parseErr == nil && parsed.Scheme == "https" && !isLocalHost(parsed.Hostname()) {
+		running, err = remoteServerResponds(endpoint)
+	} else {
+		running, err = serverResponds(endpoint)
+	}
 	if err != nil {
 		return fmt.Errorf("cannot check FuzeAI server: %w", err)
 	}
@@ -275,6 +375,6 @@ First run:
   aicli chat
 
 Model: r7194714R/fuzeai-qwen-7b-gguf:Q4_K_M
-The GGUF remains on Hugging Face and is cached locally by llama.cpp.
+The GGUF remains on Hugging Face and is cached locally by llama.cpp.\n\nRemote Kaggle endpoint:\n  aicli fuzeai connect https://YOUR-TUNNEL.trycloudflare.com\n  aicli fuzeai status\n  aicli fuzeai disconnect             Return to local mode
 Install llama.cpp separately from https://github.com/ggml-org/llama.cpp/releases.`)
 }
