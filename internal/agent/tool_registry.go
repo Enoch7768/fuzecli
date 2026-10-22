@@ -136,6 +136,10 @@ func (r *ToolRegistry) Execute(
 		result.Error = fmt.Sprintf("unknown tool %q", call.Name)
 		return result
 	}
+	if err := ValidateToolArguments(tool.definition, call.Arguments); err != nil {
+		result.Error = "invalid tool arguments: " + err.Error()
+		return result
+	}
 
 	if authorize != nil {
 		if err := authorize(ctx, tool.definition, call.Arguments); err != nil {
