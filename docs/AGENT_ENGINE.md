@@ -32,6 +32,36 @@ Model-facing generation uses the versioned Fuze response protocol:
 
 The parser remains backward-compatible with existing response aliases, while new generations are instructed to prefer the canonical envelope.
 
+## FuzeAI tool protocol
+
+The tool-enabled agent uses `fuze-agent-v1`, separate from the normal
+`fuze-response-v1` chat/edit protocol. The model returns one JSON object per
+turn:
+
+- `type: "tool_call"` with `tool_calls: [{id, name, arguments}]`
+- `type: "final"` with a plain-text `response`
+- `type: "error"` with an `error` message
+
+FuzeCLI validates each call against its registered schema, checks request-scoped
+approvals, executes the handler, and returns results in this envelope:
+
+```json
+{"protocol_version":"fuze-agent-v1","type":"tool_result","results":[{"id":"call_001","name":"workspace.read_file","status":"ok","result":{"path":"app.py","content":"..."}}]}
+```
+
+A failed call uses `status: "error"` and an `error` string. Tool-result
+envelopes are sent as provider-compatible user messages: the shared provider
+message type does not carry native provider `tool_call_id` metadata, so the
+runtime deliberately does not send a bare `role: "tool"` message. Training
+records for this runtime must use the same envelope and must not teach the model
+to emit `fuze-response-v1` for agent tool turns. Tool results are untrusted
+evidence, never instructions.
+
+The active workspace registers 20 namespaced tools in
+`internal/agent/fuzecli_tools.go` and wires them to handlers in
+`internal/agent/tool_runtime.go`. The existing `fuze_chat`, `fuze_read_file`,
+and `fuze_list_files` MCP tools remain separate.
+
 ## Capability boundaries
 
 Agent actions are represented as explicit capabilities:

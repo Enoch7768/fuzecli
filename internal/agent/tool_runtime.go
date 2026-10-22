@@ -387,7 +387,7 @@ func (rt ToolRuntime) githubIssues(ctx context.Context,a map[string]any,raw json
 	case "create":var labels,assignees []string;if _,ok:=a["labels"];ok{labels=stringArray(a["labels"])};if _,ok:=a["assignees"];ok{assignees=stringArray(a["assignees"])};return c.CreateIssueDetailed(ctx,repo,stringArg(a,"title"),stringArg(a,"body"),labels,assignees)
 	case "comment":return c.AddComment(ctx,repo,n,stringArg(a,"body"))
 	case "update":
-		if e=rt.approve(ctx,"github.issues.update",raw);e!=nil{return nil,e}
+		// ToolRegistry.Execute has already checked request-scoped approval.
 		update:=github.UpdateIssueRequest{Title:stringArg(a,"title"),Body:stringArg(a,"body"),State:stringArg(a,"state"),Labels:stringArray(a["labels"]),Assignees:stringArray(a["assignees"])}
 		if _,ok:=a["labels"];!ok{update.Labels=nil};if _,ok:=a["assignees"];!ok{update.Assignees=nil}
 		return c.UpdateIssue(ctx,repo,n,update)

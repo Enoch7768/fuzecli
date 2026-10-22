@@ -14,10 +14,13 @@ type scriptedSender struct {
 	responses []string
 	calls     int
 	err       error
+	seen      [][]provider.Message
 }
 
 func (s *scriptedSender) Send(_ context.Context, _ string, messages []provider.Message, _ provider.RequestOptions) (*provider.Response, error) {
 	s.calls++
+	copied := append([]provider.Message(nil), messages...)
+	s.seen = append(s.seen, copied)
 	if s.err != nil {
 		return nil, s.err
 	}
@@ -58,6 +61,22 @@ func TestRunnerExecutesToolThenReturnsFinal(t *testing.T) {
 	if result.Response != "I checked README.md." || result.Steps != 2 || result.ToolCalls != 1 {
 		t.Fatalf("unexpected result: %+v", result)
 	}
+	if len(sender.seen) != 2 { t.Fatalf("model was called %d times, want 2", len(sender.seen)) }
+	last := sender.seen[1][len(sender.seen[1])-1]
+	if last.Role != "user" { t.Fatalf("tool results should use provider-compatible user messages, got role %q", last.Role) }
+	var envelope struct {
+		ProtocolVersion string `json:"protocol_version"`
+		Type string `json:"type"`
+		Results []struct {
+			ID string `json:"id"`
+			Name string `json:"name"`
+			Status string `json:"status"`
+			Result map[string]string `json:"result"`
+		} `json:"results"`
+	}
+	if err := json.Unmarshal([]byte(last.Content), &envelope); err != nil { t.Fatalf("decode tool-result envelope: %v", err) }
+	if envelope.ProtocolVersion != ToolProtocolVersion || envelope.Type != "tool_result" || len(envelope.Results) != 1 { t.Fatalf("unexpected tool-result envelope: %s", last.Content) }
+	if envelope.Results[0].ID != "call_1" || envelope.Results[0].Name != "workspace.read_file" || envelope.Results[0].Status != "ok" || envelope.Results[0].Result["content"] != "readme contents" { t.Fatalf("tool result does not match FuzeAI training contract: %+v", envelope.Results[0]) }
 }
 
 func TestRunnerRejectsMalformedModelResponse(t *testing.T) {
