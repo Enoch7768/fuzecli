@@ -235,7 +235,7 @@ func (rt ToolRuntime) terminalRun(ctx context.Context,a map[string]any)(any,erro
 	cwd:=rt.Root;if rel:=stringArg(a,"cwd");rel!=""{p,e:=rt.resolve(rel,false);if e!=nil{return nil,e};info,e:=os.Stat(p);if e!=nil||!info.IsDir(){return nil,errors.New("cwd must be an existing workspace directory")};cwd=p}
 	timeout:=time.Duration(intArg(a,"timeout_seconds",60))*time.Second;cctx,cancel:=context.WithTimeout(ctx,timeout);defer cancel()
 	cmd:=exec.CommandContext(cctx,exe,args...);cmd.Dir=cwd;cmd.Env=append(os.Environ(),"GIT_TERMINAL_PROMPT=0");var stdout,stderr limitedBuffer;stdout.limit=64<<10;stderr.limit=64<<10;cmd.Stdout=&stdout;cmd.Stderr=&stderr
-	err:=cmd.Run();exit:=0;if err!=nil{var ee *exec.ExitError;if errors.As(err,&ee){exit=ee.ExitCode()}else if cctx.Err()==nil{return nil,fmt.Errorf("run command: %w",err)}}
+	err:=cmd.Run();exit:=0;if err!=nil{var ee *exec.ExitError;if errors.As(err,&ee){exit=ee.ExitCode()}else if cctx.Err()==nil{return nil,fmt.Errorf("run command: %w",err)}else{exit=-1}}
 	return map[string]any{"exit_code":exit,"stdout":stdout.String(),"stderr":stderr.String(),"timed_out":errors.Is(cctx.Err(),context.DeadlineExceeded),"error":errorString(err)},nil
 }
 type limitedBuffer struct{bytes.Buffer;limit int}
