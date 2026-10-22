@@ -297,7 +297,9 @@ func (s *Service) Chat(ctx context.Context, req ChatRequest) (ChatResponse, erro
 	return result, nil
 }
 func chatDiagnosticError(err error, raw string, cfg config.Config) error {
-	if err == nil || !cfg.DebugMode { return err }
+	if err == nil { return err }
+	if current, loadErr := config.Load(); loadErr == nil { cfg = current }
+	if !cfg.DebugMode { return err }
 	for _, p := range cfg.Providers {
 		if key := strings.TrimSpace(p.APIKey); key != "" { raw = strings.ReplaceAll(raw, key, "[REDACTED_API_KEY]") }
 	}
@@ -535,7 +537,7 @@ func (s *Service) Config() (map[string]any, error) {
 			"configured":    strings.TrimSpace(p.APIKey) != "" || name == "llamacpp",
 		})
 	}
-	return map[string]any{"default_provider": c.DefaultProvider, "providers": providers, "workspace": s.Root()}, nil
+	return map[string]any{"default_provider": c.DefaultProvider, "providers": providers, "workspace": s.Root(), "debug_mode": c.DebugMode}, nil
 }
 
 func (s *Service) SetProvider(name, model string) error {
