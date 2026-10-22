@@ -64,6 +64,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/v1/models", s.models)
 	mux.HandleFunc("/v1/memory/refresh", s.memoryRefresh)
 	mux.Handle("/v1/chat", s.withChatSlot(http.HandlerFunc(s.chat)))
+	mux.Handle("/v1/agent/run", s.withChatSlot(http.HandlerFunc(s.agentRun)))
 	mux.HandleFunc("/v1/events", s.events)
 	mux.HandleFunc("/v1/file", s.file)
 	mux.HandleFunc("/v1/upload", s.upload)

@@ -198,3 +198,32 @@ func (c *Client) PullRequestChecks(ctx context.Context, full string, number int)
 	}
 	return summary, nil
 }
+
+type UpdateIssueRequest struct {
+	Title string `json:"title,omitempty"`
+	Body string `json:"body,omitempty"`
+	State string `json:"state,omitempty"`
+	Labels []string `json:"labels,omitempty"`
+	Assignees []string `json:"assignees,omitempty"`
+}
+
+func (c *Client) UpdateIssue(ctx context.Context, full string, number int, update UpdateIssueRequest) (Issue, error) {
+	if number <= 0 { return Issue{}, errors.New("issue number must be positive") }
+	if strings.TrimSpace(update.Title)=="" && update.Body=="" && update.State=="" && update.Labels==nil && update.Assignees==nil {
+		return Issue{}, errors.New("at least one issue field must be updated")
+	}
+	if update.State!="" && update.State!="open" && update.State!="closed" { return Issue{}, errors.New("issue state must be open or closed") }
+	var out Issue
+	err:=c.do(ctx,http.MethodPatch,fmt.Sprintf("/repos/%s/issues/%d",pathPart(full),number),update,&out)
+	return out,err
+}
+
+func (c *Client) MergePullRequest(ctx context.Context, full string, number int, method, expectedHeadSHA string) (map[string]any,error) {
+	if number<=0{return nil,errors.New("pull request number must be positive")}
+	switch method {case "merge","squash","rebase":default:return nil,errors.New("merge method must be merge, squash, or rebase")}
+	body:=map[string]string{"merge_method":method}
+	if strings.TrimSpace(expectedHeadSHA)!="" {body["sha"]=strings.TrimSpace(expectedHeadSHA)}
+	var out map[string]any
+	err:=c.do(ctx,http.MethodPut,fmt.Sprintf("/repos/%s/pulls/%d/merge",pathPart(full),number),body,&out)
+	return out,err
+}

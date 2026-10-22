@@ -141,6 +141,11 @@ func (r *ToolRegistry) Execute(
 		return result
 	}
 
+	requiresApproval, approvalReason := toolRequiresApproval(call.Name, call.Arguments)
+	if requiresApproval && authorize == nil {
+		result.Error = "tool authorization denied: explicit approval is required for " + approvalReason
+		return result
+	}
 	if authorize != nil {
 		if err := authorize(ctx, tool.definition, call.Arguments); err != nil {
 			result.Error = fmt.Sprintf("tool authorization denied: %v", err)
@@ -170,4 +175,36 @@ func (r *ToolRegistry) Execute(
 	result.Status = ToolResultSuccess
 	result.Result = encoded
 	return result
+}
+
+
+// toolRequiresApproval separates read-only inspection from operations that
+// modify files, local Git history, or remote GitHub state.
+func toolRequiresApproval(name string, raw json.RawMessage) (bool, string) {
+	var args map[string]any
+	_ = json.Unmarshal(raw, &args)
+	action, _ := args["action"].(string)
+	switch name {
+	case "workspace.apply_edits":
+		return true, "workspace file changes"
+	case "git.commit":
+		return true, "local Git commits"
+	case "github.branches":
+		return action == "create", "remote branch creation"
+	case "github.sync":
+		return args["operation"] == "push", "pushing commits to GitHub"
+	case "github.pull_requests":
+		switch action { case "create": return true,"creating a pull request"; case "review": return true,"submitting a pull-request review"; case "comment": return true,"posting a pull-request comment"; case "merge": return true,"merging a pull request" }
+	case "github.issues":
+		switch action { case "create": return true,"creating an issue"; case "update": return true,"updating an issue"; case "comment": return true,"posting an issue comment" }
+	case "github.actions":
+		return action == "rerun_failed", "rerunning GitHub Actions jobs"
+	case "github.auth":
+		return action == "login_start" || action == "disconnect", "changing GitHub authentication state"
+	}
+	return false, ""
+}
+
+func RequiresToolApproval(name string, raw json.RawMessage) (bool, string) {
+	return toolRequiresApproval(name, raw)
 }

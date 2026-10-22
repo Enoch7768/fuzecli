@@ -24,6 +24,7 @@ import (
 
 type App struct {
 	SafeMode bool
+	AgentTools *agent.ToolRegistry
 	Config   config.Config
 	Registry *provider.Registry
 	Store      *workspace.Store
@@ -79,6 +80,13 @@ func (a *App) AttachWorkspace(root string) error {
 	a.Store = s
 	a.Repository = index
 	a.Platform = platform.NewManager(s.Root)
+	tools, err := agent.NewFuzeCLIToolRegistry(agent.ToolRuntime{Root: s.Root, Store: s, Index: index})
+	if err != nil {
+		_ = s.Close()
+		a.Store = nil
+		return fmt.Errorf("initialize agent tool registry: %w", err)
+	}
+	a.AgentTools = tools
 	a.Registry.SetTelemetrySink(func(event provider.TelemetryEvent) { _ = a.Store.SaveTelemetryEvent(event) })
 	return nil
 }
