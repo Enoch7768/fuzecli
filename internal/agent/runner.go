@@ -39,6 +39,28 @@ type toolPrompt struct {
 	Tools           []ToolDefinition `json:"tools"`
 }
 
+func normalizeChatResponse(raw string, response *AgentResponse) {
+	if response == nil || string(response.Type) != "chat" || len(response.ToolCalls) != 0 {
+		return
+	}
+	var legacy struct {
+		Response string `json:"response"`
+		Message  string `json:"message"`
+		Content  string `json:"content"`
+		Text     string `json:"text"`
+	}
+	if json.Unmarshal([]byte(raw), &legacy) != nil {
+		return
+	}
+	for _, candidate := range []string{legacy.Response, legacy.Message, legacy.Content, legacy.Text} {
+		if strings.TrimSpace(candidate) != "" {
+			response.Type = AgentResponseFinal
+			response.Response = strings.TrimSpace(candidate)
+			return
+		}
+	}
+}
+
 func (r *Runner) Run(
 	ctx context.Context,
 	providerName string,
@@ -126,6 +148,11 @@ func (r *Runner) Run(
 		if err := json.Unmarshal([]byte(response.Content), &agentResponse); err != nil {
 			return result, fmt.Errorf("agent model returned invalid %s JSON at step %d: %w", ToolProtocolVersion, step, err)
 		}
+		// Older FuzeAI checkpoints may emit a plain "chat" envelope instead
+		// of the fuze-agent-v1 "final" envelope. Safely accept it as a final
+		// answer only when it contains text and no tool calls; never infer or
+		// execute actions from an ambiguous response.
+		normalizeChatResponse(response.Content, &agentResponse)
 		if err := ValidateAgentResponse(agentResponse); err != nil {
 			return result, fmt.Errorf("invalid agent response at step %d: %w", step, err)
 		}
