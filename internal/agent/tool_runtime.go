@@ -7,6 +7,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -154,10 +157,47 @@ func matchesPathSet(rel string,set map[string]bool)bool{for p:=range set{if rel=
 
 func (rt ToolRuntime) findSymbols(a map[string]any)(any,error){
 	if rt.Index==nil{return nil,errors.New("workspace symbol index is unavailable")}
-	query:=strings.ToLower(stringArg(a,"query"));kind:=stringArg(a,"kind");if kind==""{kind="any"};max:=intArg(a,"max_results",30);pathFilter:=filepath.ToSlash(stringArg(a,"path"))
-	type symbol struct{Name string `json:"name"`;Path string `json:"path"`;Language string `json:"language"`}
+	query:=strings.ToLower(stringArg(a,"query"));kind:=stringArg(a,"kind");if kind==""{kind="any"}
+	max:=intArg(a,"max_results",30);pathFilter:=filepath.ToSlash(stringArg(a,"path"))
+	if pathFilter!=""{if _,err:=rt.resolve(pathFilter,false);err!=nil{return nil,err}}
+	type symbol struct{Name string `json:"name"`;Path string `json:"path"`;Language string `json:"language"`;Kind string `json:"kind"`}
 	out:=[]symbol{}
-	for _,f:=range rt.Index.Files{if pathFilter!=""&&f.Path!=pathFilter{continue};for _,name:=range f.Symbols{if strings.Contains(strings.ToLower(name),query){out=append(out,symbol{name,f.Path,f.Language});if len(out)>=max{return map[string]any{"symbols":out,"truncated":true,"indexed_languages":indexedLanguages(rt.Index)},nil}}}}
+	for _,f:=range rt.Index.Files{
+		if pathFilter!=""&&f.Path!=pathFilter{continue}
+		if f.Language!="go"{
+			if kind!="any"{continue}
+			for _,name:=range f.Symbols{if strings.Contains(strings.ToLower(name),query){out=append(out,symbol{name,f.Path,f.Language,"unknown"})}}
+			continue
+		}
+		full:=filepath.Join(rt.Root,filepath.FromSlash(f.Path))
+		parsed,_:=parser.ParseFile(token.NewFileSet(),full,nil,parser.ParseComments|parser.AllErrors)
+		if parsed==nil{continue}
+		found:=make([]symbol,0,len(f.Symbols))
+		for _,decl:=range parsed.Decls{
+			switch d:=decl.(type){
+			case *ast.FuncDecl:
+				k:="function";if d.Recv!=nil{k="method"}
+				found=append(found,symbol{d.Name.Name,f.Path,f.Language,k})
+			case *ast.GenDecl:
+				for _,spec:=range d.Specs{
+					switch item:=spec.(type){
+					case *ast.TypeSpec:
+						k:="type";found=append(found,symbol{item.Name.Name,f.Path,f.Language,k})
+						if kind=="class"{found[len(found)-1].Kind="class"}
+					case *ast.ValueSpec:
+						k:="variable";if d.Tok==token.CONST{k="constant"}
+						for _,name:=range item.Names{found=append(found,symbol{name.Name,f.Path,f.Language,k})}
+					}
+				}
+			}
+		}
+		for _,entry:=range found{
+			if !strings.Contains(strings.ToLower(entry.Name),query){continue}
+			if kind!="any"&&entry.Kind!=kind{continue}
+			out=append(out,entry)
+			if len(out)>=max{return map[string]any{"symbols":out,"truncated":true,"indexed_languages":indexedLanguages(rt.Index)},nil}
+		}
+	}
 	return map[string]any{"symbols":out,"truncated":false,"indexed_languages":indexedLanguages(rt.Index)},nil
 }
 func indexedLanguages(i *repository.Index)[]string{m:=map[string]bool{};for _,f:=range i.Files{m[f.Language]=true};o:=[]string{};for k:=range m{o=append(o,k)};sort.Strings(o);return o}
@@ -165,11 +205,18 @@ func indexedLanguages(i *repository.Index)[]string{m:=map[string]bool{};for _,f:
 func (rt ToolRuntime) applyEdits(ctx context.Context,raw json.RawMessage,a map[string]any)(any,error){
 	items,_:=a["files"].([]any);plan:=generation.Plan{}
 	for _,item:=range items{f,_:=item.(map[string]any);path:=stringArg(f,"path");action:=stringArg(f,"action");if _,err:=rt.resolve(path,action=="delete");err!=nil{return nil,err};if action=="delete"{if err:=rt.Capabilities.Require(security.DeleteFile);err!=nil{return nil,err}};plan.Files=append(plan.Files,generation.FileChange{Path:path,Action:action,Content:stringArg(f,"content")})}
-	var vr VerificationResult
+	verifyRequested:=boolArg(a,"verify",true)
+	verifierAvailable:=false
+	for _,manifest:=range []string{"go.mod","package.json","composer.json","requirements.txt","pyproject.toml"}{if _,e:=os.Stat(filepath.Join(rt.Root,manifest));e==nil{verifierAvailable=true;break}}
+	var verifyFn func()VerificationResult
+	if verifyRequested&&verifierAvailable {
+		verifyFn=func()VerificationResult{paths:=[]string{};for _,f:=range plan.Files{paths=append(paths,f.Path)};v,e:=verify.Detect(rt.Root,paths);if e!=nil{return VerificationResult{Output:e.Error()}};return VerificationResult{Passed:v.Passed,Output:v.Output}}
+	}
 	executor:=Executor{Root:rt.Root,Capabilities:rt.Capabilities}
-	result,err:=executor.Execute(plan,func()VerificationResult{if !boolArg(a,"verify",true){return VerificationResult{Passed:true,Output:"Verification explicitly skipped by caller."}};paths:=[]string{};for _,f:=range plan.Files{paths=append(paths,f.Path)};v,e:=verify.Detect(rt.Root,paths);if e!=nil{return VerificationResult{Output:e.Error()}};vr=VerificationResult{Passed:v.Passed,Output:v.Output};return vr})
+	result,err:=executor.Execute(plan,verifyFn)
 	if err!=nil{return map[string]any{"applied":false,"changed":result.Changed,"verification":result.Output},err}
-	return map[string]any{"applied":true,"changed":result.Changed,"verified":boolArg(a,"verify",true),"verification":result.Output},nil
+	if verifyRequested&&!verifierAvailable{result.Output="Verification skipped: no supported project manifest was found."}
+	return map[string]any{"applied":true,"changed":result.Changed,"verified":verifyRequested&&verifierAvailable,"verification":result.Output},nil
 }
 
 func (rt ToolRuntime) projectHealth(a map[string]any)(any,error){
@@ -276,7 +323,7 @@ func (rt ToolRuntime) githubAuth(ctx context.Context,a map[string]any)(any,error
 	}
 }
 func (rt ToolRuntime) githubRepositories(ctx context.Context,a map[string]any)(any,error){c,e:=rt.githubClient();if e!=nil{return nil,e};if stringArg(a,"action")=="get"{return c.Repository(ctx,stringArg(a,"repository"))};return c.Repositories(ctx,intArg(a,"page",1),intArg(a,"per_page",30))}
-func (rt ToolRuntime) githubBranches(ctx context.Context,a map[string]any,raw json.RawMessage)(any,error){c,e:=rt.githubClient();if e!=nil{return nil,e};repo:=stringArg(a,"repository");if stringArg(a,"action")=="list"{return c.Branches(ctx,repo)};if e=c.CreateBranch(ctx,repo,stringArg(a,"branch"),stringArg(a,"base"));e!=nil{return nil,e};return map[string]any{"created":true,"branch":stringArg(a,"branch")},nil}
+func (rt ToolRuntime) githubBranches(ctx context.Context,a map[string]any,raw json.RawMessage)(any,error){c,e:=rt.githubClient();if e!=nil{return nil,e};repo:=stringArg(a,"repository");if stringArg(a,"action")=="list"{return c.BranchesPage(ctx,repo,intArg(a,"page",1),100)};if e=c.CreateBranch(ctx,repo,stringArg(a,"branch"),stringArg(a,"base"));e!=nil{return nil,e};return map[string]any{"created":true,"branch":stringArg(a,"branch")},nil}
 func (rt ToolRuntime) githubSync(ctx context.Context,a map[string]any,raw json.RawMessage)(any,error){
 	op:=stringArg(a,"operation");if op=="push"{}
 	c,e:=rt.githubClient();if e!=nil{return nil,e};if e=rt.Capabilities.Require(security.RunGit);e!=nil{return nil,e}
@@ -300,7 +347,7 @@ func (rt ToolRuntime) githubIssues(ctx context.Context,a map[string]any,raw json
 	c,e:=rt.githubClient();if e!=nil{return nil,e};repo:=stringArg(a,"repository");n:=intArg(a,"number",0)
 	switch stringArg(a,"action"){
 	case "list":return c.Issues(ctx,repo,stringArg(a,"state"))
-	case "create":return c.CreateIssue(ctx,repo,stringArg(a,"title"),stringArg(a,"body"))
+	case "create":var labels,assignees []string;if _,ok:=a["labels"];ok{labels=stringArray(a["labels"])};if _,ok:=a["assignees"];ok{assignees=stringArray(a["assignees"])};return c.CreateIssueDetailed(ctx,repo,stringArg(a,"title"),stringArg(a,"body"),labels,assignees)
 	case "comment":return c.AddComment(ctx,repo,n,stringArg(a,"body"))
 	case "update":
 		if e=rt.approve(ctx,"github.issues.update",raw);e!=nil{return nil,e}
@@ -313,8 +360,8 @@ func (rt ToolRuntime) githubIssues(ctx context.Context,a map[string]any,raw json
 func (rt ToolRuntime) githubActions(ctx context.Context,a map[string]any,raw json.RawMessage)(any,error){
 	c,e:=rt.githubClient();if e!=nil{return nil,e}
 	switch stringArg(a,"action"){
-	case "list_runs":return c.WorkflowRuns(ctx,stringArg(a,"repository"))
-	case "list_jobs":return c.WorkflowJobs(ctx,stringArg(a,"repository"),int64(intArg(a,"run_id",0)))
+	case "list_runs":return c.WorkflowRunsPage(ctx,stringArg(a,"repository"),intArg(a,"page",1),intArg(a,"per_page",30))
+	case "list_jobs":return c.WorkflowJobsPage(ctx,stringArg(a,"repository"),int64(intArg(a,"run_id",0)),intArg(a,"page",1),intArg(a,"per_page",30))
 	case "job_logs":
 		if _,e:=exec.LookPath("gh");e!=nil{return nil,errors.New("GitHub Actions job logs require the authenticated gh CLI")}
 		cmd:=exec.CommandContext(ctx,"gh","run","view","--job",strconv.Itoa(intArg(a,"job_id",0)),"--log","--repo",stringArg(a,"repository"))

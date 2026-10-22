@@ -227,3 +227,27 @@ func (c *Client) MergePullRequest(ctx context.Context, full string, number int, 
 	err:=c.do(ctx,http.MethodPut,fmt.Sprintf("/repos/%s/pulls/%d/merge",pathPart(full),number),body,&out)
 	return out,err
 }
+
+func (c *Client) BranchesPage(ctx context.Context, full string, page, perPage int) ([]Branch,error) {
+	if page<1 { page=1 }; if perPage<1||perPage>100 { perPage=100 }
+	var raw []struct { Name string `json:"name"`; Commit struct { SHA string `json:"sha"` } `json:"commit"` }
+	err:=c.do(ctx,http.MethodGet,fmt.Sprintf("/repos/%s/branches?per_page=%d&page=%d",pathPart(full),perPage,page),nil,&raw)
+	if err!=nil{return nil,err};out:=make([]Branch,0,len(raw));for _,v:=range raw{out=append(out,Branch{Name:v.Name,SHA:v.Commit.SHA})};return out,nil
+}
+func (c *Client) WorkflowRunsPage(ctx context.Context, full string, page, perPage int) ([]WorkflowRun,error) {
+	if page<1{page=1};if perPage<1||perPage>100{perPage=30}
+	var v struct{ WorkflowRuns []WorkflowRun `json:"workflow_runs"` }
+	err:=c.do(ctx,http.MethodGet,fmt.Sprintf("/repos/%s/actions/runs?per_page=%d&page=%d",pathPart(full),perPage,page),nil,&v)
+	return v.WorkflowRuns,err
+}
+func (c *Client) WorkflowJobsPage(ctx context.Context, full string, id int64, page, perPage int) (any,error) {
+	if page<1{page=1};if perPage<1||perPage>100{perPage=30}
+	var v any
+	err:=c.do(ctx,http.MethodGet,fmt.Sprintf("/repos/%s/actions/runs/%d/jobs?per_page=%d&page=%d",pathPart(full),id,perPage,page),nil,&v)
+	return v,err
+}
+func (c *Client) CreateIssueDetailed(ctx context.Context, full,title,body string,labels,assignees []string)(Issue,error) {
+	payload:=map[string]any{"title":title,"body":body}
+	if labels!=nil{payload["labels"]=labels};if assignees!=nil{payload["assignees"]=assignees}
+	var out Issue;err:=c.do(ctx,http.MethodPost,"/repos/"+pathPart(full)+"/issues",payload,&out);return out,err
+}

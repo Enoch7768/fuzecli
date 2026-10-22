@@ -29,7 +29,7 @@ func Authorize(command Command) Decision {
 
 	switch name {
 	case "go":
-		if exact(args, "test", "./...") || exact(args, "vet", "./...") {
+		if exact(args, "test", "./...") || exact(args, "vet", "./...") || exact(args, "build", "./...") || exact(args, "test", "-run", "^$", "./...") {
 			return Decision{Allowed: true, Risk: RiskLow, Reason: "Go test and vet are allowlisted verification commands."}
 		}
 	case "gofmt":
@@ -44,7 +44,7 @@ func Authorize(command Command) Decision {
 			return Decision{Allowed: true, Risk: RiskLow, Reason: "npm test is an allowlisted verification command."}
 		}
 	case "yarn":
-		if exact(args, "test") || exact(args, "typecheck") {
+		if exact(args, "test") || exact(args, "typecheck") || exact(args, "build") || exact(args, "lint") || exact(args, "format:check") {
 			return Decision{Allowed: true, Risk: RiskMedium, Reason: "Declared project verification script is allowlisted."}
 		}
 	case "npx":
