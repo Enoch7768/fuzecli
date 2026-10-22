@@ -339,6 +339,7 @@ func parseYAML(text string, c *Config) error {
 				section, current = "verification", ""
 			case strings.HasPrefix(trimmed, "debug_mode:"):
 				c.DebugMode = strings.EqualFold(unquote(strings.TrimSpace(strings.TrimPrefix(trimmed, "debug_mode:"))), "true")
+				section, current = "", ""
 			case trimmed == "github:":
 				section, current = "github", ""
 			default:
