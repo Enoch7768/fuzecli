@@ -143,8 +143,8 @@ func appDiagnosticError(err error, raw string, cfg config.Config) error {
 	for _, p := range cfg.Providers {
 		if key := strings.TrimSpace(p.APIKey); key != "" { raw = strings.ReplaceAll(raw, key, "[REDACTED_API_KEY]") }
 	}
-	if strings.TrimSpace(raw) == "" { return fmt.Errorf("%w\\nDEBUG MODE: no raw AI response was received", err) }
-	return fmt.Errorf("%w\\n\\nDEBUG MODE - RAW AI RESPONSE:\\n%s", err, raw)
+	if strings.TrimSpace(raw) == "" { return fmt.Errorf("%w\nDEBUG MODE: no raw AI response was received", err) }
+	return fmt.Errorf("%w\n\nDEBUG MODE - RAW AI RESPONSE:\n%s", err, raw)
 }
 
 func (a *App) Ask(
