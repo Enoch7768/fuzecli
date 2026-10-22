@@ -289,6 +289,21 @@ func askCommand(args []string) error {
 		defer cancel()
 		a.RunProfileExtraction(ctx)
 	}()
+	resolvedProvider, resolvedModel, resolveErr := a.ProviderAndModel(providerName, model)
+	if resolveErr != nil {
+		return resolveErr
+	}
+	if app.IsFuzeAIModel(resolvedProvider, resolvedModel) {
+		scanner := bufio.NewScanner(os.Stdin)
+		scanner.Buffer(make([]byte, 4096), 1024*1024)
+		result, runErr := a.RunAgent(context.Background(), prompt, resolvedProvider, resolvedModel, "", app.TerminalAgentAuthorizer(scanner, safe))
+		if runErr != nil {
+			return runErr
+		}
+		fmt.Println(result.Response)
+		fmt.Printf("FuzeCLI agent: %d step(s), %d tool call(s).\\n", result.Steps, result.ToolCalls)
+		return nil
+	}
 	_, err = a.Ask(context.Background(), prompt, providerName, model, yes)
 	return err
 }
