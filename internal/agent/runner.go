@@ -43,43 +43,78 @@ func normalizeChatResponse(raw string, response *AgentResponse) {
 	if response == nil || len(response.ToolCalls) != 0 {
 		return
 	}
-	var legacy struct {
-		ProtocolVersion string          `json:"protocol_version"`
-		Type            string          `json:"type"`
-		ToolCalls       json.RawMessage `json:"tool_calls"`
-		Response        string          `json:"response"`
-		Message         string          `json:"message"`
-		Content         string          `json:"content"`
-		Text            string          `json:"text"`
-		Answer           string          `json:"answer"`
-		Output           string          `json:"output"`
-	}
-	if json.Unmarshal([]byte(raw), &legacy) != nil {
+
+	var envelope map[string]json.RawMessage
+	if json.Unmarshal([]byte(raw), &envelope) != nil || envelope == nil {
 		return
 	}
+	var protocol, responseType string
+	_ = json.Unmarshal(envelope["protocol_version"], &protocol)
+	_ = json.Unmarshal(envelope["type"], &responseType)
 
 	// chat-agent-v1 is a text-chat envelope used by older FuzeAI checkpoints.
-	// Normalize it to the runner's protocol only when it contains plain text
-	// and no tool calls. Never convert tool_call, tool_result, or error
-	// envelopes into final answers, and never infer an executable tool call.
-	legacyProtocol := legacy.ProtocolVersion == "chat-agent-v1" || legacy.ProtocolVersion == ToolProtocolVersion
-	if !legacyProtocol || len(legacy.ToolCalls) != 0 {
+	// Accept it only when it contains plain text and no action/tool payload.
+	// Never reinterpret a tool request as a final answer.
+	if protocol != "chat-agent-v1" && protocol != ToolProtocolVersion {
 		return
 	}
-	switch strings.TrimSpace(legacy.Type) {
+	switch strings.TrimSpace(responseType) {
 	case "tool_call", "tool_result", "error":
 		return
 	}
-	for _, candidate := range []string{legacy.Response, legacy.Message, legacy.Content, legacy.Text, legacy.Answer, legacy.Output} {
-		if strings.TrimSpace(candidate) != "" {
+	for _, key := range []string{"tool_calls", "function_call", "tool", "tools"} {
+		if rawValue, exists := envelope[key]; exists && hasNonEmptyJSONValue(rawValue) {
+			return
+		}
+	}
+	for _, key := range []string{"response", "message", "content", "text", "answer", "output"} {
+		if text := extractResponseText(envelope[key]); strings.TrimSpace(text) != "" {
 			response.ProtocolVersion = ToolProtocolVersion
 			response.Type = AgentResponseFinal
-			response.Response = strings.TrimSpace(candidate)
+			response.Response = strings.TrimSpace(text)
 			response.ToolCalls = nil
 			response.Error = ""
 			return
 		}
 	}
+}
+
+// extractResponseText tolerates text fields represented either as strings or
+// nested message objects (for example {"message":{"content":"hello"}}).
+func extractResponseText(raw json.RawMessage) string {
+	if len(raw) == 0 || string(raw) == "null" {
+		return ""
+	}
+	var value string
+	if json.Unmarshal(raw, &value) == nil {
+		return value
+	}
+	var object map[string]json.RawMessage
+	if json.Unmarshal(raw, &object) != nil || object == nil {
+		return ""
+	}
+	for _, key := range []string{"response", "content", "text", "answer", "output"} {
+		if text := extractResponseText(object[key]); strings.TrimSpace(text) != "" {
+			return text
+		}
+	}
+	return ""
+}
+
+// hasNonEmptyJSONValue detects possible tool/action payloads conservatively.
+func hasNonEmptyJSONValue(raw json.RawMessage) bool {
+	if len(raw) == 0 || string(raw) == "null" || string(raw) == "false" || string(raw) == "0" || string(raw) == `""` {
+		return false
+	}
+	var arrayValue []json.RawMessage
+	if json.Unmarshal(raw, &arrayValue) == nil {
+		return len(arrayValue) > 0
+	}
+	var objectValue map[string]json.RawMessage
+	if json.Unmarshal(raw, &objectValue) == nil {
+		return len(objectValue) > 0
+	}
+	return true
 }
 
 func (r *Runner) Run(
