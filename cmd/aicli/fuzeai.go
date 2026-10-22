@@ -89,9 +89,7 @@ func configureFuzeAI() error {
 	if local.BaseURL == "" {
 		local.BaseURL = fuzeAIURL
 	}
-	if local.DefaultModel == "" || local.DefaultModel == "local" {
-		local.DefaultModel = fuzeAIModel
-	}
+	local.DefaultModel = fuzeAIModel
 	cfg.Providers["llamacpp"] = local
 	cfg.DefaultProvider = "llamacpp"
 	if err := config.Save(cfg); err != nil {
