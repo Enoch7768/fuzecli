@@ -40,22 +40,38 @@ type toolPrompt struct {
 }
 
 func normalizeChatResponse(raw string, response *AgentResponse) {
-	if response == nil || string(response.Type) != "chat" || len(response.ToolCalls) != 0 {
+	if response == nil || len(response.ToolCalls) != 0 {
 		return
 	}
 	var legacy struct {
-		Response string `json:"response"`
-		Message  string `json:"message"`
-		Content  string `json:"content"`
-		Text     string `json:"text"`
+		ProtocolVersion string          `json:"protocol_version"`
+		Type            string          `json:"type"`
+		ToolCalls       json.RawMessage `json:"tool_calls"`
+		Response        string          `json:"response"`
+		Message         string          `json:"message"`
+		Content         string          `json:"content"`
+		Text            string          `json:"text"`
 	}
 	if json.Unmarshal([]byte(raw), &legacy) != nil {
 		return
 	}
+	// chat-agent-v1 is a legacy text-chat envelope, not an agent-tool
+	// protocol. Accept it only when no tool calls are present and usable
+	// final text exists; never reinterpret legacy payloads as executable tools.
+	legacyProtocol := legacy.ProtocolVersion == "chat-agent-v1" || legacy.ProtocolVersion == ToolProtocolVersion
+	if !legacyProtocol || len(legacy.ToolCalls) != 0 {
+		return
+	}
+	if legacy.Type != "chat" && legacy.Type != "final" {
+		return
+	}
 	for _, candidate := range []string{legacy.Response, legacy.Message, legacy.Content, legacy.Text} {
 		if strings.TrimSpace(candidate) != "" {
+			response.ProtocolVersion = ToolProtocolVersion
 			response.Type = AgentResponseFinal
 			response.Response = strings.TrimSpace(candidate)
+			response.ToolCalls = nil
+			response.Error = ""
 			return
 		}
 	}
