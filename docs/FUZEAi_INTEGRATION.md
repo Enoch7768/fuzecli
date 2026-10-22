@@ -18,6 +18,38 @@ Keep the server terminal open. In another terminal, run `aicli chat` or start th
 
 The default context is 4096 tokens to limit memory use. A 7B Q4 model still needs several gigabytes of RAM/VRAM, and a machine with 8 GB of system RAM may be tight, especially while other applications are open. If loading fails, close memory-heavy apps or use a smaller compatible quantization. The model is hosted on Hugging Face and cached locally by llama.cpp; the GGUF is not committed to the source repository.
 
+## Use FuzeAI on a Kaggle GPU from your own FuzeCLI
+
+If your Windows computer is short on RAM/VRAM, use the ready-to-run [Kaggle GPU notebook](../training/fuzeai/fuzeai_kaggle_gpu_endpoint.ipynb). It builds GPU-enabled llama.cpp, starts the published FuzeAI GGUF, and opens a temporary HTTPS tunnel without requiring a model API key.
+
+1. Open the notebook file in GitHub and download it, or use the repository file directly when importing a notebook.
+2. In Kaggle, create a new notebook and upload/import `fuzeai_kaggle_gpu_endpoint.ipynb`.
+3. In notebook **Settings**, select a GPU accelerator (for example, T4 x2 if available) and enable Internet.
+4. Run the notebook cells in order. The first run builds llama.cpp and downloads the multi-gigabyte GGUF, so allow time for setup.
+5. Leave the final tunnel cell running. Copy the HTTPS `trycloudflare.com` URL printed in its output.
+6. On your Windows computer, open PowerShell and run:
+
+   ```powershell
+   aicli fuzeai connect https://YOUR-URL.trycloudflare.com
+   aicli fuzeai status
+   aicli chat
+   ```
+
+7. When finished, run `aicli fuzeai disconnect` to return FuzeCLI to local mode, interrupt the tunnel cell, and stop the Kaggle session.
+
+The remote endpoint is stored as the `llamacpp` provider's base URL in your normal FuzeCLI config. The model and tool execution remain separated: FuzeAI generates tool requests, while FuzeCLI validates and executes its registered workspace, terminal, Git, and GitHub tools locally. Remote chat requests send the prompt/context to Kaggle, so do not send secrets or private source code you do not want transmitted to that notebook.
+
+**Important:** this mode intentionally has no model API key and no FuzeCLI application-level rate limiter. The tunnel URL is a bearer secret in practice: anyone who obtains it may use your model. Do not publish it. Cloudflare Quick Tunnels are temporary development tunnels, have no uptime guarantee, and do not support SSE; FuzeCLI uses a buffered non-streaming request for remote `llamacpp` endpoints to remain compatible. Kaggle sessions and GPU availability are still limited by Kaggle's own policies. This is a personal experiment, not always-on hosting.
+
+Useful commands:
+
+```powershell
+aicli fuzeai status
+aicli fuzeai disconnect
+aicli fuzeai setup
+aicli fuzeai start
+```
+
 ## Registered agent tools
 
 The current tool registry exposes 20 tools:
