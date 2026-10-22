@@ -25,6 +25,14 @@ func New(apiKey, baseURL string) *Provider {
 }
 func (p *Provider) Name() string { return "openai" }
 
+func (p *Provider) authHeaders() map[string]string {
+	headers := make(map[string]string, 1)
+	if key := strings.TrimSpace(p.APIKey); key != "" {
+		headers["Authorization"] = "Bearer " + key
+	}
+	return headers
+}
+
 type request struct {
 	Model          string             `json:"model"`
 	Messages       []provider.Message `json:"messages"`
@@ -100,7 +108,7 @@ func sanitizeOpenAISchema(value any) any {
 func (p *Provider) Send(ctx context.Context, messages []provider.Message, opts provider.RequestOptions) (*provider.Response, error) {
 	opts = effectiveOptions(messages, opts)
 	var out response
-	err := provider.DoJSON(ctx, p.HTTPClient, http.MethodPost, p.BaseURL+"/chat/completions", map[string]string{"Authorization": "Bearer " + p.APIKey}, request{Model: opts.Model, Messages: messages, Temperature: opts.Temperature, MaxTokens: opts.MaxTokens, ResponseFormat: openAIResponseFormat(opts)}, &out, p.Name())
+	err := provider.DoJSON(ctx, p.HTTPClient, http.MethodPost, p.BaseURL+"/chat/completions", p.authHeaders(), request{Model: opts.Model, Messages: messages, Temperature: opts.Temperature, MaxTokens: opts.MaxTokens, ResponseFormat: openAIResponseFormat(opts)}, &out, p.Name())
 	if err != nil {
 		return nil, err
 	}
@@ -121,7 +129,9 @@ func (p *Provider) Stream(ctx context.Context, messages []provider.Message, opts
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+p.APIKey)
+	if headers := p.authHeaders(); headers["Authorization"] != "" {
+		req.Header.Set("Authorization", headers["Authorization"])
+	}
 	resp, err := p.HTTPClient.Do(req)
 	if err != nil {
 		return nil, &provider.ProviderError{Kind: provider.ErrorProviderUnavailable, Provider: p.Name(), Message: "request failed", Err: err}
@@ -168,7 +178,7 @@ func (p *Provider) ListModels(ctx context.Context) ([]string, error) {
 			ID string `json:"id"`
 		} `json:"data"`
 	}
-	err := provider.DoJSON(ctx, p.HTTPClient, http.MethodGet, p.BaseURL+"/models", map[string]string{"Authorization": "Bearer " + p.APIKey}, nil, &out, p.Name())
+	err := provider.DoJSON(ctx, p.HTTPClient, http.MethodGet, p.BaseURL+"/models", p.authHeaders(), nil, &out, p.Name())
 	if err != nil {
 		return nil, err
 	}
