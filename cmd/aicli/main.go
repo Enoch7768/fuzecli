@@ -871,7 +871,8 @@ func usage() error {
 Getting started:
   aicli init                         Initialize this project and run setup
   aicli setup                        Reconfigure provider/model
-  aicli fuzeai install               Install the llama.cpp runtime\n  aicli fuzeai setup                 Configure FuzeAI as the local default model
+  aicli fuzeai install               Install the llama.cpp runtime
+  aicli fuzeai setup                 Configure FuzeAI as the local default model
   aicli fuzeai start                 Start FuzeAI and download the GGUF if needed
   aicli fuzeai status                Check the local FuzeAI server
   aicli chat                         Start an interactive coding session (--safe for destructive-change blocking)
