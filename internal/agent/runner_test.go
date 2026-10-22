@@ -88,7 +88,7 @@ func TestRunnerRejectsMalformedModelResponse(t *testing.T) {
 		t.Fatal(err)
 	}
 	runner := Runner{Sender: sender, Tools: registry}
-	_, err := runner.Run(context.Background(), "test-provider", []provider.Message{{Role: "user", Content: "hello"}}, provider.RequestOptions{}, nil)
+	_, err := runner.Run(context.Background(), "test-provider", []provider.Message{{Role: "user", Content: "Explain how Go interfaces work."}}, provider.RequestOptions{}, nil)
 	if err == nil || !strings.Contains(err.Error(), "invalid fuze-agent-v1 JSON") {
 		t.Fatalf("expected malformed response error, got %v", err)
 	}
@@ -105,7 +105,7 @@ func TestRunnerAcceptsLegacyFuzeAIChatAsFinalText(t *testing.T) {
 		t.Fatal(err)
 	}
 	runner := Runner{Sender: sender, Tools: registry}
-	result, err := runner.Run(context.Background(), "test-provider", []provider.Message{{Role: "user", Content: "hello"}}, provider.RequestOptions{}, nil)
+	result, err := runner.Run(context.Background(), "test-provider", []provider.Message{{Role: "user", Content: "Explain how Go interfaces work."}}, provider.RequestOptions{}, nil)
 	if err != nil {
 		t.Fatalf("legacy chat response should be accepted as final text: %v", err)
 	}
@@ -125,7 +125,7 @@ func TestRunnerAcceptsLegacyChatAgentProtocolAsFinalText(t *testing.T) {
 		t.Fatal(err)
 	}
 	runner := Runner{Sender: sender, Tools: registry}
-	result, err := runner.Run(context.Background(), "test-provider", []provider.Message{{Role: "user", Content: "hello"}}, provider.RequestOptions{}, nil)
+	result, err := runner.Run(context.Background(), "test-provider", []provider.Message{{Role: "user", Content: "Explain how Go interfaces work."}}, provider.RequestOptions{}, nil)
 	if err != nil {
 		t.Fatalf("legacy chat-agent-v1 response should be accepted as final text: %v", err)
 	}
@@ -186,7 +186,7 @@ func TestRunnerForcesStructuredJSONAndRemovesOtherSchema(t *testing.T) {
 		t.Fatal(err)
 	}
 	runner := Runner{Sender: sender, Tools: registry}
-	_, err := runner.Run(context.Background(), "test-provider", []provider.Message{{Role: "user", Content: "hello"}}, provider.RequestOptions{JSONSchema: map[string]any{"type": "object"}}, nil)
+	_, err := runner.Run(context.Background(), "test-provider", []provider.Message{{Role: "user", Content: "Explain how Go interfaces work."}}, provider.RequestOptions{JSONSchema: map[string]any{"type": "object"}}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -235,7 +235,7 @@ func TestRunnerAcceptsChatAgentV1MessageAndAnswerFields(t *testing.T) {
 	}
 
 	runner := Runner{Sender: sender, Tools: registry}
-	result, err := runner.Run(context.Background(), "test-provider", []provider.Message{{Role: "user", Content: "hello"}}, provider.RequestOptions{}, nil)
+	result, err := runner.Run(context.Background(), "test-provider", []provider.Message{{Role: "user", Content: "Explain how Go interfaces work."}}, provider.RequestOptions{}, nil)
 	if err != nil {
 		t.Fatalf("chat-agent-v1 text response should be normalized: %v", err)
 	}
@@ -268,7 +268,7 @@ func TestRunnerAcceptsNestedChatAgentV1Message(t *testing.T) {
 	}
 
 	runner := Runner{Sender: sender, Tools: registry}
-	result, err := runner.Run(context.Background(), "test-provider", []provider.Message{{Role: "user", Content: "hello"}}, provider.RequestOptions{}, nil)
+	result, err := runner.Run(context.Background(), "test-provider", []provider.Message{{Role: "user", Content: "Explain how Go interfaces work."}}, provider.RequestOptions{}, nil)
 	if err != nil {
 		t.Fatalf("nested chat-agent-v1 text response should be normalized: %v", err)
 	}
