@@ -139,7 +139,33 @@ function requestsWorkspaceChanges(p){
     ||/\b(?:make|do) (?:those|these) changes\b/i.test(s);
 }
 function promptNeedsApproval(p){const s=String(p||"").toLowerCase();const analysisOnly=/(analy[sz]e|audit|review|inspect|assess|identify|suggest|recommend|improvement|improvements|before changing|before making changes)/.test(s);return analysisOnly&&!requestsWorkspaceChanges(p)}
-async function runAgentWithApproval(body,requestOptions={}){let result=await api("/v1/agent/run",{method:"POST",...requestOptions,body:JSON.stringify(body)});for(let attempt=0;attempt<3&&result.pending_approvals?.length;attempt++){const names=[...new Set(result.pending_approvals)];if(!confirm("FuzeCLI requests permission to perform these actions:\\n\\n"+names.map(n=>"• "+n).join("\\n")+"\\n\\nApprove and continue?"))break;body.approved_tools=[...new Set([...(body.approved_tools||[]),...names])];result=await api("/v1/agent/run",{method:"POST",...requestOptions,body:JSON.stringify(body)})}return result}
+async function runAgentWithApproval(body,requestOptions={}){
+  let result=await api("/v1/agent/run",{method:"POST",...requestOptions,body:JSON.stringify(body)});
+  for(let attempt=0;attempt<6;attempt++){
+    const deletions=[...new Set(result.pending_deletions||[])];
+    const names=[...new Set(result.pending_approvals||[])];
+    let changed=false;
+    if(deletions.length){
+      const prompt="FuzeCLI is asking permission to permanently delete these workspace paths:\n\n"+deletions.map(p=>"• "+p).join("\n")+"\n\nOnly these exact paths are approved. Continue? This may permanently remove files.";
+      if(!confirm(prompt)){
+        result.content="I did not delete anything because you declined FuzeCLI's deletion confirmation.";
+        result.pending_deletions=[];
+        result.pending_approvals=[];
+        return result;
+      }
+      body.approved_deletions=[...new Set([...(body.approved_deletions||[]),...deletions])];
+      changed=true;
+    }
+    if(names.length){
+      if(!confirm("FuzeCLI requests permission to perform these actions:\n\n"+names.map(n=>"• "+n).join("\n")+"\n\nApprove and continue?"))break;
+      body.approved_tools=[...new Set([...(body.approved_tools||[]),...names])];
+      changed=true;
+    }
+    if(!changed)break;
+    result=await api("/v1/agent/run",{method:"POST",...requestOptions,body:JSON.stringify(body)});
+  }
+  return result;
+}
 async function send(){
   const b=$("#prompt"),p=b.value.trim();if(!p||chatAbort)return;
   b.value="";b.style.height="auto";msg("user",p);$("#sendBtn").disabled=true;$("#stopBtn").disabled=false;$("#chatState").textContent="Starting agent…";chatAbort=new AbortController();
