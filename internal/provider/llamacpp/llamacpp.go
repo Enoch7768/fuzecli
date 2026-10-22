@@ -10,10 +10,17 @@ import (
 type Provider struct{ inner *openai.Provider }
 
 func New(baseURL string) *Provider {
+	baseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
 	if baseURL == "" {
 		baseURL = "http://localhost:8080"
 	}
-	return &Provider{inner: openai.New("", strings.TrimRight(baseURL, "/")+"/v1")}
+	// Configurations may already include /v1. Appending it unconditionally
+	// creates /v1/v1/chat/completions, which most local inference servers reject
+	// with a misleading 404.
+	if !strings.HasSuffix(baseURL, "/v1") {
+		baseURL += "/v1"
+	}
+	return &Provider{inner: openai.New("", baseURL)}
 }
 func (p *Provider) Name() string { return "llamacpp" }
 func (p *Provider) Send(ctx context.Context, m []provider.Message, o provider.RequestOptions) (*provider.Response, error) {
