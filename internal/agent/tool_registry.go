@@ -187,12 +187,14 @@ func toolRequiresApproval(name string, raw json.RawMessage) (bool, string) {
 	switch name {
 	case "workspace.apply_edits":
 		return true, "workspace file changes"
+	case "terminal.run":
+		return true, "running a terminal command"
 	case "git.commit":
 		return true, "local Git commits"
 	case "github.branches":
 		return action == "create", "remote branch creation"
 	case "github.sync":
-		return args["operation"] == "push", "pushing commits to GitHub"
+		return true, "synchronizing the local repository with GitHub"
 	case "github.pull_requests":
 		switch action { case "create": return true,"creating a pull request"; case "review": return true,"submitting a pull-request review"; case "comment": return true,"posting a pull-request comment"; case "merge": return true,"merging a pull request" }
 	case "github.issues":

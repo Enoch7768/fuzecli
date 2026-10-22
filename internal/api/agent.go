@@ -48,7 +48,7 @@ func (s *Server) agentRun(w http.ResponseWriter, r *http.Request) {
 	if err:=decoder.Decode(&trailing);err!=io.EOF {writeError(w,http.StatusBadRequest,"request must contain one JSON object");return}
 	if strings.TrimSpace(req.Prompt)=="" {writeError(w,http.StatusBadRequest,"prompt is required");return}
 	if len(req.Files)>50||len(req.ApprovedTools)>20 {writeError(w,http.StatusBadRequest,"too many files or approved tools");return}
-	allowedApprovalNames:=map[string]bool{"workspace.apply_edits":true,"git.commit":true,"github.branches":true,"github.sync":true,"github.pull_requests":true,"github.issues":true,"github.actions":true,"github.auth":true}
+	allowedApprovalNames:=map[string]bool{"workspace.apply_edits":true,"terminal.run":true,"git.commit":true,"github.branches":true,"github.sync":true,"github.pull_requests":true,"github.issues":true,"github.actions":true,"github.auth":true}
 	approved:=map[string]bool{}
 	for _,name:=range req.ApprovedTools {if !allowedApprovalNames[name]{writeError(w,http.StatusBadRequest,"approved_tools contains an unsupported tool name");return};approved[name]=true}
 	providerName,model,err:=a.ProviderAndModel(req.Provider,req.Model)
