@@ -52,8 +52,8 @@ func TestConfigureFuzeAISelectsLocalModel(t *testing.T) {
 	if got.Providers["llamacpp"].DefaultModel != fuzeAIModel {
 		t.Fatalf("model = %q, want %q", got.Providers["llamacpp"].DefaultModel, fuzeAIModel)
 	}
-	if got.Providers["llamacpp"].BaseURL != fuzeAIURL {
-		t.Fatalf("base URL = %q, want %q", got.Providers["llamacpp"].BaseURL, fuzeAIURL)
+	if got.Providers["llamacpp"].BaseURL != "http://localhost:8080" {
+		t.Fatalf("base URL = %q, want http://localhost:8080", got.Providers["llamacpp"].BaseURL)
 	}
 }
 
