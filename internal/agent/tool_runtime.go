@@ -212,7 +212,7 @@ func (rt ToolRuntime) applyEdits(ctx context.Context,raw json.RawMessage,a map[s
 	if verifyRequested&&verifierAvailable {
 		verifyFn=func()VerificationResult{paths:=[]string{};for _,f:=range plan.Files{paths=append(paths,f.Path)};v,e:=verify.Detect(rt.Root,paths);if e!=nil{return VerificationResult{Output:e.Error()}};return VerificationResult{Passed:v.Passed,Output:v.Output}}
 	}
-	executor:=Executor{Root:rt.Root,Capabilities:rt.Capabilities}
+	capabilities:=security.CapabilitySet{};if rt.Capabilities==nil{capabilities=security.SafeCapabilities()}else{for capability,allowed:=range rt.Capabilities{capabilities[capability]=allowed}};if hasToolApproval(ctx,"workspace.apply_edits",raw){for _,item:=range items{file,_:=item.(map[string]any);if stringArg(file,"action")=="delete"{capabilities[security.DeleteFile]=true}}};executor:=Executor{Root:rt.Root,Capabilities:capabilities}
 	result,err:=executor.Execute(plan,verifyFn)
 	if err!=nil{return map[string]any{"applied":false,"changed":result.Changed,"verification":result.Output},err}
 	if verifyRequested&&!verifierAvailable{result.Output="Verification skipped: no supported project manifest was found."}
