@@ -249,39 +249,63 @@ func(b *limitedBuffer)Write(p []byte)(int,error){n:=len(p);remaining:=b.limit-b.
 func errorString(err error)string{if err==nil{return ""};return err.Error()}
 
 func (rt ToolRuntime) verifyRun(ctx context.Context,a map[string]any)(any,error){
-	checks:=stringArray(a["checks"]);timeout:=time.Duration(intArg(a,"timeout_seconds",120))*time.Second;results:=[]map[string]any{}
-	for _,check:=range checks{if err:=ctx.Err();err!=nil{return nil,err};exe,args,err:=checkCommand(rt.Root,check);entry:=map[string]any{"check":check,"status":"skipped","exit_code":-1,"duration_ms":int64(0),"diagnostics":[]any{}}
+	checks:=stringArray(a["checks"]);timeout:=time.Duration(intArg(a,"timeout_seconds",120))*time.Second;requested:=stringArray(a["paths"]);validated:=make([]string,0,len(requested))
+	for _,path:=range requested{resolved,err:=rt.resolve(path,false);if err!=nil{return nil,fmt.Errorf("verification path %q: %w",path,err)};info,err:=os.Stat(resolved);if err!=nil{return nil,err};if !info.IsDir()&&!info.Mode().IsRegular(){return nil,fmt.Errorf("verification path %q is not a regular file or directory",path)};validated=append(validated,filepath.ToSlash(path))}
+	results:=[]map[string]any{}
+	for _,check:=range checks{
+		if err:=ctx.Err();err!=nil{return nil,err}
+		exe,args,err:=checkCommand(rt.Root,check,validated)
+		entry:=map[string]any{"check":check,"status":"skipped","exit_code":-1,"duration_ms":int64(0),"diagnostics":[]any{}}
+		if len(validated)>0 {entry["requested_paths"]=validated}
 		if err!=nil{entry["diagnostic"]=err.Error();results=append(results,entry);continue}
+		if len(validated)>0&&exe!="go"&&exe!="gofmt"{entry["scope"]="project-wide; the manifest script does not support path-scoped execution"}else if len(validated)>0{entry["scope"]="requested paths"}else{entry["scope"]="project"}
 		if _,e:=exec.LookPath(exe);e!=nil{entry["diagnostic"]=exe+" is not installed";results=append(results,entry);continue}
 		decision:=security.Authorize(security.Command{Name:exe,Args:args});if !decision.Allowed{entry["diagnostic"]="blocked by security policy: "+decision.Reason;results=append(results,entry);continue}
-		cctx,cancel:=context.WithTimeout(ctx,timeout);start:=time.Now();cmd:=exec.CommandContext(cctx,exe,args...);cmd.Dir=rt.Root;var out limitedBuffer;out.limit=256<<10;cmd.Stdout=&out;cmd.Stderr=&out;runErr:=cmd.Run();cancel();entry["duration_ms"]=time.Since(start).Milliseconds();entry["exit_code"]=0;entry["status"]="passed";if runErr!=nil{entry["status"]="failed";var ee *exec.ExitError;if errors.As(runErr,&ee){entry["exit_code"]=ee.ExitCode()}else{entry["exit_code"]=-1};entry["diagnostic"]=out.String()}else if check=="format"&&exe=="gofmt"&&strings.TrimSpace(out.String())!=""{entry["status"]="failed";entry["exit_code"]=1;entry["diagnostic"]=out.String()}else{entry["diagnostic"]=out.String()};results=append(results,entry)
+		cctx,cancel:=context.WithTimeout(ctx,timeout);start:=time.Now();cmd:=exec.CommandContext(cctx,exe,args...);cmd.Dir=rt.Root;var out limitedBuffer;out.limit=256<<10;cmd.Stdout=&out;cmd.Stderr=&out;runErr:=cmd.Run();cancel();entry["duration_ms"]=time.Since(start).Milliseconds();entry["exit_code"]=0;entry["status"]="passed"
+		if runErr!=nil{entry["status"]="failed";var ee *exec.ExitError;if errors.As(runErr,&ee){entry["exit_code"]=ee.ExitCode()}else{entry["exit_code"]=-1};entry["diagnostic"]=out.String()}else if check=="format"&&exe=="gofmt"&&strings.TrimSpace(out.String())!=""{entry["status"]="failed";entry["exit_code"]=1;entry["diagnostic"]=out.String()}else{entry["diagnostic"]=out.String()}
+		results=append(results,entry)
 	}
 	return map[string]any{"checks":results,"all_passed":allPassed(results),"count":len(results)},nil
 }
-func checkCommand(root,check string)(string,[]string,error){
+func checkCommand(root,check string,paths []string)(string,[]string,error){
+	has:=func(name string)bool{_,err:=os.Stat(filepath.Join(root,name));return err==nil}
+	goPackages:=[]string{"./..."}
+	if len(paths)>0 {goPackages=packagePaths(root,paths)}
 	switch check{
 	case "format":
-		if _,e:=os.Stat(filepath.Join(root,"go.mod"));e==nil{return "gofmt",[]string{"-l","."},nil}
-		if _,e:=os.Stat(filepath.Join(root,"package.json"));e==nil{return "npm",[]string{"run","format:check"},nil}
+		if has("go.mod"){args:=[]string{"-l"};if len(paths)==0{return "gofmt",[]string{"-l","."},nil};files,err:=goFilesForPaths(root,paths);if err!=nil{return "",nil,err};if len(files)==0{return "",nil,errors.New("no Go files found in the requested paths")};return "gofmt",append(args,files...),nil}
+		if has("package.json"){return "npm",[]string{"run","format:check"},nil}
 		return "",nil,errors.New("no supported format-check command detected")
 	case "lint":
-		if _,e:=os.Stat(filepath.Join(root,"go.mod"));e==nil{return "go",[]string{"vet","./..."},nil}
-		if _,e:=os.Stat(filepath.Join(root,"package.json"));e==nil{return "npm",[]string{"run","lint"},nil}
+		if has("go.mod"){return "go",append([]string{"vet"},goPackages...),nil}
+		if has("package.json"){return "npm",[]string{"run","lint"},nil}
 		return "",nil,errors.New("no supported lint command detected")
 	case "test":
-		if _,e:=os.Stat(filepath.Join(root,"go.mod"));e==nil{return "go",[]string{"test","./..."},nil}
-		if _,e:=os.Stat(filepath.Join(root,"package.json"));e==nil{return "npm",[]string{"test"},nil}
+		if has("go.mod"){return "go",append([]string{"test"},goPackages...),nil}
+		if has("package.json"){return "npm",[]string{"test"},nil}
 		return "",nil,errors.New("no supported test command detected")
 	case "build":
-		if _,e:=os.Stat(filepath.Join(root,"go.mod"));e==nil{return "go",[]string{"build","./..."},nil}
-		if _,e:=os.Stat(filepath.Join(root,"package.json"));e==nil{return "npm",[]string{"run","build"},nil}
+		if has("go.mod"){return "go",append([]string{"build"},goPackages...),nil}
+		if has("package.json"){return "npm",[]string{"run","build"},nil}
 		return "",nil,errors.New("no supported build command detected")
 	case "typecheck":
-		if _,e:=os.Stat(filepath.Join(root,"go.mod"));e==nil{return "go",[]string{"test","-run","^$","./..."},nil}
-		if _,e:=os.Stat(filepath.Join(root,"package.json"));e==nil{return "npm",[]string{"run","typecheck"},nil}
+		if has("go.mod"){return "go",append([]string{"test","-run","^$"},goPackages...),nil}
+		if has("package.json"){return "npm",[]string{"run","typecheck"},nil}
 		return "",nil,errors.New("no supported typecheck command detected")
 	default:return "",nil,fmt.Errorf("unsupported check %q",check)
 	}
+}
+func packagePaths(root string,paths []string)[]string{
+	seen:=map[string]bool{};out:=[]string{}
+	for _,rel:=range paths{full:=filepath.Join(root,filepath.FromSlash(rel));info,err:=os.Stat(full);if err!=nil{continue};dir:=full;if !info.IsDir(){dir=filepath.Dir(full)};relative,err:=filepath.Rel(root,dir);if err!=nil{continue};pkg:="./"+filepath.ToSlash(relative);if relative=="."{pkg="./..."};if !seen[pkg]{seen[pkg]=true;out=append(out,pkg)}}
+	sort.Strings(out);if len(out)==0{return []string{"./..."}};return out
+}
+func goFilesForPaths(root string,paths []string)([]string,error){
+	var files []string;seen:=map[string]bool{}
+	for _,rel:=range paths{full:=filepath.Join(root,filepath.FromSlash(rel));info,err:=os.Stat(full);if err!=nil{return nil,err};if info.Mode().IsRegular(){if filepath.Ext(full)==".go"{seen[full]=true};continue}
+		err=filepath.WalkDir(full,func(path string,d os.DirEntry,e error)error{if e!=nil{return e};if d.IsDir()&&path!=full&&(d.Name()==".git"||d.Name()==".aicli"||d.Name()=="vendor"){return filepath.SkipDir};if d.IsDir(){return nil};if filepath.Ext(path)==".go"{seen[path]=true};return nil});if err!=nil{return nil,err}
+	}
+	for path:=range seen{rel,err:=filepath.Rel(root,path);if err!=nil{return nil,err};files=append(files,filepath.ToSlash(rel))};sort.Strings(files);return files,nil
 }
 func allPassed(results []map[string]any)bool{if len(results)==0{return false};for _,r:=range results{if r["status"]!="passed"{return false}};return true}
 
