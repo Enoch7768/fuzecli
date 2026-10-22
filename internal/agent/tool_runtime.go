@@ -86,6 +86,10 @@ func (rt ToolRuntime) approve(ctx context.Context, name string, raw json.RawMess
 func (rt ToolRuntime) resolve(rel string, allowDelete bool) (string, error) {
 	if err := security.ValidateWorkspacePath(rt.Root, rel, allowDelete); err != nil { return "", err }
 	path, err := generation.Resolve(rt.Root, rel); if err != nil { return "", err }
+	normalized := strings.TrimPrefix(filepath.ToSlash(filepath.Clean(rel)), "./")
+	if normalized == ".git" || strings.HasPrefix(normalized, ".git/") || normalized == ".aicli" || strings.HasPrefix(normalized, ".aicli/") {
+		return "", fmt.Errorf("protected workspace path %q", rel)
+	}
 	policy, err := workspace.LoadIgnorePolicy(rt.Root); if err != nil { return "", err }
 	if policy.Ignored(filepath.ToSlash(rel)) { return "", fmt.Errorf("workspace access policy blocks %q", rel) }
 	return path, nil
@@ -230,7 +234,7 @@ func allPassed(results []map[string]any)bool{if len(results)==0{return false};fo
 func (rt ToolRuntime) gitStatus(a map[string]any)(any,error){s,e:=gitlocal.StatusOf(rt.Root);if e!=nil{return nil,e};if !boolArg(a,"include_untracked",true){filtered:=s.Files[:0];for _,f:=range s.Files{if f.Index!='?'&&f.Worktree!='?'{filtered=append(filtered,f)}};s.Files=filtered;s.Clean=len(filtered)==0};return s,nil}
 func (rt ToolRuntime) gitDiff(a map[string]any)(any,error){
 	if p:=stringArg(a,"path");p!=""{if _,e:=rt.resolve(p,false);e!=nil{return nil,e}}
-	staged:=boolArg(a,"staged",false);diff,e:=gitlocal.Diff(rt.Root,staged);if e!=nil{return nil,e};if p:=stringArg(a,"path");p!=""{diff,e=runGitOutput(ctxOrBackground(),rt.Root,"diff",diffArgs(staged,p)...);if e!=nil{return nil,e}}
+	staged:=boolArg(a,"staged",false);diff,e:=gitlocal.Diff(rt.Root,staged);if e!=nil{return nil,e};if p:=stringArg(a,"path");p!=""{args:=diffArgs(staged,p);diff,e=runGitOutput(ctxOrBackground(),rt.Root,args...);if e!=nil{return nil,e}}
 	return map[string]any{"diff":truncate(diff,256<<10),"truncated":len(diff)>256<<10},nil
 }
 func ctxOrBackground()context.Context{return context.Background()}
@@ -241,8 +245,8 @@ func (rt ToolRuntime) gitCommit(ctx context.Context,a map[string]any,raw json.Ra
 	head,e:=runGitOutput(ctx,rt.Root,"rev-parse","HEAD");if e!=nil{return nil,e};if strings.TrimSpace(head)!=stringArg(a,"expected_head"){return nil,errors.New("repository HEAD changed; refresh status and try again")}
 	paths:=stringArray(a["paths"]);for _,p:=range paths{if _,e:=rt.resolve(p,true);e!=nil{return nil,e}}
 	status,e:=gitlocal.StatusOf(rt.Root);if e!=nil{return nil,e};allowed:=map[string]bool{};for _,p:=range paths{allowed[filepath.ToSlash(p)]=true};for _,f:=range status.Files{if !allowed[f.Path]{continue};if f.Index!=' '&&f.Index!='?'{return nil,fmt.Errorf("selected path %s already has staged changes; refusing to commit unrelated index content",f.Path)}}
-	cmd:=exec.CommandContext(ctx,"git","add","--",paths...);cmd.Dir=rt.Root;if out,e:=cmd.CombinedOutput();e!=nil{return nil,fmt.Errorf("git add failed: %s",strings.TrimSpace(string(out)))}
-	cmd=exec.CommandContext(ctx,"git","commit","-m",stringArg(a,"message"),"--",paths...);cmd.Dir=rt.Root;out,e:=cmd.CombinedOutput();if e!=nil{return nil,fmt.Errorf("git commit failed: %s",strings.TrimSpace(string(out)))}
+	addArgs:=append([]string{"add","--"},paths...);cmd:=exec.CommandContext(ctx,"git",addArgs...);cmd.Dir=rt.Root;if out,e:=cmd.CombinedOutput();e!=nil{return nil,fmt.Errorf("git add failed: %s",strings.TrimSpace(string(out)))}
+	commitArgs:=append([]string{"commit","-m",stringArg(a,"message"),"--"},paths...);cmd=exec.CommandContext(ctx,"git",commitArgs...);cmd.Dir=rt.Root;out,e:=cmd.CombinedOutput();if e!=nil{return nil,fmt.Errorf("git commit failed: %s",strings.TrimSpace(string(out)))}
 	newHead,e:=runGitOutput(ctx,rt.Root,"rev-parse","HEAD");if e!=nil{return nil,e};return map[string]any{"committed":true,"head":strings.TrimSpace(newHead),"output":strings.TrimSpace(string(out))},nil
 }
 
