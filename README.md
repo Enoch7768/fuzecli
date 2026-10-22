@@ -138,9 +138,10 @@ aicli benchmark "Explain this repository architecture"
 
 ## Run FuzeAI locally
 
-FuzeCLI includes first-class commands for your published FuzeAI GGUF model. Install a compatible build of [llama.cpp](https://github.com/ggml-org/llama.cpp/releases) that provides `llama-server`, then run:
+FuzeCLI includes first-class commands for your published FuzeAI GGUF model. Run the installer command, then configure and start FuzeAI:
 
 ```powershell
+aicli fuzeai install
 aicli fuzeai setup
 aicli fuzeai start
 ```
