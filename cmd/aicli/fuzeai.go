@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -69,7 +70,7 @@ func installFuzeAIRuntime() error {
 	if _, err := exec.LookPath(command); err != nil {
 		return fmt.Errorf("%s is required to install llama.cpp; install it first or use https://github.com/ggml-org/llama.cpp/releases", command)
 	}
-	fmt.Printf("Installing llama.cpp with %s %s\\n", command, strings.Join(args, " "))
+	fmt.Printf("Installing llama.cpp with %s %s\n", command, strings.Join(args, " "))
 	cmd := exec.Command(command, args...)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 	if err := cmd.Run(); err != nil {
