@@ -29,3 +29,19 @@ func TestCanonicalWorkspacePath(t *testing.T) {
 		}
 	}
 }
+
+
+func TestToolRequestContainsOnlyDeletes(t *testing.T) {
+	if !toolRequestContainsOnlyDeletes(json.RawMessage(`{"files":[{"path":"dist","action":"delete"}]}`)) {
+		t.Fatal("delete-only request was not recognized")
+	}
+	for _, raw := range []string{
+		`{"files":[{"path":"dist","action":"delete"},{"path":"src/a.go","action":"modify","content":"x"}]}`,
+		`{"files":[]}`,
+		`not-json`,
+	} {
+		if toolRequestContainsOnlyDeletes(json.RawMessage(raw)) {
+			t.Errorf("non-delete-only request accepted: %s", raw)
+		}
+	}
+}
