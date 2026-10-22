@@ -193,3 +193,17 @@ func TestLoadMigratesDefaultLocalModelToFuzeAI(t *testing.T) {
 		t.Fatalf("legacy default model was not migrated: %q", got.Providers["llamacpp"].DefaultModel)
 	}
 }
+
+
+func TestDebugModePersistsOnAndOff(t *testing.T) {
+	tmp := t.TempDir()
+	setTestConfigHome(t, tmp)
+	if err := Set("debug_mode", "on"); err != nil { t.Fatal(err) }
+	got, err := Load()
+	if err != nil { t.Fatal(err) }
+	if !got.DebugMode { t.Fatal("debug mode should persist as enabled") }
+	if err := Set("debug_mode", "off"); err != nil { t.Fatal(err) }
+	got, err = Load()
+	if err != nil { t.Fatal(err) }
+	if got.DebugMode { t.Fatal("debug mode should persist as disabled") }
+}
