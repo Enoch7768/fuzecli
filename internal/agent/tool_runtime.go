@@ -204,7 +204,7 @@ func indexedLanguages(i *repository.Index)[]string{m:=map[string]bool{};for _,f:
 
 func (rt ToolRuntime) applyEdits(ctx context.Context,raw json.RawMessage,a map[string]any)(any,error){
 	items,_:=a["files"].([]any);plan:=generation.Plan{}
-	for _,item:=range items{f,_:=item.(map[string]any);path:=stringArg(f,"path");action:=stringArg(f,"action");if _,err:=rt.resolve(path,action=="delete");err!=nil{return nil,err};if action=="delete"{if err:=rt.Capabilities.Require(security.DeleteFile);err!=nil{return nil,err}};plan.Files=append(plan.Files,generation.FileChange{Path:path,Action:action,Content:stringArg(f,"content")})}
+	for _,item:=range items{f,_:=item.(map[string]any);path:=stringArg(f,"path");action:=stringArg(f,"action");if _,err:=rt.resolve(path,action=="delete");err!=nil{return nil,err};if action=="delete"&&!hasToolApproval(ctx,"workspace.apply_edits",raw){return nil,errors.New("delete requires explicit FuzeCLI approval for this exact edit request")};plan.Files=append(plan.Files,generation.FileChange{Path:path,Action:action,Content:stringArg(f,"content")})}
 	verifyRequested:=boolArg(a,"verify",true)
 	verifierAvailable:=false
 	for _,manifest:=range []string{"go.mod","package.json","composer.json","requirements.txt","pyproject.toml"}{if _,e:=os.Stat(filepath.Join(rt.Root,manifest));e==nil{verifierAvailable=true;break}}
