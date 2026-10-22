@@ -29,11 +29,11 @@ func Authorize(command Command) Decision {
 
 	switch name {
 	case "go":
-		if exact(args, "test", "./...") || exact(args, "vet", "./...") || exact(args, "build", "./...") || exact(args, "test", "-run", "^$", "./...") {
+		if exact(args, "test", "./...") || exact(args, "vet", "./...") || exact(args, "build", "./...") || exact(args, "test", "-run", "^$", "./...") || safeGoPackageCommand(args) {
 			return Decision{Allowed: true, Risk: RiskLow, Reason: "Go test and vet are allowlisted verification commands."}
 		}
 	case "gofmt":
-		if exact(args, "-l", ".") {
+		if exact(args, "-l", ".") || safeFormatFileList(args) {
 			return Decision{Allowed: true, Risk: RiskLow, Reason: "Go formatting inspection is an allowlisted verification command."}
 		}
 	case "npm", "pnpm", "bun":
@@ -78,4 +78,25 @@ func exact(got []string, want ...string) bool {
 
 func containsShellMeta(value string) bool {
 	return strings.ContainsAny(value, "&|;<>$")
+}
+
+func safeGoPackageCommand(args []string) bool {
+	if len(args)<2{return false}
+	command:=args[0];packages:=args[1:]
+	if command=="test"&&len(args)>=4&&args[1]=="-run"&&args[2]=="^$"{packages=args[3:]}
+	if command!="test"&&command!="vet"&&command!="build"{return false}
+	if len(packages)==0{return false}
+	for _,pkg:=range packages{if !safeRelativePath(pkg)||!strings.HasPrefix(pkg,"./"){return false}}
+	return true
+}
+func safeFormatFileList(args []string) bool {
+	if len(args)<2||args[0]!="-l"{return false}
+	for _,path:=range args[1:]{if !safeRelativePath(path){return false}}
+	return true
+}
+func safeRelativePath(path string) bool {
+	if strings.TrimSpace(path)==""||strings.HasPrefix(path,"/")||strings.ContainsAny(path,"\\;&|<>$"){return false}
+	path=strings.ReplaceAll(path,"\\","/")
+	for _,part:=range strings.Split(path,"/"){if part==".." {return false}}
+	return true
 }
