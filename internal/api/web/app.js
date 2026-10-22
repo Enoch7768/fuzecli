@@ -129,12 +129,21 @@ function eventLabel(e){
 }
 function setProgress(percent,label){$("#generationProgress").hidden=false;$("#progressFill").style.width=Math.max(0,Math.min(100,percent))+"%";$("#progressPercent").textContent=Math.round(percent)+"%";$("#progressLabel").textContent=label}
 function finishProgress(){setProgress(100,"Complete");setTimeout(()=>$("#generationProgress").hidden=true,800)}
-function promptNeedsApproval(p){const s=String(p||"").toLowerCase();const analysisOnly=/(analy[sz]e|audit|review|inspect|assess|identify|suggest|recommend|improvement|improvements|before changing|before making changes)/.test(s);const explicitChange=/(fix|change|edit|update|implement|apply|build|create|add|remove|refactor|rewrite|replace|do so|make those changes|go ahead)/.test(s);return analysisOnly&&!explicitChange}
+function requestsWorkspaceChanges(p){
+  const s=String(p||"").trim().toLowerCase();
+  const action="(?:fix|change|edit|update|implement|apply|build|create|add|remove|delete|refactor|rewrite|replace|modify|write|generate|convert|migrate|upgrade|downgrade|rename|move)";
+  if(/^(?:how|what|why|when|where|who|which|explain|describe|tell me|show me how|help me understand|can you explain|could you explain)\b/.test(s))return false;
+  return new RegExp("^(?:(?:please|can you|could you|would you|will you|i want you to|i need you to|let'?s|go ahead and|help me)\\s+)*(?:"+action+")\\b","i").test(s)
+    ||new RegExp("\\b(?:can|could|would) you\\s+(?:please\\s+)?(?:help me\\s+)?(?:"+action+")\\b","i").test(s)
+    ||new RegExp("\\b(?:and then|and|then)\\s+(?:please\\s+)?"+action+"\\b","i").test(s)
+    ||/\b(?:make|do) (?:those|these) changes\b/i.test(s);
+}
+function promptNeedsApproval(p){const s=String(p||"").toLowerCase();const analysisOnly=/(analy[sz]e|audit|review|inspect|assess|identify|suggest|recommend|improvement|improvements|before changing|before making changes)/.test(s);return analysisOnly&&!requestsWorkspaceChanges(p)}
 async function send(){
   const b=$("#prompt"),p=b.value.trim();if(!p||chatAbort)return;
   b.value="";b.style.height="auto";msg("user",p);$("#sendBtn").disabled=true;$("#stopBtn").disabled=false;$("#chatState").textContent="Starting agent…";chatAbort=new AbortController();
   studioRequestID="studio-"+Date.now()+"-"+Math.random().toString(36).slice(2);studioStreamChunks=0;studioStreamBytes=0;
-  const applyChanges=!promptNeedsApproval(p);const agentPrompt=promptNeedsApproval(p)?"Analyze the actual workspace and current files. Give concrete, evidence-based findings and exactly three high-value improvements before changing anything. Do not modify files. "+p:p;
+  const needsApproval=promptNeedsApproval(p);const applyChanges=requestsWorkspaceChanges(p);const agentPrompt=needsApproval?"Analyze the actual workspace and current files. Give concrete, evidence-based findings and exactly three high-value improvements before changing anything. Do not modify files. "+p:p;
   try{
     await startStudioEvents();
     setProgress(2,applyChanges?"Starting agent":"Analyzing workspace");
