@@ -179,3 +179,17 @@ func setTestConfigHome(t *testing.T, dir string) {
 		}
 	})
 }
+
+
+func TestLoadMigratesDefaultLocalModelToFuzeAI(t *testing.T) {
+	tmp := t.TempDir()
+	setTestConfigHome(t, tmp)
+	legacy := "default_provider: gemini\nproviders:\n  llamacpp:\n    base_url: http://localhost:8080\n    default_model: local\nfallback_order: [gemini, groq, openai, llamacpp]\nverification:\n  self_correction_attempts: 2\n"
+	if err := os.MkdirAll(Dir(), 0700); err != nil { t.Fatal(err) }
+	if err := os.WriteFile(Path(), []byte(legacy), 0600); err != nil { t.Fatal(err) }
+	got, err := Load()
+	if err != nil { t.Fatal(err) }
+	if got.Providers["llamacpp"].DefaultModel != "r7194714R/fuzeai-qwen-7b-gguf:Q4_K_M" {
+		t.Fatalf("legacy default model was not migrated: %q", got.Providers["llamacpp"].DefaultModel)
+	}
+}
