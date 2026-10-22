@@ -134,3 +134,24 @@ func (*optionsCheckingSender) Send(_ context.Context, _ string, messages []provi
 	}
 	return &provider.Response{Content: `{"protocol_version":"fuze-agent-v1","type":"final","response":"done"}`}, nil
 }
+
+
+func TestRunnerStopsImmediatelyWhenAuthorizationBlocksTool(t *testing.T) {
+	sender := &scriptedSender{responses: []string{
+		`{"protocol_version":"fuze-agent-v1","type":"tool_call","tool_calls":[{"id":"delete-1","name":"workspace.apply_edits","arguments":{"files":[{"path":"dist","action":"delete"}],"verify":false}}]}`,
+		`{"protocol_version":"fuze-agent-v1","type":"final","response":"I deleted it."}`,
+	}}
+	registry := NewToolRegistry()
+	if err := registry.Register(toolDef("workspace.apply_edits"), func(context.Context, json.RawMessage) (any, error) {
+		t.Fatal("handler must not run when approval is denied")
+		return nil, nil
+	}); err != nil { t.Fatal(err) }
+	runner := Runner{Sender: sender, Tools: registry, MaxSteps: 4}
+	result, err := runner.Run(context.Background(), "test-provider", []provider.Message{{Role:"user", Content:"delete dist"}}, provider.RequestOptions{}, func(context.Context, ToolDefinition, json.RawMessage) error {
+		return errors.New("explicit FuzeCLI confirmation required")
+	})
+	if err == nil || !strings.Contains(err.Error(), "approval required") {
+		t.Fatalf("expected immediate approval stop, got result=%+v err=%v", result, err)
+	}
+	if sender.calls != 1 { t.Fatalf("model was called %d times after approval was blocked; want 1", sender.calls) }
+}
