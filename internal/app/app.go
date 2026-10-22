@@ -138,6 +138,15 @@ func (a *App) ProviderAndModel(
 	return "auto", model, nil
 }
 
+func appDiagnosticError(err error, raw string, cfg config.Config) error {
+	if err == nil || !cfg.DebugMode { return err }
+	for _, p := range cfg.Providers {
+		if key := strings.TrimSpace(p.APIKey); key != "" { raw = strings.ReplaceAll(raw, key, "[REDACTED_API_KEY]") }
+	}
+	if strings.TrimSpace(raw) == "" { return fmt.Errorf("%w\\nDEBUG MODE: no raw AI response was received", err) }
+	return fmt.Errorf("%w\\n\\nDEBUG MODE - RAW AI RESPONSE:\\n%s", err, raw)
+}
+
 func (a *App) Ask(
 	ctx context.Context,
 	prompt,
@@ -290,7 +299,7 @@ func (a *App) askOnce(
 		)
 
 		if err != nil {
-			return nil, err
+			return nil, appDiagnosticError(err, resp2.Content, a.Config)
 		}
 
 		_ = a.Store.AddMessage(
