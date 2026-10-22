@@ -13,7 +13,7 @@ import (
 
 func buildProviders(c config.Config) []provider.Provider {
 	procs := []provider.Provider{
-		openai.New(c.Providers["openai"].APIKey, ""),
+		openai.New(c.Providers["openai"].APIKey, c.Providers["openai"].BaseURL),
 		gemini.New(c.Providers["gemini"].APIKey, ""),
 		groq.New(c.Providers["groq"].APIKey, ""),
 		anthropic.New(c.Providers["anthropic"].APIKey, ""),
