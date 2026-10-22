@@ -134,6 +134,32 @@ func TestRunnerAcceptsLegacyChatAgentProtocolAsFinalText(t *testing.T) {
 	}
 }
 
+func TestRunnerNormalizesLegacyToolCallProtocols(t *testing.T) {
+	for _, protocol := range []string{"langchain-agent-v1", "github-agent-v1"} {
+		t.Run(protocol, func(t *testing.T) {
+			raw := `{"protocol_version":"` + protocol + `","type":"tool_call","tool_calls":[{"id":"call_legacy","name":"workspace.read_file","arguments":{"path":"README.md"}}]}`
+			var response AgentResponse
+			if err := json.Unmarshal([]byte(raw), &response); err != nil { t.Fatal(err) }
+			normalizeChatResponse(raw, &response)
+			if response.ProtocolVersion != ToolProtocolVersion || response.Type != AgentResponseToolCall || len(response.ToolCalls) != 1 {
+				t.Fatalf("legacy protocol was not normalized safely: %+v", response)
+			}
+		})
+	}
+}
+
+func TestRunnerAnswersStandaloneGreetingWithoutCallingModel(t *testing.T) {
+	sender := &scriptedSender{}
+	registry := NewToolRegistry()
+	if err := registry.Register(testToolDefinition("workspace.read_file"), func(context.Context, json.RawMessage) (any, error) { return nil, nil }); err != nil { t.Fatal(err) }
+	result, err := (&Runner{Sender: sender, Tools: registry}).Run(context.Background(), "test-provider", []provider.Message{{Role:"user", Content:"  Hi!  "}}, provider.RequestOptions{}, nil)
+	if err != nil { t.Fatal(err) }
+	if result.Response == "" || sender.calls != 0 || result.ToolCalls != 0 { t.Fatalf("greeting should be answered without model/tool calls: result=%+v calls=%d", result, sender.calls) }
+}
+
+func TestGreetingGuardDoesNotMatchTaskContainingGreeting(t *testing.T) {
+	if got := simpleGreetingResponse([]provider.Message{{Role:"user", Content:"Hi, analyze my project README"}}); got != "" { t.Fatalf("task message incorrectly treated as a greeting: %q", got) }
+}
 func TestRunnerStopsAfterStepLimit(t *testing.T) {
 	sender := &scriptedSender{responses: []string{
 		`{"protocol_version":"fuze-agent-v1","type":"tool_call","tool_calls":[{"id":"call_1","name":"workspace.read_file","arguments":{"path":"a"}}]}`,
