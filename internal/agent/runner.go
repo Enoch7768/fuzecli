@@ -51,21 +51,26 @@ func normalizeChatResponse(raw string, response *AgentResponse) {
 		Message         string          `json:"message"`
 		Content         string          `json:"content"`
 		Text            string          `json:"text"`
+		Answer           string          `json:"answer"`
+		Output           string          `json:"output"`
 	}
 	if json.Unmarshal([]byte(raw), &legacy) != nil {
 		return
 	}
-	// chat-agent-v1 is a legacy text-chat envelope, not an agent-tool
-	// protocol. Accept it only when no tool calls are present and usable
-	// final text exists; never reinterpret legacy payloads as executable tools.
+
+	// chat-agent-v1 is a text-chat envelope used by older FuzeAI checkpoints.
+	// Normalize it to the runner's protocol only when it contains plain text
+	// and no tool calls. Never convert tool_call, tool_result, or error
+	// envelopes into final answers, and never infer an executable tool call.
 	legacyProtocol := legacy.ProtocolVersion == "chat-agent-v1" || legacy.ProtocolVersion == ToolProtocolVersion
 	if !legacyProtocol || len(legacy.ToolCalls) != 0 {
 		return
 	}
-	if legacy.Type != "chat" && legacy.Type != "final" {
+	switch strings.TrimSpace(legacy.Type) {
+	case "tool_call", "tool_result", "error":
 		return
 	}
-	for _, candidate := range []string{legacy.Response, legacy.Message, legacy.Content, legacy.Text} {
+	for _, candidate := range []string{legacy.Response, legacy.Message, legacy.Content, legacy.Text, legacy.Answer, legacy.Output} {
 		if strings.TrimSpace(candidate) != "" {
 			response.ProtocolVersion = ToolProtocolVersion
 			response.Type = AgentResponseFinal
