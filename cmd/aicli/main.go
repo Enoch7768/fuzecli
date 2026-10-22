@@ -301,7 +301,7 @@ func askCommand(args []string) error {
 			return runErr
 		}
 		fmt.Println(result.Response)
-		fmt.Printf("FuzeCLI agent: %d step(s), %d tool call(s).\\n", result.Steps, result.ToolCalls)
+		fmt.Printf("FuzeCLI agent: %d step(s), %d tool call(s).\n", result.Steps, result.ToolCalls)
 		return nil
 	}
 	_, err = a.Ask(context.Background(), prompt, providerName, model, yes)
