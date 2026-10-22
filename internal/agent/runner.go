@@ -57,7 +57,11 @@ func normalizeChatResponse(raw string, response *AgentResponse) {
 	// with names such as chat-agent-v1, langchain-agent-v1, or github-agent-v1.
 	// Normalize only structurally recognized responses. Tool calls still pass
 	// through the normal response validator, registry, and authorization checks.
-	if protocol == ToolProtocolVersion {
+	// A few older FuzeAI checkpoints use the current protocol label with
+	// the legacy type "chat". Let that text-only envelope pass through the
+	// same conservative normalization below; preserve strict handling for all
+	// other response types using the current protocol.
+	if protocol == ToolProtocolVersion && strings.TrimSpace(responseType) != "chat" {
 		return
 	}
 	if strings.TrimSpace(responseType) == "tool_call" {
