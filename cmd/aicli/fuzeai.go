@@ -106,7 +106,20 @@ func startFuzeAI(args []string) error {
 		}
 	}
 
-	endpoint := fmt.Sprintf("%s:%d", fuzeAIURL, port)
+	endpoint := fmt.Sprintf("http://127.0.0.1:%d", port)
+	cfg, err := config.Load()
+	if err != nil {
+		return err
+	}
+	local := cfg.Providers["llamacpp"]
+	if local.DefaultModel == "" || local.DefaultModel == "local" {
+		local.DefaultModel = fuzeAIModel
+	}
+	local.BaseURL = endpoint
+	cfg.Providers["llamacpp"] = local
+	if err := config.Save(cfg); err != nil {
+		return err
+	}
 	if running, err := serverResponds(endpoint); err == nil && running {
 		fmt.Printf("FuzeAI is already responding at %s/v1.\n", endpoint)
 		return nil
@@ -121,12 +134,12 @@ func startFuzeAI(args []string) error {
 		}
 	}
 
-	fmt.Printf("Starting FuzeAI from Hugging Face: %s\n", fuzeAIModel)
+	fmt.Printf("Starting FuzeAI from Hugging Face: %s\n", local.DefaultModel)
 	fmt.Println("The GGUF is downloaded automatically by llama.cpp if it is not cached yet.")
 	fmt.Printf("Server: %s (context: %d)\n", endpoint, contextSize)
 	fmt.Println("Press Ctrl+C to stop the model server. Keep this terminal open; use another terminal for 'aicli chat'.")
 	cmd := exec.Command(server,
-		"-hf", fuzeAIModel,
+		"-hf", local.DefaultModel,
 		"--host", "127.0.0.1",
 		"--port", strconv.Itoa(port),
 		"-c", strconv.Itoa(contextSize),
