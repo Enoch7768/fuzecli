@@ -308,7 +308,7 @@ func fuzeAIStatus() error {
 	}
 	if !running {
 		fmt.Println("  Status:          stopped or not responding")
-		fmt.Println("  Start it with:   aicli fuzeai start")
+		if strings.HasPrefix(endpoint, "https://") {\n\t\t\tfmt.Println("  Next step:       Restart the Kaggle notebook and reconnect with a new tunnel URL")\n\t\t} else {\n\t\t\tfmt.Println("  Start it with:   aicli fuzeai start")\n\t\t}
 		return nil
 	}
 	fmt.Println("  Status:          responding")
@@ -355,26 +355,33 @@ func isLocalHost(host string) bool {
 }
 
 func printFuzeAIUsage() {
-	fmt.Println(`FuzeAI - the local coding model integrated with FuzeCLI
+	fmt.Println(`FuzeAI - the coding model integrated with FuzeCLI
 
 Usage:
-  aicli fuzeai install               Install the llama.cpp runtime using your package manager\n  aicli fuzeai setup                 Make FuzeAI the default FuzeCLI model
-  aicli fuzeai start [options]       Download/cache the GGUF and run the local server
-  aicli fuzeai run [options]         Alias for start
-  aicli fuzeai status                Check whether the local model server responds
+  aicli fuzeai install               Install the llama.cpp runtime
+  aicli fuzeai setup                 Configure local FuzeAI
+  aicli fuzeai start [options]       Start the local model server
+  aicli fuzeai connect <https-url>   Connect to a Kaggle/tunnel endpoint
+  aicli fuzeai disconnect            Reset endpoint to local mode
+  aicli fuzeai status                Check the configured model server
   aicli fuzeai help                  Show these commands
 
 Start options:
   --port <port>                     Local server port (default 8080)
   --context <tokens>                Context size (default 4096)
 
-First run:
+Local setup:
   aicli fuzeai setup
   aicli fuzeai start
   # In a second terminal:
   aicli chat
 
+Remote Kaggle endpoint:
+  aicli fuzeai connect https://YOUR-TUNNEL.trycloudflare.com
+  aicli fuzeai status
+  aicli fuzeai disconnect
+
 Model: r7194714R/fuzeai-qwen-7b-gguf:Q4_K_M
-The GGUF remains on Hugging Face and is cached locally by llama.cpp.\n\nRemote Kaggle endpoint:\n  aicli fuzeai connect https://YOUR-TUNNEL.trycloudflare.com\n  aicli fuzeai status\n  aicli fuzeai disconnect             Return to local mode
-Install llama.cpp separately from https://github.com/ggml-org/llama.cpp/releases.`)
+The GGUF is downloaded from Hugging Face by llama.cpp.
+See docs/FUZEAi_INTEGRATION.md for the Kaggle GPU instructions.`)
 }
