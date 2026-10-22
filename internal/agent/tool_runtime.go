@@ -56,11 +56,6 @@ func NewFuzeCLIToolRegistry(runtime ToolRuntime) (*ToolRegistry, error) {
 func (rt ToolRuntime) execute(ctx context.Context, name string, raw json.RawMessage) (any, error) {
 	var a map[string]any
 	if err := json.Unmarshal(raw, &a); err != nil { return nil, err }
-	if strings.HasPrefix(name, "github.") {
-		if repositoryName := stringArg(a, "repository"); repositoryName != "" && !validRepositoryIdentifier(repositoryName) {
-			return nil, errors.New("repository must use the full owner/name format")
-		}
-	}
 	switch name {
 	case "workspace.list_files": return rt.listFiles(a)
 	case "workspace.read_file": return rt.readFile(a)
@@ -354,7 +349,7 @@ func (rt ToolRuntime) githubAuth(ctx context.Context,a map[string]any)(any,error
 	}
 }
 func (rt ToolRuntime) githubRepositories(ctx context.Context,a map[string]any)(any,error){c,e:=rt.githubClient();if e!=nil{return nil,e};if stringArg(a,"action")=="get"{return c.Repository(ctx,stringArg(a,"repository"))};return c.Repositories(ctx,intArg(a,"page",1),intArg(a,"per_page",30))}
-func (rt ToolRuntime) githubBranches(ctx context.Context,a map[string]any,raw json.RawMessage)(any,error){c,e:=rt.githubClient();if e!=nil{return nil,e};repo:=stringArg(a,"repository");if stringArg(a,"action")=="list"{return c.BranchesPage(ctx,repo,intArg(a,"page",1),100)};if e=c.CreateBranch(ctx,repo,stringArg(a,"branch"),stringArg(a,"base"));e!=nil{return nil,e};return map[string]any{"created":true,"branch":stringArg(a,"branch")},nil}
+func (rt ToolRuntime) githubBranches(ctx context.Context,a map[string]any,raw json.RawMessage)(any,error){c,e:=rt.githubClient();if e!=nil{return nil,e};repo:=stringArg(a,"repository");if stringArg(a,"action")=="list"{return c.BranchesPage(ctx,repo,intArg(a,"page",1),100)};branch:=stringArg(a,"branch");base:=stringArg(a,"base");if !validGitRefName(branch){return nil,errors.New("branch must be a valid Git ref name")};if base!=""&&!validGitRefName(base){return nil,errors.New("base must be a valid branch, tag, or commit reference")};if e=c.CreateBranch(ctx,repo,branch,base);e!=nil{return nil,e};return map[string]any{"created":true,"branch":branch},nil}
 func (rt ToolRuntime) githubSync(ctx context.Context,a map[string]any,raw json.RawMessage)(any,error){
 	op:=stringArg(a,"operation")
 	if op!="pull"&&op!="push"{return nil,errors.New("unsupported sync operation")}
