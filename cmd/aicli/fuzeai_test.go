@@ -77,3 +77,48 @@ func setFuzeAITestConfigHome(t *testing.T, dir string) {
 		t.Fatal(err)
 	}
 }
+
+func TestConnectFuzeAIRemoteEndpoint(t *testing.T) {
+	dir := t.TempDir()
+	setFuzeAITestConfigHome(t, dir)
+	if err := connectFuzeAI("http://example.trycloudflare.com"); err == nil {
+		t.Fatal("expected insecure HTTP endpoint to be rejected")
+	}
+	if err := connectFuzeAI("https://demo.trycloudflare.com"); err != nil {
+		t.Fatalf("connect remote FuzeAI: %v", err)
+	}
+	got, err := config.Load()
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	if got.DefaultProvider != "llamacpp" {
+		t.Fatalf("default provider = %q, want llamacpp", got.DefaultProvider)
+	}
+	if got.Providers["llamacpp"].BaseURL != "https://demo.trycloudflare.com" {
+		t.Fatalf("base URL = %q, want remote endpoint", got.Providers["llamacpp"].BaseURL)
+	}
+	if got.Providers["llamacpp"].DefaultModel != fuzeAIModel {
+		t.Fatalf("model = %q, want %q", got.Providers["llamacpp"].DefaultModel, fuzeAIModel)
+	}
+	if err := disconnectFuzeAI(); err != nil {
+		t.Fatalf("disconnect remote FuzeAI: %v", err)
+	}
+	got, err = config.Load()
+	if err != nil {
+		t.Fatalf("reload config: %v", err)
+	}
+	if got.Providers["llamacpp"].BaseURL != fuzeAIURL {
+		t.Fatalf("disconnect base URL = %q, want %q", got.Providers["llamacpp"].BaseURL, fuzeAIURL)
+	}
+}
+
+func TestPublicFuzeAIEndpointValidation(t *testing.T) {
+	for _, host := range []string{"localhost", "127.0.0.1", "::1", "192.168.1.2"} {
+		if isPublicHTTPSHost(host) {
+			t.Fatalf("host %q should not be considered a public endpoint", host)
+		}
+	}
+	if !isPublicHTTPSHost("demo.trycloudflare.com") {
+		t.Fatal("expected public tunnel hostname to be accepted")
+	}
+}
