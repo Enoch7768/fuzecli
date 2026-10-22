@@ -216,6 +216,7 @@ func (rt ToolRuntime) applyEdits(ctx context.Context,raw json.RawMessage,a map[s
 	result,err:=executor.Execute(plan,verifyFn)
 	if err!=nil{return map[string]any{"applied":false,"changed":result.Changed,"verification":result.Output},err}
 	if verifyRequested&&!verifierAvailable{result.Output="Verification skipped: no supported project manifest was found."}
+	if rt.Index!=nil{_ = rt.Index.Refresh()};if rt.Store!=nil{_ = rt.Store.MarkTouched(result.Changed);_ = rt.Store.RefreshHashes(result.Changed)}
 	return map[string]any{"applied":true,"changed":result.Changed,"verified":verifyRequested&&verifierAvailable,"verification":result.Output},nil
 }
 

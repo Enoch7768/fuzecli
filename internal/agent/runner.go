@@ -28,9 +28,10 @@ type Runner struct {
 }
 
 type RunResult struct {
-	Response  string
-	Steps     int
+	Response string
+	Steps int
 	ToolCalls int
+	ToolResults []ToolResult
 }
 
 type toolPrompt struct {
@@ -159,6 +160,7 @@ func (r *Runner) Run(
 					return result, fmt.Errorf("invalid result for tool call %q: %w", call.ID, err)
 				}
 				toolResults = append(toolResults, toolResult)
+				result.ToolResults = append(result.ToolResults, toolResult)
 				result.ToolCalls++
 			}
 
