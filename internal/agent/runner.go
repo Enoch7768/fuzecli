@@ -53,19 +53,22 @@ func normalizeChatResponse(raw string, response *AgentResponse) {
 	_ = json.Unmarshal(envelope["protocol_version"], &protocol)
 	_ = json.Unmarshal(envelope["type"], &responseType)
 
-	// chat-agent-v1 is a text-chat envelope used by older FuzeAI checkpoints.
-	// Accept it only when it contains plain text and no action/tool payload.
-	// Never reinterpret a tool request as a final answer.
-	if protocol != "chat-agent-v1" && protocol != ToolProtocolVersion {
+	// Legacy checkpoints and fine-tuned models may label the same envelope
+	// with names such as chat-agent-v1, langchain-agent-v1, or github-agent-v1.
+	// Normalize only structurally recognized responses. Tool calls still pass
+	// through the normal response validator, registry, and authorization checks.
+	if protocol == ToolProtocolVersion {
 		return
 	}
-	// Older checkpoints use chat-agent-v1 for tool calls as well as text.
-	// Preserve the call payload and normalize only the protocol marker so the
-	// regular validator, authorization checks, and tool registry still apply.
-	if protocol == "chat-agent-v1" && strings.TrimSpace(responseType) == "tool_call" {
+	if strings.TrimSpace(responseType) == "tool_call" {
 		if len(response.ToolCalls) > 0 {
 			response.ProtocolVersion = ToolProtocolVersion
 		}
+		return
+	}
+	// Do not reinterpret tool-result/error envelopes or ambiguous payloads as
+	// final text, regardless of which legacy protocol name was supplied.
+	if strings.TrimSpace(responseType) == "tool_result" || strings.TrimSpace(responseType) == "error" {
 		return
 	}
 	if len(response.ToolCalls) != 0 {
@@ -141,6 +144,27 @@ func diagnosticError(err error, raw string) error {
 	return fmt.Errorf("%w\n\nDEBUG MODE - RAW AI RESPONSE:\n%s", err, raw)
 }
 
+// simpleGreetingResponse returns a direct response only for standalone casual
+// greetings/thanks. It intentionally does not match messages that contain a task.
+func simpleGreetingResponse(messages []provider.Message) string {
+	var latest string
+	for i := len(messages) - 1; i >= 0; i-- {
+		if strings.EqualFold(strings.TrimSpace(messages[i].Role), "user") {
+			latest = strings.ToLower(strings.TrimSpace(messages[i].Content))
+			break
+		}
+	}
+	latest = strings.Trim(latest, " \\t\\r\\n.,!?;:")
+	switch latest {
+	case "hi", "hello", "hey", "hiya", "hello there", "hey there",
+		"good morning", "good afternoon", "good evening",
+		"thanks", "thank you", "thanks a lot":
+		return "Hi! What would you like to work on?"
+	default:
+		return ""
+	}
+}
+
 func (r *Runner) Run(
 	ctx context.Context,
 	providerName string,
@@ -159,6 +183,9 @@ func (r *Runner) Run(
 	}
 	if len(messages) == 0 {
 		return RunResult{}, errors.New("agent conversation is empty")
+	}
+	if greeting := simpleGreetingResponse(messages); greeting != "" {
+		return RunResult{Response: greeting}, nil
 	}
 	if err := ctx.Err(); err != nil {
 		return RunResult{}, err
