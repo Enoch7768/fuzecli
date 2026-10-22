@@ -195,3 +195,36 @@ func TestRunnerStopsImmediatelyWhenAuthorizationBlocksTool(t *testing.T) {
 	}
 	if sender.calls != 1 { t.Fatalf("model was called %d times after approval was blocked; want 1", sender.calls) }
 }
+
+
+func TestRunnerAcceptsChatAgentV1MessageAndAnswerFields(t *testing.T) {
+	sender := &scriptedSender{responses: []string{
+		`{"protocol_version":"chat-agent-v1","type":"message","answer":"Your project is ready."}`,
+	}}
+	registry := NewToolRegistry()
+	if err := registry.Register(testToolDefinition("workspace.read_file"), func(context.Context, json.RawMessage) (any, error) {
+		return nil, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	runner := Runner{Sender: sender, Tools: registry}
+	result, err := runner.Run(context.Background(), "test-provider", []provider.Message{{Role: "user", Content: "hello"}}, provider.RequestOptions{}, nil)
+	if err != nil {
+		t.Fatalf("chat-agent-v1 text response should be normalized: %v", err)
+	}
+	if result.Response != "Your project is ready." || result.ToolCalls != 0 {
+		t.Fatalf("unexpected normalized result: %+v", result)
+	}
+}
+
+func TestNormalizeChatResponseDoesNotTreatToolCallAsFinal(t *testing.T) {
+	response := AgentResponse{
+		ProtocolVersion: "chat-agent-v1",
+		Type: AgentResponseToolCall,
+	}
+	normalizeChatResponse(`{"protocol_version":"chat-agent-v1","type":"tool_call","message":"do something"}`, &response)
+	if response.ProtocolVersion != "chat-agent-v1" {
+		t.Fatalf("tool-call envelope should not be normalized as final: %+v", response)
+	}
+}
