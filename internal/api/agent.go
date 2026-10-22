@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"path"
 	"strings"
 	"time"
 
@@ -24,6 +25,7 @@ type agentRunRequest struct {
 	Files []string `json:"files,omitempty"`
 	BillingMode string `json:"billing_mode,omitempty"`
 	ApprovedTools []string `json:"approved_tools,omitempty"`
+	ApprovedDeletions []string `json:"approved_deletions,omitempty"`
 }
 type agentRunResponse struct {
 	Content string `json:"content"`
@@ -34,6 +36,7 @@ type agentRunResponse struct {
 	WrittenFiles []string `json:"written_files,omitempty"`
 	Applied bool `json:"applied"`
 	PendingApprovals []string `json:"pending_approvals,omitempty"`
+	PendingDeletions []string `json:"pending_deletions,omitempty"`
 }
 
 func (s *Server) agentRun(w http.ResponseWriter, r *http.Request) {
@@ -48,10 +51,13 @@ func (s *Server) agentRun(w http.ResponseWriter, r *http.Request) {
 	var trailing any
 	if err:=decoder.Decode(&trailing);err!=io.EOF {writeError(w,http.StatusBadRequest,"request must contain one JSON object");return}
 	if strings.TrimSpace(req.Prompt)=="" {writeError(w,http.StatusBadRequest,"prompt is required");return}
-	if len(req.Files)>50||len(req.ApprovedTools)>20 {writeError(w,http.StatusBadRequest,"too many files or approved tools");return}
+	if len(req.Files)>50||len(req.ApprovedTools)>20||len(req.ApprovedDeletions)>100 {writeError(w,http.StatusBadRequest,"too many files or approvals");return}
 	allowedApprovalNames:=map[string]bool{"workspace.apply_edits":true,"terminal.run":true,"git.commit":true,"github.branches":true,"github.sync":true,"github.pull_requests":true,"github.issues":true,"github.actions":true,"github.auth":true}
 	approved:=map[string]bool{}
+	approvedDeletions:=map[string]bool{}
+	for _,value:=range req.ApprovedDeletions {clean:=canonicalWorkspacePath(value);if clean==""||clean=="."||strings.HasPrefix(clean,"/")||clean==".."||strings.HasPrefix(clean,"../"){writeError(w,http.StatusBadRequest,"approved_deletions contains an invalid workspace path");return};approvedDeletions[clean]=true}
 	pendingApprovals:=[]string{}
+	pendingDeletions:=[]string{}
 	for _,name:=range req.ApprovedTools {if !allowedApprovalNames[name]{writeError(w,http.StatusBadRequest,"approved_tools contains an unsupported tool name");return};approved[name]=true}
 	providerName,model,err:=a.ProviderAndModel(req.Provider,req.Model)
 	if err!=nil {writeError(w,http.StatusBadRequest,err.Error());return}
@@ -70,14 +76,18 @@ func (s *Server) agentRun(w http.ResponseWriter, r *http.Request) {
 	s.service.emitEvent(StudioEvent{RequestID:requestID,Type:"generation.started",Phase:"generation",Message:"Running tool-enabled agent",Provider:providerName,Model:model,Percent:15})
 	runner:=agent.Runner{Sender:a.Registry,Tools:a.AgentTools}
 	result,err:=runner.Run(r.Context(),providerName,messages,provider.RequestOptions{Model:model,Temperature:0.2,MaxTokens:16000,BillingMode:req.BillingMode,RequestID:requestID},func(ctx context.Context,def agent.ToolDefinition,raw json.RawMessage)error{
+		deletions:=toolDeletionPaths(def.Name,raw)
+		missing:=[]string{}
+		for _,target:=range deletions {if !approvedDeletions[canonicalWorkspacePath(target)] {missing=append(missing,canonicalWorkspacePath(target))}}
+		if len(missing)>0 {pendingDeletions=append(pendingDeletions,missing...);return fmt.Errorf("explicit FuzeCLI confirmation required before deleting: %s",strings.Join(missing,", "))}
 		required,_:=agent.RequiresToolApproval(def.Name,raw)
 		if required&&!approved[def.Name]{pendingApprovals=append(pendingApprovals,def.Name);return fmt.Errorf("explicit user approval required for %s; retry with that exact tool name in approved_tools after confirming the action",def.Name)}
 		return nil
 	})
 	if err!=nil{
 		status:=http.StatusBadGateway;if errors.Is(err,context.Canceled)||errors.Is(err,context.DeadlineExceeded){status=http.StatusRequestTimeout}
-		if len(pendingApprovals)>0 {
-			writeJSON(w,http.StatusOK,agentRunResponse{Content:"This task needs your approval before FuzeCLI can continue.",Steps:result.Steps,ToolCalls:result.ToolCalls,Provider:providerName,Model:model,PendingApprovals:uniqueStrings(pendingApprovals)})
+		if len(pendingApprovals)>0||len(pendingDeletions)>0 {
+			writeJSON(w,http.StatusOK,agentRunResponse{Content:"This task needs your approval before FuzeCLI can continue.",Steps:result.Steps,ToolCalls:result.ToolCalls,Provider:providerName,Model:model,PendingApprovals:uniqueStrings(pendingApprovals),PendingDeletions:uniqueStrings(pendingDeletions)})
 			return
 		}
 		s.service.emitEvent(StudioEvent{RequestID:requestID,Type:"generation.failed",Phase:"agent",Message:err.Error(),Provider:providerName,Model:model})
@@ -104,4 +114,30 @@ func uniqueStrings(values []string) []string {
 	seen:=map[string]bool{};out:=make([]string,0,len(values))
 	for _,value:=range values{if !seen[value]{seen[value]=true;out=append(out,value)}}
 	return out
+}
+
+
+// toolDeletionPaths extracts destructive file targets from the canonical edit tool.
+// Approval is path-specific: approving workspace.apply_edits alone never approves deletion.
+func toolDeletionPaths(name string, raw json.RawMessage) []string {
+	if name != "workspace.apply_edits" { return nil }
+	var request struct {
+		Files []struct {
+			Path string `json:"path"`
+			Action string `json:"action"`
+		} `json:"files"`
+	}
+	if json.Unmarshal(raw, &request) != nil { return nil }
+	paths := make([]string, 0, len(request.Files))
+	for _, file := range request.Files {
+		if file.Action == "delete" && strings.TrimSpace(file.Path) != "" {
+			paths = append(paths, canonicalWorkspacePath(file.Path))
+		}
+	}
+	return uniqueStrings(paths)
+}
+
+func canonicalWorkspacePath(value string) string {
+	value = strings.ReplaceAll(strings.TrimSpace(value), "\\\\", "/")
+	return path.Clean(value)
 }
