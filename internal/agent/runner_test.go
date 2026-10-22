@@ -94,6 +94,26 @@ func TestRunnerRejectsMalformedModelResponse(t *testing.T) {
 	}
 }
 
+func TestRunnerAcceptsLegacyFuzeAIChatAsFinalText(t *testing.T) {
+	sender := &scriptedSender{responses: []string{
+		`{"protocol_version":"fuze-agent-v1","type":"chat","message":"I can help with that."}`,
+	}}
+	registry := NewToolRegistry()
+	if err := registry.Register(testToolDefinition("workspace.read_file"), func(context.Context, json.RawMessage) (any, error) {
+		return nil, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	runner := Runner{Sender: sender, Tools: registry}
+	result, err := runner.Run(context.Background(), "test-provider", []provider.Message{{Role: "user", Content: "hello"}}, provider.RequestOptions{}, nil)
+	if err != nil {
+		t.Fatalf("legacy chat response should be accepted as final text: %v", err)
+	}
+	if result.Response != "I can help with that." || result.ToolCalls != 0 {
+		t.Fatalf("unexpected normalized result: %+v", result)
+	}
+}
+
 func TestRunnerStopsAfterStepLimit(t *testing.T) {
 	sender := &scriptedSender{responses: []string{
 		`{"protocol_version":"fuze-agent-v1","type":"tool_call","tool_calls":[{"id":"call_1","name":"workspace.read_file","arguments":{"path":"a"}}]}`,
