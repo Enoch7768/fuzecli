@@ -158,6 +158,18 @@ aicli fuzeai help
 
 The GGUF is intentionally downloaded on demand rather than committed to Git history. It is several gigabytes, and the local llama.cpp cache avoids repeated downloads. The default 4096-token context is a conservative starting point for machines with limited RAM; larger contexts require more memory. The local API binds to loopback, not the public network.
 
+### Use FuzeAI on a Kaggle GPU
+
+If you want FuzeAI to run on a Kaggle GPU instead of your Windows computer, import [the Kaggle endpoint notebook](training/fuzeai/fuzeai_kaggle_gpu_endpoint.ipynb) into Kaggle, enable a GPU and Internet, and run its cells in order. Copy the temporary HTTPS tunnel URL it prints, then connect FuzeCLI:
+
+```powershell
+aicli fuzeai connect https://YOUR-URL.trycloudflare.com
+aicli fuzeai status
+aicli chat
+```
+
+When finished, run `aicli fuzeai disconnect` and stop the Kaggle session. See [the full setup and security notes](docs/FUZEAi_INTEGRATION.md#use-fuzeai-on-a-kaggle-gpu-from-your-own-fuzecli). The no-key endpoint is public to anyone who obtains its URL; keep it private. Kaggle sessions are temporary, so this is not always-on hosting.
+
 ## Configuration
 
 FuzeCLI stores provider configuration in `%APPDATA%\\aicli\\config.yaml`.
