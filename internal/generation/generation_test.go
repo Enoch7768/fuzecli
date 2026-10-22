@@ -19,10 +19,23 @@ func TestParsePlanAcceptsFencesAndUnknownFields(t *testing.T) {
 
 func TestResolveRejectsTraversal(t *testing.T) {
 	root := t.TempDir()
-	for _, p := range []string{"../x.txt", "foo/../../x", `/absolute.txt`} {
-		if _, err := Resolve(root, p); err == nil {
-			t.Fatalf("expected rejection for %s", p)
-		}
+	for _, p := range []string{
+		"../x.txt",
+		"foo/../../x",
+		"foo/..",
+		"foo/bar/..",
+		"foo\\..",
+		"foo\\bar\\..",
+		"foo\\..\\secret",
+		`/absolute.txt`,
+		`C:\\outside.txt`,
+		"file\\x00name.txt",
+	} {
+		t.Run(p, func(t *testing.T) {
+			if _, err := Resolve(root, p); err == nil {
+				t.Fatalf("expected rejection for %q", p)
+			}
+		})
 	}
 }
 

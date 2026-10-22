@@ -308,11 +308,21 @@ func explainJSONDecodeError(err error) string {
 }
 
 func Resolve(root, rel string) (string, error) {
-	normalized := filepath.ToSlash(rel)
-	clean := filepath.Clean(rel)
-	volume := filepath.VolumeName(rel)
-	rooted := filepath.IsAbs(rel) || strings.HasPrefix(normalized, "/") || strings.HasPrefix(normalized, "//") || volume != ""
-	if clean == "." || rooted || strings.Contains(normalized, "../") {
+	if strings.TrimSpace(rel) == "" || strings.ContainsRune(rel, 0) {
+		return "", fmt.Errorf("unsafe workspace path: %q", rel)
+	}
+	portable := strings.ReplaceAll(rel, "\\", "/")
+	if filepath.IsAbs(rel) || filepath.IsAbs(portable) || strings.HasPrefix(portable, "/") ||
+		filepath.VolumeName(rel) != "" || hasWindowsVolumePrefix(portable) {
+		return "", fmt.Errorf("unsafe workspace path: %q", rel)
+	}
+	for _, component := range strings.Split(portable, "/") {
+		if component == ".." {
+			return "", fmt.Errorf("unsafe workspace path: %q", rel)
+		}
+	}
+	clean := filepath.Clean(filepath.FromSlash(portable))
+	if clean == "." {
 		return "", fmt.Errorf("unsafe workspace path: %q", rel)
 	}
 	base, err := filepath.Abs(root)
@@ -360,6 +370,12 @@ func Resolve(root, rel string) (string, error) {
 		parent = next
 	}
 	return target, nil
+}
+
+func hasWindowsVolumePrefix(path string) bool {
+	return len(path) >= 2 &&
+		((path[0] >= 'A' && path[0] <= 'Z') || (path[0] >= 'a' && path[0] <= 'z')) &&
+		path[1] == ':'
 }
 
 func Apply(root string, plan Plan) ([]string, error) {
