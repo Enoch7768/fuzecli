@@ -228,3 +228,25 @@ func TestNormalizeChatResponseDoesNotTreatToolCallAsFinal(t *testing.T) {
 		t.Fatalf("tool-call envelope should not be normalized as final: %+v", response)
 	}
 }
+
+
+func TestRunnerAcceptsNestedChatAgentV1Message(t *testing.T) {
+	sender := &scriptedSender{responses: []string{
+		`{"protocol_version":"chat-agent-v1","type":"message","message":{"role":"assistant","content":"I can help."}}`,
+	}}
+	registry := NewToolRegistry()
+	if err := registry.Register(testToolDefinition("workspace.read_file"), func(context.Context, json.RawMessage) (any, error) {
+		return nil, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	runner := Runner{Sender: sender, Tools: registry}
+	result, err := runner.Run(context.Background(), "test-provider", []provider.Message{{Role: "user", Content: "hello"}}, provider.RequestOptions{}, nil)
+	if err != nil {
+		t.Fatalf("nested chat-agent-v1 text response should be normalized: %v", err)
+	}
+	if result.Response != "I can help." || result.ToolCalls != 0 {
+		t.Fatalf("unexpected normalized result: %+v", result)
+	}
+}
