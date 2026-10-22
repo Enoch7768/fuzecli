@@ -308,7 +308,11 @@ func fuzeAIStatus() error {
 	}
 	if !running {
 		fmt.Println("  Status:          stopped or not responding")
-		if strings.HasPrefix(endpoint, "https://") {\n\t\t\tfmt.Println("  Next step:       Restart the Kaggle notebook and reconnect with a new tunnel URL")\n\t\t} else {\n\t\t\tfmt.Println("  Start it with:   aicli fuzeai start")\n\t\t}
+		if strings.HasPrefix(endpoint, "https://") {
+			fmt.Println("  Next step:       Restart the Kaggle notebook and reconnect with a new tunnel URL")
+		} else {
+			fmt.Println("  Start it with:   aicli fuzeai start")
+		}
 		return nil
 	}
 	fmt.Println("  Status:          responding")
