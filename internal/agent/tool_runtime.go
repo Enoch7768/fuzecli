@@ -400,17 +400,12 @@ func (rt ToolRuntime) githubActions(ctx context.Context,a map[string]any,raw jso
 	case "list_runs":return c.WorkflowRunsPage(ctx,stringArg(a,"repository"),intArg(a,"page",1),intArg(a,"per_page",30))
 	case "list_jobs":return c.WorkflowJobsPage(ctx,stringArg(a,"repository"),int64(intArg(a,"run_id",0)),intArg(a,"page",1),intArg(a,"per_page",30))
 	case "job_logs":
-		if _,e:=exec.LookPath("gh");e!=nil{return nil,errors.New("GitHub Actions job logs require the authenticated gh CLI")}
-		cmd:=exec.CommandContext(ctx,"gh","run","view","--job",strconv.Itoa(intArg(a,"job_id",0)),"--log","--repo",stringArg(a,"repository"))
-		var out limitedBuffer;out.limit=256<<10;cmd.Stdout=&out;cmd.Stderr=&out
-		if e:=cmd.Run();e!=nil{return map[string]any{"logs":truncate(out.String(),256<<10),"truncated":out.Len()>=256<<10},fmt.Errorf("retrieve GitHub job logs: %w",e)}
-		return map[string]any{"logs":out.String(),"truncated":out.Len()>=256<<10},nil
-	case "rerun_failed":if _,e=exec.LookPath("gh");e==nil{
-		cmd:=exec.CommandContext(ctx,"gh","run","rerun",strconv.Itoa(intArg(a,"run_id",0)),"--failed","--repo",stringArg(a,"repository"))
-		out,runErr:=cmd.CombinedOutput();if runErr!=nil{return nil,fmt.Errorf("rerun failed GitHub Actions jobs: %s",truncate(string(out),4000))}
-		return map[string]any{"rerun_requested":true,"output":truncate(string(out),4000)},nil
-	}
-	return nil,errors.New("rerunning only failed jobs requires authenticated gh CLI")
+		logs,e:=c.WorkflowJobLogs(ctx,stringArg(a,"repository"),int64(intArg(a,"job_id",0)))
+		if e!=nil{return nil,e}
+		return map[string]any{"logs":logs,"truncated":strings.Contains(logs,"[logs truncated]")},nil
+	case "rerun_failed":
+		if e=c.RerunFailedWorkflow(ctx,stringArg(a,"repository"),int64(intArg(a,"run_id",0)));e!=nil{return nil,e}
+		return map[string]any{"rerun_requested":true,"run_id":intArg(a,"run_id",0)},nil
 	default:return nil,errors.New("unsupported GitHub Actions action")
 	}
 }

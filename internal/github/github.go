@@ -251,3 +251,43 @@ func (c *Client) CreateIssueDetailed(ctx context.Context, full,title,body string
 	if labels!=nil{payload["labels"]=labels};if assignees!=nil{payload["assignees"]=assignees}
 	var out Issue;err:=c.do(ctx,http.MethodPost,"/repos/"+pathPart(full)+"/issues",payload,&out);return out,err
 }
+
+func (c *Client) RerunFailedWorkflow(ctx context.Context, full string, runID int64) error {
+	if runID<=0{return errors.New("workflow run ID must be positive")}
+	return c.do(ctx,http.MethodPost,fmt.Sprintf("/repos/%s/actions/runs/%d/rerun-failed-jobs",pathPart(full),runID),nil,nil)
+}
+
+func (c *Client) WorkflowJobLogs(ctx context.Context, full string, jobID int64) (string,error) {
+	if jobID<=0{return "",errors.New("workflow job ID must be positive")}
+	if strings.TrimSpace(c.Token)=="" {
+		if c.DisableCLI{return "",errors.New("GitHub is disconnected")}
+		if _,err:=exec.LookPath("gh");err!=nil{return "",errors.New("workflow logs require GitHub CLI authentication or a configured GitHub token")}
+		cmd:=exec.CommandContext(ctx,"gh","run","view","--job",fmt.Sprint(jobID),"--log","--repo",full)
+		var out bytes.Buffer
+		cmd.Stdout=&out;cmd.Stderr=&out
+		if err:=cmd.Run();err!=nil{return truncateGitHubLog(out.String(),256<<10),fmt.Errorf("retrieve workflow logs: %w",err)}
+		return truncateGitHubLog(out.String(),256<<10),nil
+	}
+	req,err:=http.NewRequestWithContext(ctx,http.MethodGet,strings.TrimRight(c.BaseURL,"/")+fmt.Sprintf("/repos/%s/actions/jobs/%d/logs",pathPart(full),jobID),nil)
+	if err!=nil{return "",err}
+	req.Header.Set("Accept","application/vnd.github+json")
+	req.Header.Set("X-GitHub-Api-Version","2022-11-28")
+	req.Header.Set("Authorization","Bearer "+c.Token)
+	resp,err:=c.HTTP.Do(req);if err!=nil{return "",fmt.Errorf("request workflow logs: %w",err)}
+	defer resp.Body.Close()
+	if resp.StatusCode<200||resp.StatusCode>=300{return "",fmt.Errorf("GitHub workflow log request returned HTTP %d",resp.StatusCode)}
+	data,err:=io.ReadAll(io.LimitReader(resp.Body,8<<20));if err!=nil{return "",err}
+	if zr,zipErr:=zip.NewReader(bytes.NewReader(data),int64(len(data)));zipErr==nil{
+		var out strings.Builder
+		for _,entry:=range zr.File{
+			if entry.FileInfo().IsDir(){continue}
+			file,openErr:=entry.Open();if openErr!=nil{return "",openErr}
+			remaining:=256<<10-out.Len();if remaining<=0{_ = file.Close();out.WriteString("\n[logs truncated]");break}
+			part,readErr:=io.ReadAll(io.LimitReader(file,int64(remaining)));_ = file.Close();if readErr!=nil{return "",readErr}
+			out.Write(part);out.WriteByte('\n')
+		}
+		return out.String(),nil
+	}
+	return truncateGitHubLog(string(data),256<<10),nil
+}
+func truncateGitHubLog(value string,limit int)string{if len(value)>limit{return value[:limit]+"\n[logs truncated]"};return value}
