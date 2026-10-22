@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net"
+	"net/url"
 	"strings"
 )
 
@@ -82,6 +84,22 @@ func (p *compatibleProvider) Send(ctx context.Context, messages []Message, opts 
 }
 
 func (p *compatibleProvider) Stream(ctx context.Context, messages []Message, opts RequestOptions) (<-chan StreamChunk, error) {
+	// Cloudflare Quick Tunnels do not support Server-Sent Events. For a remote
+	// llamacpp endpoint, use the compatible non-streaming response and emit it
+	// as one chunk so FuzeCLI chat still works over a temporary tunnel.
+	if p.name == "llamacpp" && isRemoteEndpoint(p.baseURL) {
+		response, err := p.Send(ctx, messages, opts)
+		if err != nil {
+			return nil, err
+		}
+		out := make(chan StreamChunk, 2)
+		if response.Content != "" {
+			out <- StreamChunk{Delta: response.Content}
+		}
+		out <- StreamChunk{Done: true, Usage: response.Usage}
+		close(out)
+		return out, nil
+	}
 	model := opts.Model
 	if model == "" || strings.EqualFold(model, "auto") {
 		models, err := p.ListModels(ctx)
@@ -193,4 +211,17 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func isRemoteEndpoint(raw string) bool {
+	parsed, err := url.Parse(raw)
+	if err != nil || parsed.Hostname() == "" {
+		return false
+	}
+	host := strings.ToLower(parsed.Hostname())
+	if host == "localhost" {
+		return false
+	}
+	ip := net.ParseIP(host)
+	return ip == nil || !ip.IsLoopback()
 }
