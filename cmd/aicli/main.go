@@ -50,6 +50,8 @@ func run(args []string) error {
 		return initCommand()
 	case "setup":
 		return setupCommand()
+	case "fuzeai":
+		return fuzeAICommand(args[1:])
 	case "config":
 		return configCommand(args[1:])
 	case "models":
@@ -854,6 +856,9 @@ func usage() error {
 Getting started:
   aicli init                         Initialize this project and run setup
   aicli setup                        Reconfigure provider/model
+  aicli fuzeai setup                 Configure FuzeAI as the local default model
+  aicli fuzeai start                 Start FuzeAI and download the GGUF if needed
+  aicli fuzeai status                Check the local FuzeAI server
   aicli chat                         Start an interactive coding session (--safe for destructive-change blocking)
   aicli ask "prompt"                 Run a one-shot AI request (--safe for destructive-change blocking)
 
