@@ -154,7 +154,7 @@ func simpleGreetingResponse(messages []provider.Message) string {
 			break
 		}
 	}
-	latest = strings.Trim(latest, " \\t\\r\\n.,!?;:")
+	latest = strings.Trim(latest, " \t\r\n.,!?;:")
 	switch latest {
 	case "hi", "hello", "hey", "hiya", "hello there", "hey there",
 		"good morning", "good afternoon", "good evening",
