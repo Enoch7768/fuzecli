@@ -4,17 +4,18 @@ FuzeCLI's agent runner passes its registered tool definitions and JSON schemas t
 
 ## Start the published FuzeAI GGUF model
 
-The Hugging Face repository is `r7194714R/fuzeai-qwen-7b-gguf`, with the `Q4_K_M` file `Qwen2.5-Coder-7B-Instruct.Q4_K_M.gguf`.
-
-Install llama.cpp, then run this in a terminal:
+FuzeCLI has built-in commands for setup, launch, and status. Install a compatible [llama.cpp release](https://github.com/ggml-org/llama.cpp/releases) that provides `llama-server`, then run:
 
 ```powershell
-llama serve -hf r7194714R/fuzeai-qwen-7b-gguf:Q4_K_M --host 127.0.0.1 --port 8080
+aicli fuzeai setup
+aicli fuzeai start
 ```
 
-Keep that terminal running. FuzeCLI's `llamacpp` provider connects to `http://localhost:8080/v1`. Its default model is configured to `r7194714R/fuzeai-qwen-7b-gguf:Q4_K_M`. In the FuzeCLI Studio provider selector, choose `llamacpp`; the default cloud provider is unchanged.
+`setup` selects the `llamacpp` provider and configures the published model as the default. `start` runs `llama-server -hf r7194714R/fuzeai-qwen-7b-gguf:Q4_K_M`; llama.cpp downloads and caches the GGUF from Hugging Face if it is not already present. The server binds to `127.0.0.1` on port 8080 by default.
 
-The model is hosted as a downloadable GGUF, not a hosted Hugging Face Inference Provider endpoint. Running llama.cpp locally serves the model through the OpenAI-compatible API that FuzeCLI already supports.
+Keep the server terminal open. In another terminal, run `aicli chat` or start the Studio with `aicli app`. Check server availability with `aicli fuzeai status`. To change the port or context window, use `aicli fuzeai start --port 8080 --context 4096`.
+
+The default context is 4096 tokens to limit memory use. A 7B Q4 model still needs several gigabytes of RAM/VRAM, and a machine with 8 GB of system RAM may be tight, especially while other applications are open. If loading fails, close memory-heavy apps or use a smaller compatible quantization. The model is hosted on Hugging Face and cached locally by llama.cpp; the GGUF is not committed to the source repository.
 
 ## Registered agent tools
 
