@@ -29,6 +29,10 @@ The current tool registry exposes 20 tools:
 
 The model receives the actual schemas from `FuzeCLIToolDefinitions()`, not a separately maintained list. FuzeCLI validates tool names and arguments before dispatching handlers.
 
+The same agent runner is available from the terminal. After `aicli fuzeai setup` and `aicli fuzeai start`, `aicli chat` automatically uses the tool-enabled agent when the configured provider/model is this FuzeAI GGUF. One-shot `aicli ask "..." --provider llamacpp` uses the same runner. Other providers and models keep their existing chat/edit path unless explicitly selected for the FuzeAI tool protocol.
+
+The terminal asks for confirmation through FuzeCLI before a destructive deletion or other approval-gated action. `--safe` blocks deletion even if a confirmation is attempted. The model cannot approve its own operation; the approval callback runs in FuzeCLI, and the registry grants the handler permission only after that callback approves the exact tool call.
+
 ## Destructive file changes
 
 Deletion is a FuzeCLI-controlled approval, not a decision delegated to the model. When a tool call requests deletion, Studio displays the exact workspace-relative paths and asks the user to confirm. Approval is limited to those exact paths and that edit request. Declining, missing approval, or an invalid path leaves the files untouched. FuzeCLI's registry stops the agent loop immediately when authorization is denied, so the model cannot continue with further tool calls after a blocked destructive request.
