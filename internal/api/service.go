@@ -247,7 +247,9 @@ func (s *Service) Chat(ctx context.Context, req ChatRequest) (ChatResponse, erro
 				provider.Message{Role:"assistant", Content:raw.String()},
 				provider.Message{Role:"user", Content:correction},
 			)
-			repaired, repairErr := s.App.Registry.Send(ctx, name, repairMessages, chatRequestOptions(model, req.BillingMode, requestID, true))
+			repairOptions := chatRequestOptions(model, req.BillingMode, requestID, true)
+			repairOptions.Temperature = 0
+			repaired, repairErr := s.App.Registry.Send(ctx, name, repairMessages, repairOptions)
 			if repairErr != nil {
 				s.emitEvent(StudioEvent{RequestID:requestID, Type:"repair.failed", Phase:"repair", Message:repairErr.Error()})
 				return ChatResponse{}, fmt.Errorf("repair attempt %d/%d failed: %w; verification diagnostics: %s", attempt+1, repairBudget, repairErr, diagnostic)
