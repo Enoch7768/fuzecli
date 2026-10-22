@@ -194,7 +194,7 @@ func (s *Service) Chat(ctx context.Context, req ChatRequest) (ChatResponse, erro
 	}
 	s.emitEvent(StudioEvent{RequestID:requestID, Type:"generation.completed", Phase:"validation", Message:"Response generated; validating structured output", Provider:name, Model:model, Percent:62})
 	parsed, parseErr := engine.ParseChatResponse(ctx, raw.String())
-	if parseErr != nil { s.emitEvent(StudioEvent{RequestID:requestID, Type:"validation.failed", Phase:"validation", Message:parseErr.Error(), Provider:name, Model:model}); return ChatResponse{}, fmt.Errorf("complete assistant response could not be validated: %w", parseErr) }
+	if parseErr != nil { s.emitEvent(StudioEvent{RequestID:requestID, Type:"validation.failed", Phase:"validation", Message:parseErr.Error(), Provider:name, Model:model}); return ChatResponse{}, chatDiagnosticError(fmt.Errorf("complete assistant response could not be validated: %w", parseErr), raw.String(), s.App.Config) }
 	content := raw.String()
 	if parsed.Response != "" { content = parsed.Response } else if parsed.Message != "" { content = parsed.Message } else if parsed.Explanation != "" { content = parsed.Explanation }
 	s.emitEvent(StudioEvent{RequestID:requestID, Type:"validation.completed", Phase:"validation", Message:"Structured response validated", Provider:name, Model:model, Percent:72})
@@ -296,6 +296,15 @@ func (s *Service) Chat(ctx context.Context, req ChatRequest) (ChatResponse, erro
 	s.emitEvent(StudioEvent{RequestID:requestID, Type:"session.completed", Phase:"complete", Message:"Request completed", Provider:result.Provider, Model:result.Model, PromptTokens:result.PromptTokens, CompletionTokens:result.CompletionTokens, TotalTokens:result.TotalTokens, UsageEstimated:result.UsageEstimated, CostUSD:usage.CostUSD, Percent:100})
 	return result, nil
 }
+func chatDiagnosticError(err error, raw string, cfg config.Config) error {
+	if err == nil || !cfg.DebugMode { return err }
+	for _, p := range cfg.Providers {
+		if key := strings.TrimSpace(p.APIKey); key != "" { raw = strings.ReplaceAll(raw, key, "[REDACTED_API_KEY]") }
+	}
+	if strings.TrimSpace(raw) == "" { return fmt.Errorf("%w\\nDEBUG MODE: no raw AI response was received", err) }
+	return fmt.Errorf("%w\\n\\nDEBUG MODE - RAW AI RESPONSE:\\n%s", err, raw)
+}
+
 func (s *Service) RefreshMemory() error {
 	if s == nil || s.App == nil || s.App.Store == nil {
 		return errors.New("workspace not initialized")
