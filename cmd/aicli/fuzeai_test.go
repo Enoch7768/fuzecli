@@ -94,8 +94,8 @@ func TestConnectFuzeAIRemoteEndpoint(t *testing.T) {
 	if got.DefaultProvider != "llamacpp" {
 		t.Fatalf("default provider = %q, want llamacpp", got.DefaultProvider)
 	}
-	if got.Providers["llamacpp"].BaseURL != "https://demo.trycloudflare.com" {
-		t.Fatalf("base URL = %q, want remote endpoint", got.Providers["llamacpp"].BaseURL)
+	if got.Providers["llamacpp"].BaseURL != "https://demo.trycloudflare.com/v1" {
+		t.Fatalf("base URL = %q, want remote /v1 endpoint", got.Providers["llamacpp"].BaseURL)
 	}
 	if got.Providers["llamacpp"].DefaultModel != fuzeAIModel {
 		t.Fatalf("model = %q, want %q", got.Providers["llamacpp"].DefaultModel, fuzeAIModel)
