@@ -78,6 +78,8 @@ func run(args []string) error {
 		return doctorCommand()
 	case "debug":
 		return debugCommand()
+	case "dgmode":
+		return debugModeCommand(args[1:])
 	case "snapshot":
 		return snapshotCommand()
 	case "restore":
@@ -334,6 +336,21 @@ func chatCommand(args []string) error {
 	}
 	a.SetSafeMode(safe)
 	return a.TerminalChat(context.Background(), yes)
+}
+
+func debugModeCommand(args []string) error {
+	if len(args) != 1 || (args[0] != "on" && args[0] != "off") {
+		return fmt.Errorf("usage: aicli dgmode on|off")
+	}
+	if err := config.Set("debug_mode", args[0]); err != nil {
+		return fmt.Errorf("set debug mode: %w", err)
+	}
+	if args[0] == "on" {
+		fmt.Println("Debug mode enabled. Chat failures will include the underlying error and raw AI response when available.")
+	} else {
+		fmt.Println("Debug mode disabled.")
+	}
+	return nil
 }
 
 func debugCommand() error {
@@ -879,7 +896,7 @@ Getting started:
   aicli ask "prompt"                 Run a one-shot AI request (--safe for destructive-change blocking)
 
 Developer tools:
-  aicli debug                        Safe diagnostic report for troubleshooting
+  aicli debug                        Safe diagnostic report for troubleshooting\n  aicli dgmode on|off                Show/hide raw AI responses and detailed chat errors
   aicli doctor                       Check provider and workspace health
   aicli status                       Inspect Git/workspace status
   aicli diff                         Inspect current changes
