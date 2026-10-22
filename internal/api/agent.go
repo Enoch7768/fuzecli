@@ -84,12 +84,12 @@ func (s *Server) agentRun(w http.ResponseWriter, r *http.Request) {
 		if required&&!approved[def.Name]{pendingApprovals=append(pendingApprovals,def.Name);return fmt.Errorf("explicit user approval required for %s; retry with that exact tool name in approved_tools after confirming the action",def.Name)}
 		return nil
 	})
+	if len(pendingApprovals)>0||len(pendingDeletions)>0 {
+		writeJSON(w,http.StatusOK,agentRunResponse{Content:"This task needs your approval before FuzeCLI can continue.",Steps:result.Steps,ToolCalls:result.ToolCalls,Provider:providerName,Model:model,PendingApprovals:uniqueStrings(pendingApprovals),PendingDeletions:uniqueStrings(pendingDeletions)})
+		return
+	}
 	if err!=nil{
 		status:=http.StatusBadGateway;if errors.Is(err,context.Canceled)||errors.Is(err,context.DeadlineExceeded){status=http.StatusRequestTimeout}
-		if len(pendingApprovals)>0||len(pendingDeletions)>0 {
-			writeJSON(w,http.StatusOK,agentRunResponse{Content:"This task needs your approval before FuzeCLI can continue.",Steps:result.Steps,ToolCalls:result.ToolCalls,Provider:providerName,Model:model,PendingApprovals:uniqueStrings(pendingApprovals),PendingDeletions:uniqueStrings(pendingDeletions)})
-			return
-		}
 		s.service.emitEvent(StudioEvent{RequestID:requestID,Type:"generation.failed",Phase:"agent",Message:err.Error(),Provider:providerName,Model:model})
 		writeJSON(w,status,map[string]any{"error":err.Error(),"steps":result.Steps,"tool_calls":result.ToolCalls});return
 	}
@@ -138,6 +138,6 @@ func toolDeletionPaths(name string, raw json.RawMessage) []string {
 }
 
 func canonicalWorkspacePath(value string) string {
-	value = strings.ReplaceAll(strings.TrimSpace(value), "\\\\", "/")
+	value = strings.ReplaceAll(strings.TrimSpace(value), "\\", "/")
 	return path.Clean(value)
 }
