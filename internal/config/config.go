@@ -25,6 +25,7 @@ type Config struct {
 	FallbackOrder   []string                  `yaml:"fallback_order"`
 	Verification    VerificationConfig        `yaml:"verification"`
 	GitHub          GitHubConfig              `yaml:"github"`
+	DebugMode       bool                       `yaml:"debug_mode,omitempty"`
 }
 
 type VerificationConfig struct {
@@ -162,6 +163,11 @@ func Set(key, value string) error {
 			return fmt.Errorf("unsupported config field %q", field)
 		}
 		c.Providers[name] = p
+	case key == "debug_mode":
+		if value != "on" && value != "off" && value != "true" && value != "false" {
+			return fmt.Errorf("debug_mode must be on or off")
+		}
+		c.DebugMode = value == "on" || value == "true"
 	case key == "verification.self_correction_attempts":
 		n, err := strconv.Atoi(value)
 		if err != nil || n < 0 {
@@ -331,6 +337,8 @@ func parseYAML(text string, c *Config) error {
 				section, current = "", ""
 			case trimmed == "verification:":
 				section, current = "verification", ""
+			case strings.HasPrefix(trimmed, "debug_mode:"):
+				c.DebugMode = strings.EqualFold(unquote(strings.TrimSpace(strings.TrimPrefix(trimmed, "debug_mode:"))), "true")
 			case trimmed == "github:":
 				section, current = "github", ""
 			default:
