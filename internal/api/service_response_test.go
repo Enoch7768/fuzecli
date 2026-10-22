@@ -1,7 +1,8 @@
 package api
 
 import (
-	"testing"\n\t"strings"
+	"strings"
+	"testing"
 
 	"github.com/Enoch7768/fuzecli/internal/generation"
 )
