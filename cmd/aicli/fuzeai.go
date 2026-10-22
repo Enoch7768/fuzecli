@@ -27,6 +27,11 @@ func fuzeAICommand(args []string) error {
 	}
 
 	switch args[0] {
+	case "install":
+		if len(args) != 1 {
+			return fmt.Errorf("usage: aicli fuzeai install")
+		}
+		return installFuzeAIRuntime()
 	case "setup", "use":
 		if len(args) != 1 {
 			return fmt.Errorf("usage: aicli fuzeai %s", args[0])
@@ -42,6 +47,36 @@ func fuzeAICommand(args []string) error {
 	default:
 		return fmt.Errorf("unknown FuzeAI command %q; run 'aicli fuzeai help'", args[0])
 	}
+}
+
+func installFuzeAIRuntime() error {
+	if _, err := exec.LookPath("llama-server"); err == nil {
+		fmt.Println("llama-server is already installed.")
+		return nil
+	}
+	var command string
+	var args []string
+	switch runtime.GOOS {
+	case "windows":
+		command = "winget"
+		args = []string{"install", "llama.cpp"}
+	case "darwin", "linux":
+		command = "brew"
+		args = []string{"install", "llama.cpp"}
+	default:
+		return fmt.Errorf("automatic llama.cpp installation is not supported on %s; see https://github.com/ggml-org/llama.cpp/releases", runtime.GOOS)
+	}
+	if _, err := exec.LookPath(command); err != nil {
+		return fmt.Errorf("%s is required to install llama.cpp; install it first or use https://github.com/ggml-org/llama.cpp/releases", command)
+	}
+	fmt.Printf("Installing llama.cpp with %s %s\\n", command, strings.Join(args, " "))
+	cmd := exec.Command(command, args...)
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("llama.cpp installation failed: %w", err)
+	}
+	fmt.Println("Installation command completed. Open a new terminal so PATH updates are loaded, then run 'aicli fuzeai start'.")
+	return nil
 }
 
 func configureFuzeAI() error {
@@ -224,7 +259,7 @@ func printFuzeAIUsage() {
 	fmt.Println(`FuzeAI - the local coding model integrated with FuzeCLI
 
 Usage:
-  aicli fuzeai setup                 Make FuzeAI the default FuzeCLI model
+  aicli fuzeai install               Install the llama.cpp runtime using your package manager\n  aicli fuzeai setup                 Make FuzeAI the default FuzeCLI model
   aicli fuzeai start [options]       Download/cache the GGUF and run the local server
   aicli fuzeai run [options]         Alias for start
   aicli fuzeai status                Check whether the local model server responds
