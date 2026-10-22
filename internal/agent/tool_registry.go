@@ -157,6 +157,10 @@ func (r *ToolRegistry) Execute(
 		return result
 	}
 
+	// Carry a request-scoped grant to the handler only after the authorization
+	// callback has explicitly approved this exact tool call and argument payload.
+	ctx = context.WithValue(ctx, toolApprovalContextKey{}, toolApprovalGrant{Name: call.Name, Arguments: string(call.Arguments)})
+
 	value, err := tool.handler(ctx, append(json.RawMessage(nil), call.Arguments...))
 	if err != nil {
 		result.Error = err.Error()
@@ -205,6 +209,18 @@ func toolRequiresApproval(name string, raw json.RawMessage) (bool, string) {
 		return action == "login_start" || action == "disconnect", "changing GitHub authentication state"
 	}
 	return false, ""
+}
+
+type toolApprovalContextKey struct{}
+
+type toolApprovalGrant struct {
+	Name string
+	Arguments string
+}
+
+func hasToolApproval(ctx context.Context, name string, raw json.RawMessage) bool {
+	grant, ok := ctx.Value(toolApprovalContextKey{}).(toolApprovalGrant)
+	return ok && grant.Name == name && grant.Arguments == string(raw)
 }
 
 func RequiresToolApproval(name string, raw json.RawMessage) (bool, string) {
