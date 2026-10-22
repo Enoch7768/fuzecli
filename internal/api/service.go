@@ -106,6 +106,29 @@ func NewService(a *app.App) *Service {
 	return &Service{App: a, eventSubscribers: make(map[*studioSubscriber]struct{})}
 }
 
+func chatSystemPrompt(apply bool) string {
+	system := generation.SessionSystemPrompt() + "\n\nYou are FuzeCLI, a practical coding assistant. Use the actual workspace context when available, keep answers direct and clear, and never ask the user to provide source files that FuzeCLI already supplied."
+	if apply {
+		return system + "\n\nSTRUCTURED RESPONSE CONTRACT: This request may change workspace files. Return one JSON object only, using type=chat for explanation or type=edit with files containing path, action, and complete content for file changes. Never truncate file content. Do not include shell commands for automatic execution."
+	}
+	return system + "\n\nRESPONSE CONTRACT: This is a conversation or analysis-only request. Answer naturally in ordinary text; do not wrap the answer in JSON or follow a JSON schema. Do not modify files or return a structured edit plan."
+}
+
+func chatRequestOptions(model, billingMode, requestID string, structured bool) provider.RequestOptions {
+	options := provider.RequestOptions{
+		Model: model,
+		Temperature: 0.3,
+		MaxTokens: 32768,
+		BillingMode: billingMode,
+		RequestID: requestID,
+	}
+	if structured {
+		options.JSONMode = true
+		options.JSONSchema = generation.ChatResponseSchema()
+	}
+	return options
+}
+
 func (s *Service) Chat(ctx context.Context, req ChatRequest) (ChatResponse, error) {
 	if s == nil || s.App == nil || s.App.Store == nil { return ChatResponse{}, errors.New("workspace not initialized") }
 	if strings.TrimSpace(req.Prompt) == "" { return ChatResponse{}, errors.New("prompt is required") }
@@ -118,7 +141,7 @@ func (s *Service) Chat(ctx context.Context, req ChatRequest) (ChatResponse, erro
 	history, err := s.App.Store.History(400); if err != nil { return ChatResponse{}, err }
 	workspaceContext, err := s.App.Store.WorkspaceContext(); if err != nil { return ChatResponse{}, err }
 	attachments, err := s.ReadAttachments(req.Files); if err != nil { return ChatResponse{}, err }
-	system := generation.SessionSystemPrompt() + "\n\nSTRUCTURED RESPONSE CONTRACT: Return one JSON object for every request. For conversation use type=chat with response (or compatible message/content/text). For workspace changes use type=edit with plan.files containing path, action, and complete content; include explanation when useful. Never truncate file content. The parser accepts compatible field aliases, but prefer the canonical contract.\n\nYou are FuzeCLI, a practical coding assistant. Use the session response contract above for every response and never ask the user to provide source files that FuzeCLI already supplied."
+	system := chatSystemPrompt(req.Apply)
 	if workspaceContext != "" { system += "\nRelevant workspace files read from disk:\n" + workspaceContext }
 	if s.App.Platform != nil {
 		rules, ruleErr := platform.LoadRules(s.App.Store.Root)
@@ -137,7 +160,7 @@ func (s *Service) Chat(ctx context.Context, req ChatRequest) (ChatResponse, erro
 	msgs := engine.MessagesWithSystem(system, s.App.Profile.Condensed(), history, req.Prompt)
 	if err := s.App.Store.AddMessage(provider.Message{Role:"user", Content:req.Prompt}); err != nil { return ChatResponse{}, err }
 	s.emitEvent(StudioEvent{RequestID:requestID, Type:"generation.started", Phase:"generation", Message:"Generating response", Provider:name, Model:model, Percent:15})
-	stream, streamErr := s.App.Registry.Stream(ctx, name, msgs, provider.RequestOptions{Model:model, Temperature:0.3, MaxTokens:32768, JSONMode:true, JSONSchema:generation.ChatResponseSchema(), BillingMode:req.BillingMode, RequestID:requestID})
+	stream, streamErr := s.App.Registry.Stream(ctx, name, msgs, chatRequestOptions(model, req.BillingMode, requestID, req.Apply))
 	var raw strings.Builder
 	var usage provider.Usage
 	if streamErr == nil {
@@ -161,7 +184,7 @@ func (s *Service) Chat(ctx context.Context, req ChatRequest) (ChatResponse, erro
 		}
 	} else {
 		s.emitEvent(StudioEvent{RequestID:requestID, Type:"generation.streaming_unavailable", Phase:"generation", Message:"Provider streaming unavailable; using standard response"})
-		resp, err := s.App.Registry.Send(ctx, name, msgs, provider.RequestOptions{Model:model, Temperature:0.3, MaxTokens:32768, JSONMode:true, JSONSchema:generation.ChatResponseSchema(), BillingMode:req.BillingMode, RequestID:requestID})
+		resp, err := s.App.Registry.Send(ctx, name, msgs, chatRequestOptions(model, req.BillingMode, requestID, req.Apply))
 		if err != nil { s.emitEvent(StudioEvent{RequestID:requestID, Type:"generation.failed", Phase:"generation", Message:err.Error(), Provider:name, Model:model}); return ChatResponse{}, err }
 		raw.WriteString(resp.Content)
 		usage = resp.Usage
@@ -224,7 +247,7 @@ func (s *Service) Chat(ctx context.Context, req ChatRequest) (ChatResponse, erro
 				provider.Message{Role:"assistant", Content:raw.String()},
 				provider.Message{Role:"user", Content:correction},
 			)
-			repaired, repairErr := s.App.Registry.Send(ctx, name, repairMessages, provider.RequestOptions{Model:model, Temperature:0, MaxTokens:32768, JSONMode:true, JSONSchema:generation.ChatResponseSchema(), BillingMode:req.BillingMode, RequestID:requestID})
+			repaired, repairErr := s.App.Registry.Send(ctx, name, repairMessages, chatRequestOptions(model, req.BillingMode, requestID, true))
 			if repairErr != nil {
 				s.emitEvent(StudioEvent{RequestID:requestID, Type:"repair.failed", Phase:"repair", Message:repairErr.Error()})
 				return ChatResponse{}, fmt.Errorf("repair attempt %d/%d failed: %w; verification diagnostics: %s", attempt+1, repairBudget, repairErr, diagnostic)
