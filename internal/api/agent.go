@@ -33,6 +33,7 @@ type agentRunResponse struct {
 	Model string `json:"model"`
 	WrittenFiles []string `json:"written_files,omitempty"`
 	Applied bool `json:"applied"`
+	PendingApprovals []string `json:"pending_approvals,omitempty"`
 }
 
 func (s *Server) agentRun(w http.ResponseWriter, r *http.Request) {
@@ -50,6 +51,7 @@ func (s *Server) agentRun(w http.ResponseWriter, r *http.Request) {
 	if len(req.Files)>50||len(req.ApprovedTools)>20 {writeError(w,http.StatusBadRequest,"too many files or approved tools");return}
 	allowedApprovalNames:=map[string]bool{"workspace.apply_edits":true,"terminal.run":true,"git.commit":true,"github.branches":true,"github.sync":true,"github.pull_requests":true,"github.issues":true,"github.actions":true,"github.auth":true}
 	approved:=map[string]bool{}
+	pendingApprovals:=[]string{}
 	for _,name:=range req.ApprovedTools {if !allowedApprovalNames[name]{writeError(w,http.StatusBadRequest,"approved_tools contains an unsupported tool name");return};approved[name]=true}
 	providerName,model,err:=a.ProviderAndModel(req.Provider,req.Model)
 	if err!=nil {writeError(w,http.StatusBadRequest,err.Error());return}
@@ -68,11 +70,15 @@ func (s *Server) agentRun(w http.ResponseWriter, r *http.Request) {
 	runner:=agent.Runner{Sender:a.Registry,Tools:a.AgentTools}
 	result,err:=runner.Run(r.Context(),providerName,messages,provider.RequestOptions{Model:model,Temperature:0.2,MaxTokens:16000,BillingMode:req.BillingMode,RequestID:requestID},func(ctx context.Context,def agent.ToolDefinition,raw json.RawMessage)error{
 		required,_:=agent.RequiresToolApproval(def.Name,raw)
-		if required&&!approved[def.Name]{return fmt.Errorf("explicit user approval required for %s; retry with that exact tool name in approved_tools after confirming the action",def.Name)}
+		if required&&!approved[def.Name]{pendingApprovals=append(pendingApprovals,def.Name);return fmt.Errorf("explicit user approval required for %s; retry with that exact tool name in approved_tools after confirming the action",def.Name)}
 		return nil
 	})
 	if err!=nil{
 		status:=http.StatusBadGateway;if errors.Is(err,context.Canceled)||errors.Is(err,context.DeadlineExceeded){status=http.StatusRequestTimeout}
+		if len(pendingApprovals)>0 {
+			writeJSON(w,http.StatusOK,agentRunResponse{Content:"This task needs your approval before FuzeCLI can continue.",Steps:result.Steps,ToolCalls:result.ToolCalls,Provider:providerName,Model:model,PendingApprovals:uniqueStrings(pendingApprovals)})
+			return
+		}
 		s.service.emitEvent(StudioEvent{RequestID:requestID,Type:"generation.failed",Phase:"agent",Message:err.Error(),Provider:providerName,Model:model})
 		writeJSON(w,status,map[string]any{"error":err.Error(),"steps":result.Steps,"tool_calls":result.ToolCalls});return
 	}
@@ -90,5 +96,11 @@ func (s *Server) agentRun(w http.ResponseWriter, r *http.Request) {
 	_ = a.Store.AddMessage(provider.Message{Role:"user",Content:req.Prompt})
 	_ = a.Store.AddMessage(provider.Message{Role:"assistant",Content:result.Response})
 	s.service.emitEvent(StudioEvent{RequestID:requestID,Type:"generation.completed",Phase:"complete",Message:"Agent finished",Provider:providerName,Model:model,Percent:100})
-	writeJSON(w,http.StatusOK,agentRunResponse{Content:result.Response,Steps:result.Steps,ToolCalls:result.ToolCalls,Provider:providerName,Model:model,WrittenFiles:written,Applied:len(written)>0})
+	writeJSON(w,http.StatusOK,agentRunResponse{Content:result.Response,Steps:result.Steps,ToolCalls:result.ToolCalls,Provider:providerName,Model:model,WrittenFiles:written,Applied:len(written)>0,PendingApprovals:uniqueStrings(pendingApprovals)})
+}
+
+func uniqueStrings(values []string) []string {
+	seen:=map[string]bool{};out:=make([]string,0,len(values))
+	for _,value:=range values{if !seen[value]{seen[value]=true;out=append(out,value)}}
+	return out
 }
