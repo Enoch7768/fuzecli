@@ -131,7 +131,7 @@ function setProgress(percent,label){$("#generationProgress").hidden=false;$("#pr
 function finishProgress(){setProgress(100,"Complete");setTimeout(()=>$("#generationProgress").hidden=true,800)}
 function requestsWorkspaceChanges(p){
   const s=String(p||"").trim().toLowerCase();
-  const action="(?:fix|change|edit|update|implement|apply|build|create|add|remove|delete|refactor|rewrite|replace|modify|write|generate|convert|migrate|upgrade|downgrade|rename|move)";
+  const action="(?:fix|change|edit|update|implement|apply|build|make|create|add|remove|delete|refactor|rewrite|replace|modify|write|generate|convert|migrate|upgrade|downgrade|rename|move|improve|polish|optimize|clean up|set up|configure)";
   if(/^(?:how|what|why|when|where|who|which|explain|describe|tell me|show me how|help me understand|can you explain|could you explain)\b/.test(s))return false;
   return new RegExp("^(?:(?:please|can you|could you|would you|will you|i want you to|i need you to|let'?s|go ahead and|help me)\\s+)*(?:"+action+")\\b","i").test(s)
     ||new RegExp("\\b(?:can|could|would) you\\s+(?:please\\s+)?(?:help me\\s+)?(?:"+action+")\\b","i").test(s)
