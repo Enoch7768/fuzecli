@@ -380,15 +380,15 @@ func (a *App) terminalStream(ctx context.Context, prompt, providerName, model, b
 	if IsFuzeAIModel(name, mdl) {
 		var extra strings.Builder
 		for path, content := range attachments {
-			fmt.Fprintf(&extra, "\\n--- %s ---\\n%s\\n--- end %s ---\\n", path, content, path)
+			fmt.Fprintf(&extra, "\n--- %s ---\n%s\n--- end %s ---\n", path, content, path)
 		}
-		fmt.Printf("\\n%sYou%s\\n%s\\n\\n%sFuzeAI%s\\n", uiBold, uiReset, prompt, uiAccent, uiReset)
+		fmt.Printf("\n%sYou%s\n%s\n\n%sFuzeAI%s\n", uiBold, uiReset, prompt, uiAccent, uiReset)
 		result, runErr := a.RunAgent(ctx, prompt, name, mdl, extra.String(), TerminalAgentAuthorizer(scanner, a.SafeMode))
 		if runErr != nil {
 			return runErr
 		}
-		fmt.Printf("%s%s%s\\n", uiBold, result.Response, uiReset)
-		fmt.Printf("\\x1b[38;5;244mFuzeCLI agent: %d step(s), %d tool call(s).\\x1b[0m\\n", result.Steps, result.ToolCalls)
+		fmt.Printf("%s%s%s\n", uiBold, result.Response, uiReset)
+		fmt.Printf("\x1b[38;5;244mFuzeCLI agent: %d step(s), %d tool call(s).\x1b[0m\n", result.Steps, result.ToolCalls)
 		return nil
 	}
 	history, err = a.compactHistory(ctx, name, mdl, history)
