@@ -296,6 +296,7 @@ func renderYAML(c Config) string {
 	}
 	fmt.Fprintf(&b, "fallback_order: [%s]\n", strings.Join(order, ", "))
 	fmt.Fprintf(&b, "verification:\n  self_correction_attempts: %d\n", c.Verification.SelfCorrectionAttempts)
+	fmt.Fprintf(&b, "debug_mode: %t\\n", c.DebugMode)
 	if c.GitHub.Token != "" || c.GitHub.TokenConfigured {
 		b.WriteString("github:\n")
 		if c.GitHub.Token != "" {
