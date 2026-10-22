@@ -44,3 +44,19 @@ func TestFuzeCLIToolRegistryRejectsTraversalAndInternalPaths(t *testing.T) {
 		if got.Status!=ToolResultError{t.Errorf("protected path %q was not rejected: %#v",path,got)}
 	}
 }
+
+
+func TestDeleteRequiresExactAuthorizedToolCall(t *testing.T) {
+	root := t.TempDir()
+	target := filepath.Join(root, "dist.txt")
+	if err := os.WriteFile(target, []byte("generated output"), 0600); err != nil { t.Fatal(err) }
+	registry, err := NewFuzeCLIToolRegistry(ToolRuntime{Root: root})
+	if err != nil { t.Fatal(err) }
+	call := ToolCall{ID: "delete-1", Name: "workspace.apply_edits", Arguments: json.RawMessage(`{"files":[{"path":"dist.txt","action":"delete"}],"verify":false}`)}
+	denied := registry.Execute(context.Background(), call, nil)
+	if denied.Status != ToolResultError { t.Fatalf("delete without approval unexpectedly succeeded: %#v", denied) }
+	if _, err := os.Stat(target); err != nil { t.Fatalf("file was removed without approval: %v", err) }
+	approved := registry.Execute(context.Background(), call, func(context.Context, ToolDefinition, json.RawMessage) error { return nil })
+	if approved.Status != ToolResultSuccess { t.Fatalf("approved delete failed: %s", approved.Error) }
+	if _, err := os.Stat(target); !os.IsNotExist(err) { t.Fatalf("approved delete did not remove file, stat err=%v", err) }
+}
