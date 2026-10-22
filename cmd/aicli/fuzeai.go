@@ -203,6 +203,9 @@ func connectFuzeAI(rawURL string) error {
 		return fmt.Errorf("endpoint must be a clean HTTPS URL, for example https://your-name.trycloudflare.com")
 	}
 	endpoint := strings.TrimRight(parsed.String(), "/")
+	if strings.HasSuffix(endpoint, "/v1") {
+		endpoint = strings.TrimSuffix(endpoint, "/v1")
+	}
 	if !isPublicHTTPSHost(parsed.Hostname()) {
 		return fmt.Errorf("endpoint must use a public HTTPS hostname")
 	}
@@ -214,14 +217,14 @@ func connectFuzeAI(rawURL string) error {
 	if local.DefaultModel == "" || local.DefaultModel == "local" {
 		local.DefaultModel = fuzeAIModel
 	}
-	local.BaseURL = endpoint
+	local.BaseURL = endpoint + "/v1"
 	cfg.Providers["llamacpp"] = local
 	cfg.DefaultProvider = "llamacpp"
 	if err := config.Save(cfg); err != nil {
 		return err
 	}
 	fmt.Println("FuzeAI remote endpoint configured.")
-	fmt.Printf("  Model:    %s\n  Endpoint: %s/v1\n", local.DefaultModel, endpoint)
+	fmt.Printf("  Model:    %s\n  Endpoint: %s\n", local.DefaultModel, local.BaseURL)
 	fmt.Println("Run 'aicli fuzeai status' to test it, then 'aicli chat' in your project.")
 	fmt.Println("No model API key is configured. Keep this tunnel URL private: anyone who obtains it may use the model.")
 	return nil
@@ -294,7 +297,11 @@ func fuzeAIStatus() error {
 	}
 	fmt.Println("FuzeAI integration")
 	fmt.Printf("  Model:           %s\n", local.DefaultModel)
-	fmt.Printf("  Endpoint:        %s/v1\n", endpoint)
+	displayEndpoint := endpoint
+	if !strings.HasSuffix(displayEndpoint, "/v1") {
+		displayEndpoint += "/v1"
+	}
+	fmt.Printf("  Endpoint:        %s\n", displayEndpoint)
 	fmt.Printf("  Default provider: %s\n", cfg.DefaultProvider)
 
 	var running bool
