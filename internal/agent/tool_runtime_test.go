@@ -35,10 +35,12 @@ func TestFuzeCLIToolRegistryRequiresApprovalForMutations(t *testing.T) {
 	if string(data)!="safe"{t.Fatalf("unexpected written content %q",data)}
 }
 
-func TestFuzeCLIToolRegistryRejectsWorkspaceTraversal(t *testing.T) {
+func TestFuzeCLIToolRegistryRejectsTraversalAndInternalPaths(t *testing.T) {
 	root:=t.TempDir()
 	registry,err:=NewFuzeCLIToolRegistry(ToolRuntime{Root:root});if err!=nil{t.Fatal(err)}
-	call:=ToolCall{ID:"read-bad",Name:"workspace.read_file",Arguments:json.RawMessage(`{"path":"../outside.txt"}`)}
-	got:=registry.Execute(context.Background(),call,nil)
-	if got.Status!=ToolResultError{t.Fatalf("traversal was not rejected: %#v",got)}
+	for _,path:=range []string{"../outside.txt",".aicli/session.db",".git/config"} {
+		call:=ToolCall{ID:"read-bad",Name:"workspace.read_file",Arguments:json.RawMessage(`{"path":`+jsonString(path)+`}`)}
+		got:=registry.Execute(context.Background(),call,nil)
+		if got.Status!=ToolResultError{t.Errorf("protected path %q was not rejected: %#v",path,got)}
+	}
 }

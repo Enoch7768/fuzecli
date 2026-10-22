@@ -127,7 +127,7 @@ func validateToolAction(name string, args map[string]any) error {
 	case "github.pull_requests":
 		switch args["action"] { case "create": return require("title","head","base"); case "review": if err:=require("number","event");err!=nil{return err};case "comment": if err:=require("number","body");err!=nil{return err};case "merge": if err:=require("number","merge_method");err!=nil{return err};case "list": if state,ok:=args["state"];ok && state!="open" && state!="closed" && state!="all" { return fmt.Errorf("%s.state is invalid",name) } }
 	case "github.issues":
-		switch args["action"] { case "create": return require("title","body"); case "update": if err:=require("number");err!=nil{return err};if _,ok:=args["title"];!ok { if _,ok=args["body"];!ok { if _,ok=args["state"];!ok { if _,ok=args["labels"];!ok { if _,ok=args["assignees"];!ok { return fmt.Errorf("%s.update needs at least one field to change",name) } } } } };case "comment": return require("number","body") }
+		switch args["action"] { case "create": return require("title","body"); case "update": if err:=require("number");err!=nil{return err};if state,ok:=args["state"];ok&&state!="open"&&state!="closed"{return fmt.Errorf("%s.state must be open or closed for update",name)};if _,ok:=args["title"];!ok { if _,ok=args["body"];!ok { if _,ok=args["state"];!ok { if _,ok=args["labels"];!ok { if _,ok=args["assignees"];!ok { return fmt.Errorf("%s.update needs at least one field to change",name) } } } } };case "comment": return require("number","body") }
 	case "github.actions":
 		switch args["action"] { case "list_jobs","rerun_failed": return require("run_id"); case "job_logs": return require("job_id") }
 	}

@@ -200,7 +200,7 @@ func (rt ToolRuntime) verifyRun(ctx context.Context,a map[string]any)(any,error)
 		if err!=nil{entry["diagnostic"]=err.Error();results=append(results,entry);continue}
 		if _,e:=exec.LookPath(exe);e!=nil{entry["diagnostic"]=exe+" is not installed";results=append(results,entry);continue}
 		decision:=security.Authorize(security.Command{Name:exe,Args:args});if !decision.Allowed{entry["diagnostic"]="blocked by security policy: "+decision.Reason;results=append(results,entry);continue}
-		cctx,cancel:=context.WithTimeout(ctx,timeout);start:=time.Now();cmd:=exec.CommandContext(cctx,exe,args...);cmd.Dir=rt.Root;var out limitedBuffer;out.limit=256<<10;cmd.Stdout=&out;cmd.Stderr=&out;runErr:=cmd.Run();cancel();entry["duration_ms"]=time.Since(start).Milliseconds();entry["exit_code"]=0;entry["status"]="passed";if runErr!=nil{entry["status"]="failed";var ee *exec.ExitError;if errors.As(runErr,&ee){entry["exit_code"]=ee.ExitCode()}else{entry["exit_code"]=-1};entry["diagnostic"]=out.String()}else{entry["diagnostic"]=out.String()};results=append(results,entry)
+		cctx,cancel:=context.WithTimeout(ctx,timeout);start:=time.Now();cmd:=exec.CommandContext(cctx,exe,args...);cmd.Dir=rt.Root;var out limitedBuffer;out.limit=256<<10;cmd.Stdout=&out;cmd.Stderr=&out;runErr:=cmd.Run();cancel();entry["duration_ms"]=time.Since(start).Milliseconds();entry["exit_code"]=0;entry["status"]="passed";if runErr!=nil{entry["status"]="failed";var ee *exec.ExitError;if errors.As(runErr,&ee){entry["exit_code"]=ee.ExitCode()}else{entry["exit_code"]=-1};entry["diagnostic"]=out.String()}else if check=="format"&&exe=="gofmt"&&strings.TrimSpace(out.String())!=""{entry["status"]="failed";entry["exit_code"]=1;entry["diagnostic"]=out.String()}else{entry["diagnostic"]=out.String()};results=append(results,entry)
 	}
 	return map[string]any{"checks":results,"all_passed":allPassed(results),"count":len(results)},nil
 }
@@ -233,8 +233,12 @@ func allPassed(results []map[string]any)bool{if len(results)==0{return false};fo
 
 func (rt ToolRuntime) gitStatus(a map[string]any)(any,error){s,e:=gitlocal.StatusOf(rt.Root);if e!=nil{return nil,e};if !boolArg(a,"include_untracked",true){filtered:=s.Files[:0];for _,f:=range s.Files{if f.Index!='?'&&f.Worktree!='?'{filtered=append(filtered,f)}};s.Files=filtered;s.Clean=len(filtered)==0};return s,nil}
 func (rt ToolRuntime) gitDiff(a map[string]any)(any,error){
-	if p:=stringArg(a,"path");p!=""{if _,e:=rt.resolve(p,false);e!=nil{return nil,e}}
-	staged:=boolArg(a,"staged",false);diff,e:=gitlocal.Diff(rt.Root,staged);if e!=nil{return nil,e};if p:=stringArg(a,"path");p!=""{args:=diffArgs(staged,p);diff,e=runGitOutput(ctxOrBackground(),rt.Root,args...);if e!=nil{return nil,e}}
+	path:=stringArg(a,"path")
+	if path!=""{if _,e:=rt.resolve(path,false);e!=nil{return nil,e}}
+	args:=[]string{"diff","-U"+strconv.Itoa(intArg(a,"context_lines",3))}
+	if boolArg(a,"staged",false){args=append(args,"--cached")}
+	if path!=""{args=append(args,"--",path)}else{args=append(args,"--")}
+	diff,e:=runGitOutput(context.Background(),rt.Root,args...);if e!=nil{return nil,e}
 	return map[string]any{"diff":truncate(diff,256<<10),"truncated":len(diff)>256<<10},nil
 }
 func ctxOrBackground()context.Context{return context.Background()}
@@ -329,7 +333,13 @@ func (rt ToolRuntime) githubActions(ctx context.Context,a map[string]any,raw jso
 func (rt ToolRuntime) contextGet(a map[string]any)(any,error){
 	scope:=stringArg(a,"scope");limit:=intArg(a,"max_items",10);query:=strings.ToLower(stringArg(a,"query"))
 	switch scope{
-	case "task":return map[string]any{"scope":scope,"available":false,"message":"No active task checkpoint is loaded."},nil
+	case "task":
+		if query==""{return map[string]any{"scope":scope,"available":false,"message":"Supply a task_id in query to retrieve a saved checkpoint."},nil}
+		if strings.ContainsAny(query,"/\\")||query=="."||query==".."{return nil,errors.New("task query must be a simple checkpoint identifier")}
+		path:=filepath.Join(rt.Root,".aicli","checkpoints",query+".json");data,err:=os.ReadFile(path)
+		if os.IsNotExist(err){return map[string]any{"scope":scope,"available":false,"message":"No saved checkpoint exists for that task_id."},nil};if err!=nil{return nil,err}
+		var checkpoint map[string]any;if err=json.Unmarshal(data,&checkpoint);err!=nil{return nil,fmt.Errorf("checkpoint is invalid: %w",err)}
+		return map[string]any{"scope":scope,"available":true,"checkpoint":checkpoint},nil
 	case "project":if rt.Index==nil{return map[string]any{"scope":scope,"available":false,"message":"Repository index unavailable."},nil};return map[string]any{"scope":scope,"available":true,"root":rt.Root,"files":rt.Index.Relevant(query,limit),"summary":rt.Index.Summary()},nil
 	case "recent_history":if rt.Store==nil{return nil,errors.New("workspace history store unavailable")};h,e:=rt.Store.History(200);if e!=nil{return nil,e};out:=[]map[string]string{};for i:=len(h)-1;i>=0&&len(out)<limit;i--{if query==""||strings.Contains(strings.ToLower(h[i].Content),query){out=append(out,map[string]string{"role":h[i].Role,"content":truncate(h[i].Content,2000)})}};return map[string]any{"scope":scope,"available":true,"messages":out},nil
 	default:return nil,errors.New("unsupported context scope")
@@ -338,7 +348,9 @@ func (rt ToolRuntime) contextGet(a map[string]any)(any,error){
 func (rt ToolRuntime) checkpoint(a map[string]any)(any,error){
 	id:=stringArg(a,"task_id");if strings.ContainsAny(id,"/\\")||id=="."||id==".."{return nil,errors.New("task_id must be a simple identifier")}
 	dir:=filepath.Join(rt.Root,".aicli","checkpoints");if e:=os.MkdirAll(dir,0700);e!=nil{return nil,e}
-	data:=map[string]any{"task_id":id,"summary":stringArg(a,"summary"),"completed":a["completed"],"pending":a["pending"],"files_touched":a["files_touched"],"verification":stringArg(a,"verification"),"saved_at":time.Now().UTC()}
+	summary:=stringArg(a,"summary");verification:=stringArg(a,"verification")
+	if containsCredentialLikeText(summary)||containsCredentialLikeText(verification){return nil,errors.New("checkpoint appears to contain credential-like text; remove secrets before saving")}
+	data:=map[string]any{"task_id":id,"summary":summary,"completed":a["completed"],"pending":a["pending"],"files_touched":a["files_touched"],"verification":verification,"saved_at":time.Now().UTC()}
 	b,e:=json.MarshalIndent(data,"","  ");if e!=nil{return nil,e};target:=filepath.Join(dir,id+".json");tmp:=target+".tmp";if e=os.WriteFile(tmp,b,0600);e!=nil{return nil,e};if e=os.Rename(tmp,target);e!=nil{_ = os.Remove(tmp);return nil,e};return map[string]any{"saved":true,"task_id":id,"path":filepath.ToSlash(filepath.Join(".aicli","checkpoints",id+".json"))},nil
 }
 
@@ -348,3 +360,9 @@ func boolArg(a map[string]any,key string,def bool)bool{v,ok:=a[key].(bool);if !o
 func stringArray(v any)[]string{arr,_:=v.([]any);out:=make([]string,0,len(arr));for _,x:=range arr{if s,ok:=x.(string);ok{out=append(out,s)}};return out}
 func truncate(s string,max int)string{if len(s)>max{return s[:max]};return s}
 func jsonString(v any)string{b,_:=json.Marshal(v);return string(b)}
+
+func containsCredentialLikeText(s string) bool {
+	lower:=strings.ToLower(s)
+	for _,marker:=range []string{"ghp_","github_pat_","bearer ","api_key=","api-key=","password=","secret=","private_key"}{if strings.Contains(lower,marker){return true}}
+	return false
+}

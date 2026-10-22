@@ -37,10 +37,10 @@ func Authorize(command Command) Decision {
 			return Decision{Allowed: true, Risk: RiskLow, Reason: "Go formatting inspection is an allowlisted verification command."}
 		}
 	case "npm", "pnpm", "bun":
-		if exact(args, "run", "test") || exact(args, "run", "typecheck") {
+		if exact(args, "run", "test") || exact(args, "run", "typecheck") || exact(args, "run", "build") || exact(args, "run", "lint") || exact(args, "run", "format:check") {
 			return Decision{Allowed: true, Risk: RiskMedium, Reason: "Declared project verification script is allowlisted."}
 		}
-		if name == "npm" && exact(args, "test", "--", "--runInBand") {
+		if name == "npm" && (exact(args, "test") || exact(args, "test", "--", "--runInBand")) {
 			return Decision{Allowed: true, Risk: RiskLow, Reason: "npm test is an allowlisted verification command."}
 		}
 	case "yarn":
