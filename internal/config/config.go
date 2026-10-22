@@ -42,7 +42,7 @@ func Default() Config {
 		"gemini":            {DefaultModel: "gemini-3.8-flash"},
 		"groq":              {DefaultModel: "openai/gpt-oss-20b"},
 		"anthropic":         {DefaultModel: "claude-sonnet-4-6"},
-		"llamacpp":          {BaseURL: "http://localhost:8080", DefaultModel: "local"},
+		"llamacpp":          {BaseURL: "http://localhost:8080", DefaultModel: "r7194714R/fuzeai-qwen-7b-gguf:Q4_K_M"},
 	}
 	for _, name := range provider.CompatibleProviderNames() {
 		if _, ok := providers[name]; !ok {
@@ -93,6 +93,12 @@ func Load() (Config, error) {
 		if err := Save(c); err != nil {
 			return Config{}, err
 		}
+	}
+	if c.Providers["llamacpp"].DefaultModel == "local" && c.Providers["llamacpp"].BaseURL == "http://localhost:8080" {
+		p := c.Providers["llamacpp"]
+		p.DefaultModel = "r7194714R/fuzeai-qwen-7b-gguf:Q4_K_M"
+		c.Providers["llamacpp"] = p
+		if err := Save(c); err != nil { return Config{}, err }
 	}
 	syncProviderConfiguration(c)
 	return c, nil
