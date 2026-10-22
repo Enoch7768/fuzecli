@@ -28,8 +28,8 @@ func TestResolveRejectsTraversal(t *testing.T) {
 		"foo\\bar\\..",
 		"foo\\..\\secret",
 		`/absolute.txt`,
-		`C:\\outside.txt`,
-		"file\\x00name.txt",
+		`C:\outside.txt`,
+		"file\x00name.txt",
 	} {
 		t.Run(p, func(t *testing.T) {
 			if _, err := Resolve(root, p); err == nil {
