@@ -4,9 +4,10 @@ FuzeCLI's agent runner passes its registered tool definitions and JSON schemas t
 
 ## Start the published FuzeAI GGUF model
 
-FuzeCLI has built-in commands for setup, launch, and status. Install a compatible [llama.cpp release](https://github.com/ggml-org/llama.cpp/releases) that provides `llama-server`, then run:
+FuzeCLI has built-in commands for setup, launch, and status. Run the package-manager installer, then configure and start FuzeAI:
 
 ```powershell
+aicli fuzeai install
 aicli fuzeai setup
 aicli fuzeai start
 ```
