@@ -162,6 +162,9 @@ func (r *Runner) Run(
 				toolResults = append(toolResults, toolResult)
 				result.ToolResults = append(result.ToolResults, toolResult)
 				result.ToolCalls++
+				if toolResult.Status == ToolResultError && strings.HasPrefix(toolResult.Error, "tool authorization denied:") {
+					return result, fmt.Errorf("tool approval required: %s", toolResult.Error)
+				}
 			}
 
 			// Tool results are sent as a user message because provider.Message does
