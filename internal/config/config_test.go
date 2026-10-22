@@ -34,6 +34,10 @@ func TestDefaultConfigShape(t *testing.T) {
 		t.Fatalf("unexpected Gemini default model: %q", c.Providers["gemini"].DefaultModel)
 	}
 
+	if c.Providers["llamacpp"].DefaultModel != "r7194714R/fuzeai-qwen-7b-gguf:Q4_K_M" {
+		t.Fatalf("unexpected FuzeAI model default: %q", c.Providers["llamacpp"].DefaultModel)
+	}
+
 	if c.Providers["llamacpp"].BaseURL != "http://localhost:8080" {
 		t.Fatalf("unexpected llama.cpp base URL: %q", c.Providers["llamacpp"].BaseURL)
 	}
