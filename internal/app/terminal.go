@@ -118,7 +118,7 @@ func (a *App) TerminalChat(ctx context.Context, _ bool) error {
 			}
 			continue
 		}
-		if err := a.terminalStream(ctx, line, providerName, model, billingMode, attachments); err != nil {
+		if err := a.terminalStream(ctx, line, providerName, model, billingMode, attachments, scanner); err != nil {
 			fmt.Println(formatTerminalError(err))
 		}
 	}
@@ -367,7 +367,7 @@ func terminalPromptNeedsApproval(prompt string) bool {
 	return explicitChange
 }
 
-func (a *App) terminalStream(ctx context.Context, prompt, providerName, model, billingMode string, attachments map[string]string) error {
+func (a *App) terminalStream(ctx context.Context, prompt, providerName, model, billingMode string, attachments map[string]string, scanner *bufio.Scanner) error {
 	history, err := a.Store.History(400)
 	if err != nil {
 		return fmt.Errorf("load chat history: %w", err)
@@ -375,6 +375,21 @@ func (a *App) terminalStream(ctx context.Context, prompt, providerName, model, b
 	name, mdl, err := a.ProviderAndModel(providerName, model)
 	if err != nil {
 		return fmt.Errorf("resolve provider/model: %w", err)
+	}
+
+	if IsFuzeAIModel(name, mdl) {
+		var extra strings.Builder
+		for path, content := range attachments {
+			fmt.Fprintf(&extra, "\\n--- %s ---\\n%s\\n--- end %s ---\\n", path, content, path)
+		}
+		fmt.Printf("\\n%sYou%s\\n%s\\n\\n%sFuzeAI%s\\n", uiBold, uiReset, prompt, uiAccent, uiReset)
+		result, runErr := a.RunAgent(ctx, prompt, name, mdl, extra.String(), TerminalAgentAuthorizer(scanner, a.SafeMode))
+		if runErr != nil {
+			return runErr
+		}
+		fmt.Printf("%s%s%s\\n", uiBold, result.Response, uiReset)
+		fmt.Printf("\\x1b[38;5;244mFuzeCLI agent: %d step(s), %d tool call(s).\\x1b[0m\\n", result.Steps, result.ToolCalls)
+		return nil
 	}
 	history, err = a.compactHistory(ctx, name, mdl, history)
 	if err != nil {
