@@ -158,6 +158,34 @@ aicli fuzeai help
 
 The GGUF is intentionally downloaded on demand rather than committed to Git history. It is several gigabytes, and the local llama.cpp cache avoids repeated downloads. The default 4096-token context is a conservative starting point for machines with limited RAM; larger contexts require more memory. The local API binds to loopback, not the public network.
 
+### Run the full FuzeAI Hugging Face model on Kaggle or Colab
+
+The full Transformers model is published at [`r7194714R/FuzeAI-Final`](https://huggingface.co/r7194714R/FuzeAI-Final). This is distinct from the older GGUF repository used by local llama.cpp mode. The remote notebook loads the full model in 4-bit GPU mode and serves an OpenAI-compatible API.
+
+1. Open [`training/fuzeai/fuzeai_hf_gpu_endpoint.ipynb`](training/fuzeai/fuzeai_hf_gpu_endpoint.ipynb) in GitHub, download it, then import/upload it into Kaggle or Google Colab.
+2. Enable a GPU accelerator and Internet access.
+3. Run the cells in order. Enter a Hugging Face **read** token when prompted if the model repository is private.
+4. Keep the model-server and Cloudflare tunnel cells running. Copy the temporary HTTPS URL printed by the tunnel cell.
+5. In PowerShell, connect FuzeCLI to the remote full model:
+
+   ```powershell
+   aicli fuzeai connect https://YOUR-URL.trycloudflare.com
+   aicli fuzeai status
+   aicli chat
+   ```
+
+6. When finished, run `aicli fuzeai disconnect` and stop the notebook session.
+
+The same server can be run from a standalone Python file in a Kaggle or Colab terminal/cell after uploading the file or cloning this repository:
+
+```bash
+python training/fuzeai/fuzeai_hf_endpoint.py
+```
+
+The script installs missing Python dependencies, prompts for a Hugging Face read token if `HF_TOKEN` is not already set, loads the model in 4-bit mode, and serves `/v1/models` and `/v1/chat/completions` on `127.0.0.1:8080`. In a separate cell, start a Quick Tunnel with `cloudflared tunnel --url http://127.0.0.1:8080`. The notebook automates this setup for you.
+
+**Security and limits:** the Quick Tunnel URL is a bearer secret; anyone who gets it may submit prompts to your model. Do not publish it or send sensitive code/secrets. The URL is temporary and changes between sessions. Quick Tunnels are for development/testing, not production hosting. The model requires GPU memory; 4-bit loading reduces memory use but does not guarantee every accelerator/runtime can fit it. Kaggle/Colab sessions can end and their GPUs are not always available.
+
 ### Use FuzeAI on a Kaggle GPU
 
 If you want FuzeAI to run on a Kaggle GPU instead of your Windows computer, import [the Kaggle endpoint notebook](training/fuzeai/fuzeai_kaggle_gpu_endpoint.ipynb) into Kaggle, enable a GPU and Internet, and run its cells in order. Copy the temporary HTTPS tunnel URL it prints, then connect FuzeCLI:
