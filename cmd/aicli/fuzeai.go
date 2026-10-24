@@ -18,6 +18,7 @@ import (
 
 const (
 	fuzeAIModel = "r7194714R/fuzeai-qwen-7b-gguf:Q4_K_M"
+	fuzeAIRemoteModel = "r7194714R/FuzeAI-Final"
 	fuzeAIURL   = "http://127.0.0.1:8080"
 )
 
@@ -111,7 +112,7 @@ func configureFuzeAI() error {
 	fmt.Printf("  Endpoint: %s/v1\n", strings.TrimRight(local.BaseURL, "/"))
 	fmt.Println()
 	fmt.Println("Next:")
-	fmt.Println("  1. Run 'aicli fuzeai start' to download the GGUF on first launch and start the local server.")
+	fmt.Println("  1. Run 'aicli fuzeai start' to download the local GGUF and start the local server.")
 	fmt.Println("  2. Open another terminal in your project and run 'aicli chat'.")
 	return nil
 }
@@ -214,16 +215,14 @@ func connectFuzeAI(rawURL string) error {
 		return err
 	}
 	local := cfg.Providers["llamacpp"]
-	if local.DefaultModel == "" || local.DefaultModel == "local" {
-		local.DefaultModel = fuzeAIModel
-	}
+	local.DefaultModel = fuzeAIRemoteModel
 	local.BaseURL = endpoint + "/v1"
 	cfg.Providers["llamacpp"] = local
 	cfg.DefaultProvider = "llamacpp"
 	if err := config.Save(cfg); err != nil {
 		return err
 	}
-	fmt.Println("FuzeAI remote endpoint configured.")
+	fmt.Println("FuzeAI remote Hugging Face model endpoint configured.")
 	fmt.Printf("  Model:    %s\n  Endpoint: %s\n", local.DefaultModel, local.BaseURL)
 	fmt.Println("Run 'aicli fuzeai status' to test it, then 'aicli chat' in your project.")
 	fmt.Println("No model API key is configured. Keep this tunnel URL private: anyone who obtains it may use the model.")
@@ -236,10 +235,8 @@ func disconnectFuzeAI() error {
 		return err
 	}
 	local := cfg.Providers["llamacpp"]
+	local.DefaultModel = fuzeAIModel
 	local.BaseURL = fuzeAIURL
-	if local.DefaultModel == "" {
-		local.DefaultModel = fuzeAIModel
-	}
 	cfg.Providers["llamacpp"] = local
 	cfg.DefaultProvider = "llamacpp"
 	if err := config.Save(cfg); err != nil {
