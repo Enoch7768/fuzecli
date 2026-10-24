@@ -97,8 +97,8 @@ func TestConnectFuzeAIRemoteEndpoint(t *testing.T) {
 	if got.Providers["llamacpp"].BaseURL != "https://demo.trycloudflare.com/v1" {
 		t.Fatalf("base URL = %q, want remote /v1 endpoint", got.Providers["llamacpp"].BaseURL)
 	}
-	if got.Providers["llamacpp"].DefaultModel != fuzeAIModel {
-		t.Fatalf("model = %q, want %q", got.Providers["llamacpp"].DefaultModel, fuzeAIModel)
+	if got.Providers["llamacpp"].DefaultModel != fuzeAIRemoteModel {
+		t.Fatalf("model = %q, want remote model %q", got.Providers["llamacpp"].DefaultModel, fuzeAIRemoteModel)
 	}
 	if err := disconnectFuzeAI(); err != nil {
 		t.Fatalf("disconnect remote FuzeAI: %v", err)
@@ -109,6 +109,9 @@ func TestConnectFuzeAIRemoteEndpoint(t *testing.T) {
 	}
 	if got.Providers["llamacpp"].BaseURL != fuzeAIURL {
 		t.Fatalf("disconnect base URL = %q, want %q", got.Providers["llamacpp"].BaseURL, fuzeAIURL)
+	}
+	if got.Providers["llamacpp"].DefaultModel != fuzeAIModel {
+		t.Fatalf("disconnect model = %q, want local model %q", got.Providers["llamacpp"].DefaultModel, fuzeAIModel)
 	}
 }
 
