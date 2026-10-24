@@ -9,9 +9,9 @@ FuzeCLI's agent runner passes its registered tool definitions and JSON schemas t
 
 ## Use the full FuzeAI model on a Kaggle or Colab GPU
 
-The full model repository is [`r7194714R/FuzeAI-Final`](https://huggingface.co/r7194714R/FuzeAI-Final). Use the ready-to-run [Hugging Face GPU endpoint notebook](../training/fuzeai/fuzeai_hf_gpu_endpoint.ipynb). It loads the published model in 4-bit mode, serves a local OpenAI-compatible API, installs `cloudflared`, and opens a temporary HTTPS tunnel.
+The full model repository is [`r7194714R/FuzeAI-Final`](https://huggingface.co/r7194714R/FuzeAI-Final). Use the ready-to-run [Hugging Face GPU endpoint notebook](../training/fuzeai/fuzeai_kaggle_gpu_endpoint.ipynb). It loads the published model in 4-bit mode, serves a local OpenAI-compatible API, installs `cloudflared`, and opens a temporary HTTPS tunnel.
 
-1. Download/import `training/fuzeai/fuzeai_hf_gpu_endpoint.ipynb` into Kaggle or Google Colab.
+1. Download/import `training/fuzeai/fuzeai_kaggle_gpu_endpoint.ipynb` into Kaggle or Google Colab.
 2. Enable a GPU accelerator and Internet access.
 3. Run the notebook cells from top to bottom.
 4. When prompted, enter a Hugging Face **read** token if the model repository is private. Do not commit or share the token.
