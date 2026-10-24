@@ -204,7 +204,9 @@ func indexedLanguages(i *repository.Index)[]string{m:=map[string]bool{};for _,f:
 
 func (rt ToolRuntime) applyEdits(ctx context.Context,raw json.RawMessage,a map[string]any)(any,error){
 	items,_:=a["files"].([]any);plan:=generation.Plan{}
-	for _,item:=range items{f,_:=item.(map[string]any);path:=stringArg(f,"path");action:=stringArg(f,"action");if _,err:=rt.resolve(path,action=="delete");err!=nil{return nil,err};if action=="delete"&&!hasToolApproval(ctx,"workspace.apply_edits",raw){return nil,errors.New("delete requires explicit FuzeCLI approval for this exact edit request")};plan.Files=append(plan.Files,generation.FileChange{Path:path,Action:action,Content:stringArg(f,"content")})}
+	dryRun:=boolArg(a,"dry_run",false)
+	for _,item:=range items{f,_:=item.(map[string]any);path:=stringArg(f,"path");action:=stringArg(f,"action");if _,err:=rt.resolve(path,action=="delete");err!=nil{return nil,err};if action=="delete"&&!dryRun&&!hasToolApproval(ctx,"workspace.apply_edits",raw){return nil,errors.New("delete requires explicit FuzeCLI approval for this exact edit request")};plan.Files=append(plan.Files,generation.FileChange{Path:path,Action:action,Content:stringArg(f,"content")})}
+	if dryRun { return map[string]any{"dry_run":true,"applied":false,"planned_files":plan.Files,"message":"Preview only; no files were changed."},nil }
 	verifyRequested:=boolArg(a,"verify",true)
 	verifierAvailable:=false
 	for _,manifest:=range []string{"go.mod","package.json","composer.json","requirements.txt","pyproject.toml"}{if _,e:=os.Stat(filepath.Join(rt.Root,manifest));e==nil{verifierAvailable=true;break}}
@@ -245,6 +247,7 @@ func errorString(err error)string{if err==nil{return ""};return err.Error()}
 
 func (rt ToolRuntime) verifyRun(ctx context.Context,a map[string]any)(any,error){
 	checks:=stringArray(a["checks"]);timeout:=time.Duration(intArg(a,"timeout_seconds",120))*time.Second;requested:=stringArray(a["paths"]);validated:=make([]string,0,len(requested))
+	if boolArg(a,"dry_run",false) { return map[string]any{"dry_run":true,"executed":false,"planned_checks":checks,"timeout_seconds":int(timeout.Seconds()),"paths":requested,"message":"Preview only; no verification commands were executed."},nil }
 	for _,path:=range requested{resolved,err:=rt.resolve(path,false);if err!=nil{return nil,fmt.Errorf("verification path %q: %w",path,err)};info,err:=os.Stat(resolved);if err!=nil{return nil,err};if !info.IsDir()&&!info.Mode().IsRegular(){return nil,fmt.Errorf("verification path %q is not a regular file or directory",path)};validated=append(validated,filepath.ToSlash(path))}
 	results:=[]map[string]any{}
 	for _,check:=range checks{
@@ -318,6 +321,7 @@ func ctxOrBackground()context.Context{return context.Background()}
 func diffArgs(staged bool,path string)[]string{args:=[]string{"diff"};if staged{args=append(args,"--cached")};return append(args,"--",path)}
 func runGitOutput(ctx context.Context,root string,args ...string)(string,error){cmd:=exec.CommandContext(ctx,"git",args...);cmd.Dir=root;b,e:=cmd.CombinedOutput();if e!=nil{return "",fmt.Errorf("git %v: %s",args,strings.TrimSpace(string(b)))};return string(b),nil}
 func (rt ToolRuntime) gitCommit(ctx context.Context,a map[string]any,raw json.RawMessage)(any,error){
+	if boolArg(a,"dry_run",false) { return map[string]any{"dry_run":true,"committed":false,"message":stringArg(a,"message"),"paths":stringArray(a["paths"]),"expected_head":stringArg(a,"expected_head"),"note":"Preview only; no Git changes were made."},nil }
 	if e:=rt.Capabilities.Require(security.RunGit);e!=nil{return nil,e}
 	head,e:=runGitOutput(ctx,rt.Root,"rev-parse","HEAD");if e!=nil{return nil,e};if strings.TrimSpace(head)!=stringArg(a,"expected_head"){return nil,errors.New("repository HEAD changed; refresh status and try again")}
 	paths:=stringArray(a["paths"]);for _,p:=range paths{if _,e:=rt.resolve(p,true);e!=nil{return nil,e}}
@@ -353,6 +357,7 @@ func (rt ToolRuntime) githubBranches(ctx context.Context,a map[string]any,raw js
 func (rt ToolRuntime) githubSync(ctx context.Context,a map[string]any,raw json.RawMessage)(any,error){
 	op:=stringArg(a,"operation")
 	if op!="pull"&&op!="push"{return nil,errors.New("unsupported sync operation")}
+	if boolArg(a,"dry_run",false) { return map[string]any{"dry_run":true,"synced":false,"operation":op,"remote":stringArg(a,"remote"),"branch":stringArg(a,"branch"),"note":"Preview only; no GitHub or local Git changes were made."},nil }
 	c,e:=rt.githubClient();if e!=nil{return nil,e}
 	if e=rt.Capabilities.Require(security.RunGit);e!=nil{return nil,e}
 	status,e:=gitlocal.StatusOf(rt.Root);if e!=nil{return nil,e}
