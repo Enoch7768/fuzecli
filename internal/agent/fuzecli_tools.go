@@ -17,17 +17,17 @@ func FuzeCLIToolDefinitions() []ToolDefinition {
 		{"workspace.read_file", "Read a UTF-8 text file inside the active workspace.", schema(`{"type":"object","properties":{"path":{"type":"string","minLength":1,"maxLength":1024},"start_line":{"type":"integer","minimum":1},"end_line":{"type":"integer","minimum":1}},"required":["path"],"additionalProperties":false}`)},
 		{"workspace.search_code", "Search project source for text or a pattern with bounded results.", schema(`{"type":"object","properties":{"query":{"type":"string","minLength":1,"maxLength":500},"paths":{"type":"array","items":{"type":"string"},"maxItems":50},"is_regex":{"type":"boolean","default":false},"case_sensitive":{"type":"boolean","default":false},"max_results":{"type":"integer","minimum":1,"maximum":200,"default":50}},"required":["query"],"additionalProperties":false}`)},
 		{"workspace.find_symbols", "Find indexed function, method, type, class, variable, or constant definitions.", schema(`{"type":"object","properties":{"query":{"type":"string","minLength":1},"kind":{"type":"string","enum":["any","function","method","type","class","variable","constant"]},"path":{"type":"string"},"max_results":{"type":"integer","minimum":1,"maximum":100,"default":30}},"required":["query"],"additionalProperties":false}`)},
-		{"workspace.apply_edits", "Apply validated file edits through the existing transactional executor; never execute generated commands.", schema(`{"type":"object","properties":{"files":{"type":"array","minItems":1,"maxItems":100,"items":{"type":"object","properties":{"path":{"type":"string","minLength":1},"action":{"type":"string","enum":["create","modify","delete"]},"content":{"type":"string"}},"required":["path","action"],"additionalProperties":false}},"verify":{"type":"boolean","default":true}},"required":["files"],"additionalProperties":false}`)},
+		{"workspace.apply_edits", "Apply validated file edits through the existing transactional executor; never execute generated commands. Set dry_run=true to preview only.", schema(`{"type":"object","properties":{"files":{"type":"array","minItems":1,"maxItems":100,"items":{"type":"object","properties":{"path":{"type":"string","minLength":1},"action":{"type":"string","enum":["create","modify","delete"]},"content":{"type":"string"}},"required":["path","action"],"additionalProperties":false}},"verify":{"type":"boolean","default":true},"dry_run":{"type":"boolean","default":false}},"required":["files"],"additionalProperties":false}`)},
 		{"project.health", "Read-only inspection of project manifests, runtimes, Git metadata, and likely tests.", schema(`{"type":"object","properties":{"include_runtimes":{"type":"boolean","default":true},"include_git":{"type":"boolean","default":true}},"additionalProperties":false}`)},
 		{"terminal.run", "Run an authorized executable with an argument array in a workspace-relative directory.", schema(`{"type":"object","properties":{"executable":{"type":"string","minLength":1,"maxLength":256},"args":{"type":"array","items":{"type":"string"},"maxItems":100},"cwd":{"type":"string","description":"Workspace-relative working directory."},"timeout_seconds":{"type":"integer","minimum":1,"maximum":300,"default":60}},"required":["executable","args"],"additionalProperties":false}`)},
-		{"verify.run", "Run selected project checks and return structured diagnostics.", schema(`{"type":"object","properties":{"paths":{"type":"array","items":{"type":"string"},"maxItems":100},"checks":{"type":"array","items":{"type":"string","enum":["format","lint","test","build","typecheck"]},"minItems":1,"uniqueItems":true},"timeout_seconds":{"type":"integer","minimum":1,"maximum":600,"default":120}},"required":["checks"],"additionalProperties":false}`)},
+		{"verify.run", "Run selected project checks and return structured diagnostics. Set dry_run=true to preview without executing checks.", schema(`{"type":"object","properties":{"paths":{"type":"array","items":{"type":"string"},"maxItems":100},"checks":{"type":"array","items":{"type":"string","enum":["format","lint","test","build","typecheck"]},"minItems":1,"uniqueItems":true},"timeout_seconds":{"type":"integer","minimum":1,"maximum":600,"default":120},"dry_run":{"type":"boolean","default":false}},"required":["checks"],"additionalProperties":false}`)},
 		{"git.status", "Inspect local repository branch, changed files, staging, and upstream status.", schema(`{"type":"object","properties":{"include_untracked":{"type":"boolean","default":true}},"additionalProperties":false}`)},
 		{"git.diff", "Inspect local changes without modifying the repository.", schema(`{"type":"object","properties":{"path":{"type":"string"},"staged":{"type":"boolean","default":false},"context_lines":{"type":"integer","minimum":0,"maximum":20,"default":3}},"additionalProperties":false}`)},
-		{"git.commit", "Commit only explicitly selected changes after checking expected HEAD.", schema(`{"type":"object","properties":{"message":{"type":"string","minLength":1,"maxLength":200},"paths":{"type":"array","items":{"type":"string"},"minItems":1,"maxItems":100},"expected_head":{"type":"string","description":"Expected current commit SHA."}},"required":["message","paths","expected_head"],"additionalProperties":false}`)},
+		{"git.commit", "Commit only explicitly selected changes after checking expected HEAD. Set dry_run=true to preview without committing.", schema(`{"type":"object","properties":{"message":{"type":"string","minLength":1,"maxLength":200},"paths":{"type":"array","items":{"type":"string"},"minItems":1,"maxItems":100},"expected_head":{"type":"string","description":"Expected current commit SHA."},"dry_run":{"type":"boolean","default":false}},"required":["message","expected_head"],"additionalProperties":false}`)},
 		{"github.auth", "Check, start, inspect, or disconnect Studio's GitHub authentication using the supported browser/device flow.", schema(`{"type":"object","properties":{"action":{"type":"string","enum":["status","login_start","login_status","disconnect"]}},"required":["action"],"additionalProperties":false}`)},
 		{"github.repositories", "List accessible repositories or inspect one repository's metadata.", schema(`{"type":"object","properties":{"action":{"type":"string","enum":["list","get"]},"repository":{"type":"string"},"page":{"type":"integer","minimum":1,"default":1},"per_page":{"type":"integer","minimum":1,"maximum":100,"default":30}},"required":["action"],"additionalProperties":false}`)},
 		{"github.branches", "List repository branches or create a branch from a known base reference.", schema(`{"type":"object","properties":{"action":{"type":"string","enum":["list","create"]},"repository":{"type":"string"},"branch":{"type":"string"},"base":{"type":"string"},"page":{"type":"integer","minimum":1,"default":1}},"required":["action","repository"],"additionalProperties":false}`)},
-		{"github.sync", "Pull or push local repository changes without discarding work or force-pushing automatically.", schema(`{"type":"object","properties":{"operation":{"type":"string","enum":["pull","push"]},"remote":{"type":"string","default":"origin"},"branch":{"type":"string"},"expected_head":{"type":"string"}},"required":["operation"],"additionalProperties":false}`)},
+		{"github.sync", "Pull or push local repository changes without discarding work or force-pushing automatically. Set dry_run=true to preview only.", schema(`{"type":"object","properties":{"operation":{"type":"string","enum":["pull","push"]},"remote":{"type":"string","default":"origin"},"branch":{"type":"string"},"expected_head":{"type":"string"},"dry_run":{"type":"boolean","default":false}},"required":["operation"],"additionalProperties":false}`)},
 		{"github.pull_requests", "List, create, review, comment on, or merge pull requests with action-specific validation.", schema(`{"type":"object","properties":{"action":{"type":"string","enum":["list","create","review","comment","merge"]},"repository":{"type":"string"},"number":{"type":"integer","minimum":1},"title":{"type":"string","maxLength":256},"body":{"type":"string","maxLength":50000},"head":{"type":"string"},"base":{"type":"string"},"draft":{"type":"boolean","default":false},"event":{"type":"string","enum":["APPROVE","REQUEST_CHANGES","COMMENT"]},"merge_method":{"type":"string","enum":["merge","squash","rebase"]},"expected_head_sha":{"type":"string"},"state":{"type":"string","enum":["open","closed","all"]}},"required":["action","repository"],"additionalProperties":false}`)},
 		{"github.issues", "List, create, update, or comment on repository issues.", schema(`{"type":"object","properties":{"action":{"type":"string","enum":["list","create","update","comment"]},"repository":{"type":"string"},"number":{"type":"integer","minimum":1},"title":{"type":"string","maxLength":256},"body":{"type":"string","maxLength":50000},"state":{"type":"string","enum":["open","closed","all"]},"labels":{"type":"array","items":{"type":"string"},"maxItems":50},"assignees":{"type":"array","items":{"type":"string"},"maxItems":50}},"required":["action","repository"],"additionalProperties":false}`)},
 		{"github.actions", "Inspect workflow runs, jobs, and logs or rerun failed jobs.", schema(`{"type":"object","properties":{"action":{"type":"string","enum":["list_runs","list_jobs","job_logs","rerun_failed"]},"repository":{"type":"string"},"run_id":{"type":"integer","minimum":1},"job_id":{"type":"integer","minimum":1},"page":{"type":"integer","minimum":1,"default":1},"per_page":{"type":"integer","minimum":1,"maximum":100,"default":30}},"required":["action","repository"],"additionalProperties":false}`)},
@@ -40,9 +40,118 @@ func FuzeCLIToolDefinitions() []ToolDefinition {
 
 func schema(raw string) json.RawMessage { return json.RawMessage(raw) }
 
+func normalizeToolArguments(name string, raw json.RawMessage) (json.RawMessage, error) {
+	var args map[string]any
+	if err := json.Unmarshal(raw, &args); err != nil || args == nil {
+		return nil, fmt.Errorf("arguments must be a JSON object")
+	}
+	move := func(from, to string) {
+		if value, exists := args[from]; exists {
+			if _, canonicalExists := args[to]; !canonicalExists {
+				args[to] = value
+			}
+			delete(args, from)
+		}
+	}
+	switch name {
+	case "workspace.search_code":
+		move("limit", "max_results")
+	case "workspace.apply_edits":
+		if _, ok := args["files"]; !ok {
+			op, _ := args["operation"].(string)
+			if strings.HasPrefix(op, "prepare_") {
+				args["dry_run"] = true
+				op = strings.TrimPrefix(op, "prepare_")
+			}
+			if op == "create" || op == "modify" || op == "delete" {
+				file := map[string]any{}
+				if v, ok := args["path"]; ok { file["path"] = v }
+				file["action"] = op
+				if v, ok := args["content"]; ok { file["content"] = v }
+				args["files"] = []any{file}
+				delete(args, "path")
+				delete(args, "content")
+				delete(args, "operation")
+			}
+		}
+	case "project.health":
+		if checks, ok := args["checks"].([]any); ok {
+			for _, rawCheck := range checks {
+				switch strings.ToLower(fmt.Sprint(rawCheck)) {
+				case "runtime", "runtimes", "include_runtimes": args["include_runtimes"] = true
+				case "git", "git_status", "include_git": args["include_git"] = true
+				}
+			}
+			delete(args, "checks")
+		}
+	case "verify.run":
+		if checks, ok := args["checks"].([]any); ok {
+			normalized := make([]any, 0, len(checks))
+			for _, item := range checks {
+				if obj, ok := item.(map[string]any); ok {
+					nameText := strings.ToLower(fmt.Sprint(obj["name"], " ", obj["check"], " ", obj["type"]))
+					found := ""
+					for _, candidate := range []string{"format", "lint", "test", "build", "typecheck"} {
+						if strings.Contains(nameText, candidate) { found = candidate; break }
+					}
+					if found == "" { return nil, fmt.Errorf("cannot map verification object to a supported check") }
+					normalized = append(normalized, found)
+					if run, exists := obj["run"].(bool); exists && !run { args["dry_run"] = true }
+					if timeout, exists := obj["timeout_seconds"]; exists {
+						if _, already := args["timeout_seconds"]; !already { args["timeout_seconds"] = timeout }
+					}
+				} else {
+					normalized = append(normalized, item)
+				}
+			}
+			args["checks"] = normalized
+		}
+	case "git.status":
+		move("untracked_files", "include_untracked")
+	case "git.commit":
+		if commit, ok := args["commit"].(bool); ok {
+			if !commit { args["dry_run"] = true }
+			delete(args, "commit")
+		}
+	case "github.repositories":
+		if _, ok := args["action"]; !ok { args["action"] = "list" }
+	case "github.branches":
+		if _, ok := args["action"]; !ok { args["action"] = "list" }
+	case "github.sync":
+		if op, ok := args["operation"].(string); ok && strings.HasPrefix(op, "prepare_") {
+			args["operation"] = strings.TrimPrefix(op, "prepare_")
+			args["dry_run"] = true
+		}
+		move("base_branch", "branch")
+		if syncValue, ok := args["sync"].(bool); ok {
+			if !syncValue { args["dry_run"] = true }
+			delete(args, "sync")
+		}
+	case "github.pull_requests", "github.issues":
+		if _, ok := args["action"]; !ok { args["action"] = "list" }
+	case "context.get":
+		if _, ok := args["scope"]; !ok {
+			key, _ := args["key"].(string)
+			if key == "recent" || key == "recent_history" || key == "" {
+				args["scope"] = "recent_history"
+			} else if key == "task" || key == "project" {
+				args["scope"] = key
+			}
+		}
+		delete(args, "key")
+		move("limit", "max_items")
+	}
+	encoded, err := json.Marshal(args)
+	if err != nil { return nil, fmt.Errorf("normalize arguments: %w", err) }
+	return encoded, nil
+}
+
 // ValidateToolArguments validates both the canonical JSON Schema subset used
 // by these tools and action-specific rules that JSON Schema cannot express here.
 func ValidateToolArguments(def ToolDefinition, raw json.RawMessage) error {
+	normalized, err := normalizeToolArguments(def.Name, raw)
+	if err != nil { return err }
+	raw = normalized
 	var value any
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.UseNumber()
@@ -120,6 +229,8 @@ func validateToolAction(name string, args map[string]any) error {
 	case "workspace.apply_edits":
 		items, _ := args["files"].([]any)
 		for i, raw := range items { f, _ := raw.(map[string]any); action, _ := f["action"].(string); content, exists := f["content"]; switch action { case "create","modify": if !exists || content == nil { return fmt.Errorf("%s.files[%d].content is required for %s",name,i,action) }; case "delete": if exists { return fmt.Errorf("%s.files[%d].content must be absent for delete",name,i) } } }
+	case "git.commit":
+		if !boolArg(args, "dry_run", false) { return require("paths") }
 	case "github.repositories":
 		if args["action"] == "get" { return require("repository") }
 	case "github.branches":
