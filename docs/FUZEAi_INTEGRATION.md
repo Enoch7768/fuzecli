@@ -1,33 +1,22 @@
 # Using FuzeAI with FuzeCLI
 
-FuzeCLI's agent runner passes its registered tool definitions and JSON schemas to the selected model on every agent run. Tool execution remains inside FuzeCLI; the model requests tools but never executes them directly.
+FuzeCLI can use FuzeAI in two ways:
 
-## Start the published FuzeAI GGUF model
+- **Full Hugging Face Transformers model on Kaggle/Colab:** use `r7194714R/FuzeAI-Final` through the remote endpoint notebook below.
+- **Local GGUF through llama.cpp:** use the separate GGUF repository `r7194714R/fuzeai-qwen-7b-gguf:Q4_K_M`. This is the older local inference path; it is not the same artifact as the full Transformers repository.
 
-FuzeCLI has built-in commands for setup, launch, and status. Run the package-manager installer, then configure and start FuzeAI:
+FuzeCLI's agent runner passes its registered tool definitions and JSON schemas to the selected model. Tool execution remains inside FuzeCLI; the model requests tools but never executes them directly. The remote endpoint supports the OpenAI-compatible `/v1/models` and non-streaming `/v1/chat/completions` endpoints.
 
-```powershell
-aicli fuzeai install
-aicli fuzeai setup
-aicli fuzeai start
-```
+## Use the full FuzeAI model on a Kaggle or Colab GPU
 
-`setup` selects the `llamacpp` provider and configures the published model as the default. `start` runs `llama-server -hf r7194714R/fuzeai-qwen-7b-gguf:Q4_K_M`; llama.cpp downloads and caches the GGUF from Hugging Face if it is not already present. The server binds to `127.0.0.1` on port 8080 by default.
+The full model repository is [`r7194714R/FuzeAI-Final`](https://huggingface.co/r7194714R/FuzeAI-Final). Use the ready-to-run [Hugging Face GPU endpoint notebook](../training/fuzeai/fuzeai_hf_gpu_endpoint.ipynb). It loads the published model in 4-bit mode, serves a local OpenAI-compatible API, installs `cloudflared`, and opens a temporary HTTPS tunnel.
 
-Keep the server terminal open. In another terminal, run `aicli chat` or start the Studio with `aicli app`. Check server availability with `aicli fuzeai status`. To change the port or context window, use `aicli fuzeai start --port 8080 --context 4096`.
-
-The default context is 4096 tokens to limit memory use. A 7B Q4 model still needs several gigabytes of RAM/VRAM, and a machine with 8 GB of system RAM may be tight, especially while other applications are open. If loading fails, close memory-heavy apps or use a smaller compatible quantization. The model is hosted on Hugging Face and cached locally by llama.cpp; the GGUF is not committed to the source repository.
-
-## Use FuzeAI on a Kaggle GPU from your own FuzeCLI
-
-If your Windows computer is short on RAM/VRAM, use the ready-to-run [Kaggle GPU notebook](../training/fuzeai/fuzeai_kaggle_gpu_endpoint.ipynb). It builds GPU-enabled llama.cpp, starts the published FuzeAI GGUF, and opens a temporary HTTPS tunnel without requiring a model API key.
-
-1. Open the notebook file in GitHub and download it, or use the repository file directly when importing a notebook.
-2. In Kaggle, create a new notebook and upload/import `fuzeai_kaggle_gpu_endpoint.ipynb`.
-3. In notebook **Settings**, select a GPU accelerator (for example, T4 x2 if available) and enable Internet.
-4. Run the notebook cells in order. The first run builds llama.cpp and downloads the multi-gigabyte GGUF, so allow time for setup.
-5. Leave the final tunnel cell running. Copy the HTTPS `trycloudflare.com` URL printed in its output.
-6. On your Windows computer, open PowerShell and run:
+1. Download/import `training/fuzeai/fuzeai_hf_gpu_endpoint.ipynb` into Kaggle or Google Colab.
+2. Enable a GPU accelerator and Internet access.
+3. Run the notebook cells from top to bottom.
+4. When prompted, enter a Hugging Face **read** token if the model repository is private. Do not commit or share the token.
+5. Wait for the API health check to pass, then run the tunnel cell and copy its HTTPS `trycloudflare.com` URL.
+6. In the terminal on your own computer, run:
 
    ```powershell
    aicli fuzeai connect https://YOUR-URL.trycloudflare.com
@@ -35,20 +24,34 @@ If your Windows computer is short on RAM/VRAM, use the ready-to-run [Kaggle GPU 
    aicli chat
    ```
 
-7. When finished, run `aicli fuzeai disconnect` to return FuzeCLI to local mode, interrupt the tunnel cell, and stop the Kaggle session.
+7. When finished, run `aicli fuzeai disconnect`, interrupt the tunnel cell, and stop the GPU session.
 
-The remote endpoint is stored as the `llamacpp` provider's base URL in your normal FuzeCLI config. The model and tool execution remain separated: FuzeAI generates tool requests, while FuzeCLI validates and executes its registered workspace, terminal, Git, and GitHub tools locally. Remote chat requests send the prompt/context to Kaggle, so do not send secrets or private source code you do not want transmitted to that notebook.
+The same endpoint can run from the standalone Python script `training/fuzeai/fuzeai_hf_endpoint.py`. In a Kaggle/Colab terminal or cell, run:
 
-**Important:** this mode intentionally has no model API key and no FuzeCLI application-level rate limiter. The tunnel URL is a bearer secret in practice: anyone who obtains it may use your model. Do not publish it. Cloudflare Quick Tunnels are temporary development tunnels, have no uptime guarantee, and do not support SSE; FuzeCLI uses a buffered non-streaming request for remote `llamacpp` endpoints to remain compatible. Kaggle sessions and GPU availability are still limited by Kaggle's own policies. This is a personal experiment, not always-on hosting.
+```bash
+python training/fuzeai/fuzeai_hf_endpoint.py
+```
 
-Useful commands:
+It installs missing Python packages, prompts for a Hugging Face read token if `HF_TOKEN` is not set, loads the model, and serves the API on `http://127.0.0.1:8080`. In another cell, run `cloudflared tunnel --url http://127.0.0.1:8080`.
+
+## Local GGUF mode
+
+FuzeCLI also retains local llama.cpp support. Install the runtime, select the local GGUF provider, and start the server:
 
 ```powershell
-aicli fuzeai status
-aicli fuzeai disconnect
+aicli fuzeai install
 aicli fuzeai setup
 aicli fuzeai start
+aicli fuzeai status
 ```
+
+This path uses `r7194714R/fuzeai-qwen-7b-gguf:Q4_K_M` and caches the GGUF locally. It does not download the full Transformers model. The default local context is 4096 tokens; a 7B Q4 model still needs several gigabytes of RAM/VRAM.
+
+## Connect and disconnect behavior
+
+When you run `aicli fuzeai connect https://YOUR-URL.trycloudflare.com`, FuzeCLI switches the `llamacpp` provider base URL to the remote endpoint and sets the model identifier to `r7194714R/FuzeAI-Final`. The server accepts OpenAI-compatible chat-completion requests; streaming is intentionally disabled so responses work through the temporary tunnel.
+
+Run `aicli fuzeai disconnect` to reset the model identifier and endpoint to the local GGUF mode. The model and tool execution remain separated: FuzeAI generates tool requests, while FuzeCLI validates and executes its registered workspace, terminal, Git, and GitHub tools locally.
 
 ## Registered agent tools
 
@@ -60,14 +63,12 @@ The current tool registry exposes 20 tools:
 - GitHub: `github.auth`, `github.repositories`, `github.branches`, `github.sync`, `github.pull_requests`, `github.issues`, `github.actions`
 - Task context: `context.get`, `context.checkpoint`
 
-The model receives the actual schemas from `FuzeCLIToolDefinitions()`, not a separately maintained list. FuzeCLI validates tool names and arguments before dispatching handlers.
-
-The same agent runner is available from the terminal. After `aicli fuzeai setup` and `aicli fuzeai start`, `aicli chat` automatically uses the tool-enabled agent when the configured provider/model is this FuzeAI GGUF. One-shot `aicli ask "..." --provider llamacpp` uses the same runner. Other providers and models keep their existing chat/edit path unless explicitly selected for the FuzeAI tool protocol.
+The model receives the actual schemas from FuzeCLI's tool definitions, not a separately maintained list. FuzeCLI validates tool names and arguments before dispatching handlers.
 
 The terminal asks for confirmation through FuzeCLI before a destructive deletion or other approval-gated action. `--safe` blocks deletion even if a confirmation is attempted. The model cannot approve its own operation; the approval callback runs in FuzeCLI, and the registry grants the handler permission only after that callback approves the exact tool call.
 
-## Destructive file changes
+## Remote endpoint security and limitations
 
-Deletion is a FuzeCLI-controlled approval, not a decision delegated to the model. When a tool call requests deletion, Studio displays the exact workspace-relative paths and asks the user to confirm. Approval is limited to those exact paths and that edit request. Declining, missing approval, or an invalid path leaves the files untouched. FuzeCLI's registry stops the agent loop immediately when authorization is denied, so the model cannot continue with further tool calls after a blocked destructive request.
+The notebook binds the API to loopback and uses a temporary Cloudflare Quick Tunnel. The URL is effectively a bearer secret: anyone who obtains it may submit inference requests. Do not publish it, share it broadly, or send private source code/secrets you do not want transmitted to the GPU notebook. Stop the tunnel when finished.
 
-FuzeCLI also grants the delete capability only for the exact approved edit request. Workspace path validation and the transactional executor still run after approval. The model must rely on tool results and must not claim a deletion, edit, test, or lint check succeeded without a successful result.
+Quick Tunnels are temporary development tunnels, not always-on hosting. The URL changes between sessions; the service stops when the notebook process/session stops. The notebook uses a non-streaming endpoint; streaming/SSE is not supported. Kaggle/Colab GPU availability, memory limits, and session limits still apply.
