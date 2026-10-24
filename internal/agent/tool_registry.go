@@ -136,6 +136,12 @@ func (r *ToolRegistry) Execute(
 		result.Error = fmt.Sprintf("unknown tool %q", call.Name)
 		return result
 	}
+	normalizedArguments, normalizeErr := normalizeToolArguments(call.Name, call.Arguments)
+	if normalizeErr != nil {
+		result.Error = "invalid tool arguments: " + normalizeErr.Error()
+		return result
+	}
+	call.Arguments = normalizedArguments
 	if err := ValidateToolArguments(tool.definition, call.Arguments); err != nil {
 		result.Error = "invalid tool arguments: " + err.Error()
 		return result
@@ -187,6 +193,7 @@ func (r *ToolRegistry) Execute(
 func toolRequiresApproval(name string, raw json.RawMessage) (bool, string) {
 	var args map[string]any
 	_ = json.Unmarshal(raw, &args)
+	if args["dry_run"] == true { return false, "" }
 	action, _ := args["action"].(string)
 	switch name {
 	case "workspace.apply_edits":
