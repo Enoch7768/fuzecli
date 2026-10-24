@@ -48,3 +48,68 @@ func TestToolRegistryValidatesSchemaBeforeHandler(t *testing.T) {
  got = r.Execute(context.Background(), ToolCall{ID:"good",Name:d.Name,Arguments:json.RawMessage(`{"path":"a.txt"}`)}, nil)
  if got.Status != ToolResultSuccess || !called { t.Fatalf("valid call failed: %#v", got) }
 }
+
+
+func TestFuzeAICompatibilityNormalization(t *testing.T) {
+	cases := []struct {
+		name string
+		raw string
+		want string
+	}{
+		{"workspace.search_code", `{"query":"TODO","limit":20}`, `"max_results":20`},
+		{"workspace.apply_edits", `{"operation":"prepare_create","path":"tmp/test.txt","content":"hello"}`, `"dry_run":true`},
+		{"project.health", `{"checks":["runtime","git_status"]}`, `"include_runtimes":true`},
+		{"verify.run", `{"checks":[{"name":"Timeout test","timeout_seconds":60,"run":false}]}`, `"checks":["test"]`},
+		{"git.status", `{"untracked_files":true}`, `"include_untracked":true`},
+		{"git.commit", `{"message":"test","expected_head":"abc123","commit":false}`, `"dry_run":true`},
+		{"github.repositories", `{"page":1,"per_page":30}`, `"action":"list"`},
+		{"github.branches", `{"repository":"owner/repo"}`, `"action":"list"`},
+		{"github.sync", `{"operation":"prepare_pull","base_branch":"main","remote":"origin","sync":false}`, `"dry_run":true`},
+		{"github.pull_requests", `{"repository":"owner/repo","state":"all"}`, `"action":"list"`},
+		{"github.issues", `{"repository":"owner/repo","state":"all"}`, `"action":"list"`},
+		{"context.get", `{"key":"recent","limit":5}`, `"scope":"recent_history"`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			def := toolDef(tc.name)
+			if err := ValidateToolArguments(def, json.RawMessage(tc.raw)); err != nil {
+				t.Fatalf("compatible arguments rejected: %v", err)
+			}
+			normalized, err := normalizeToolArguments(tc.name, json.RawMessage(tc.raw))
+			if err != nil { t.Fatal(err) }
+			if !strings.Contains(string(normalized), tc.want) {
+				t.Fatalf("normalized arguments %s do not contain %s", normalized, tc.want)
+			}
+		})
+	}
+}
+
+func TestFuzeAIDryRunsDoNotMutateOrExecute(t *testing.T) {
+	root := t.TempDir()
+	registry, err := NewFuzeCLIToolRegistry(ToolRuntime{Root: root})
+	if err != nil { t.Fatal(err) }
+
+	edit := registry.Execute(context.Background(), ToolCall{
+		ID: "preview-edit", Name: "workspace.apply_edits",
+		Arguments: json.RawMessage(`{"operation":"prepare_create","path":"preview.txt","content":"must not be written"}`),
+	}, nil)
+	if edit.Status != ToolResultSuccess { t.Fatalf("edit preview failed: %s", edit.Error) }
+	if _, err := os.Stat(filepath.Join(root, "preview.txt")); !os.IsNotExist(err) {
+		t.Fatalf("dry-run unexpectedly created a file; stat error=%v", err)
+	}
+
+	verifyResult := registry.Execute(context.Background(), ToolCall{
+		ID: "preview-verify", Name: "verify.run",
+		Arguments: json.RawMessage(`{"checks":[{"name":"Timeout test","timeout_seconds":60,"run":false} ]}`),
+	}, nil)
+	if verifyResult.Status != ToolResultSuccess { t.Fatalf("verification preview failed: %s", verifyResult.Error) }
+	var verifyPayload map[string]any
+	if err := json.Unmarshal(verifyResult.Result, &verifyPayload); err != nil { t.Fatal(err) }
+	if verifyPayload["executed"] != false { t.Fatalf("verification dry-run claims execution: %s", verifyResult.Result) }
+
+	syncResult := registry.Execute(context.Background(), ToolCall{
+		ID: "preview-sync", Name: "github.sync",
+		Arguments: json.RawMessage(`{"operation":"prepare_pull","base_branch":"main","remote":"origin","sync":false}`),
+	}, nil)
+	if syncResult.Status != ToolResultSuccess { t.Fatalf("sync preview should not need GitHub auth: %s", syncResult.Error) }
+}
