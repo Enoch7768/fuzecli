@@ -198,6 +198,21 @@ func toolRequiresApproval(name string, raw json.RawMessage) (bool, string) {
 	switch name {
 	case "workspace.apply_edits":
 		return true, "workspace file changes"
+	case "workspace.apply_patch", "workspace.rename":
+		return true, "workspace file mutation"
+	case "terminal.run_parallel":
+		return true, "running parallel terminal commands"
+	case "terminal.process":
+		return action == "start" || action == "stop" || action == "restart", "managing a terminal process"
+	case "test.run":
+		return true, "running project tests"
+	case "git.branch":
+		return action == "create" || action == "switch" || action == "delete", "changing local Git branches"
+	case "git.stash":
+		return action != "list", "changing Git stash state"
+	case "http.request":
+		method, _ := args["method"].(string)
+		return method != "GET" && method != "HEAD", "sending a mutating HTTP request"
 	case "terminal.run":
 		return true, "running a terminal command"
 	case "git.commit":
