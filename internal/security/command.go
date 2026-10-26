@@ -38,7 +38,7 @@ func Authorize(command Command) Decision {
 			return Decision{Allowed: true, Risk: RiskLow, Reason: "Go formatting inspection is an allowlisted verification command."}
 		}
 	case "npm", "pnpm", "bun":
-		if exact(args, "run", "test") || exact(args, "run", "typecheck") || exact(args, "run", "build") || exact(args, "run", "lint") || exact(args, "run", "format:check") {
+		if exact(args, "run", "test") || exact(args, "run", "typecheck") || exact(args, "run", "build") || exact(args, "run", "lint") || exact(args, "run", "format:check") || safeNPMTestCommand(name, args) {
 			return Decision{Allowed: true, Risk: RiskMedium, Reason: "Declared project verification script is allowlisted."}
 		}
 		if name == "npm" && (exact(args, "test") || exact(args, "test", "--", "--runInBand")) {
@@ -80,6 +80,32 @@ func exact(got []string, want ...string) bool {
 
 func containsShellMeta(value string) bool {
 	return strings.ContainsAny(value, "&|;<>$")
+}
+
+func safeNPMTestCommand(name string, args []string) bool {
+	if len(args) == 0 { return false }
+	i := 0
+	if args[0] == "test" { i = 1 } else if len(args) >= 2 && args[0] == "run" && strings.HasPrefix(args[1], "test") {
+		for _, r := range args[1] { if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == ':' || r == '_' || r == '-') { return false } }
+		i = 2
+	} else { return false }
+	if i == len(args) { return true }
+	if args[i] != "--" { return false }
+	i++
+	for i < len(args) {
+		arg := args[i]
+		switch arg {
+		case "-t", "-k":
+			if i+1 >= len(args) || strings.TrimSpace(args[i+1]) == "" || strings.ContainsAny(args[i+1], "\\;&|<>$\x00\r\n") { return false }
+			i += 2
+		case "--runInBand", "--run":
+			i++
+		default:
+			if strings.HasPrefix(arg, "-") || !safeRelativePath(arg) { return false }
+			i++
+		}
+	}
+	return true
 }
 
 func safeGoPackageCommand(args []string) bool {
@@ -147,7 +173,7 @@ func AuthorizeManagedProcess(command Command) Decision {
 		if len(args) == 2 && args[0] == "-m" && args[1] == "http.server" { allowed = true }
 		if len(args) >= 2 && args[0] == "-m" && args[1] == "http.server" {
 			allowed = true
-			for _, arg := range args[2:] { if strings.HasPrefix(arg, "-") { if arg != "--bind" { allowed = false }; continue }; if _, err := strconv.Atoi(arg); err != nil { allowed = false } }
+			for i := 2; i < len(args); i++ { arg := args[i]; if arg == "--bind" { i++; if i >= len(args) || (args[i] != "127.0.0.1" && args[i] != "localhost") { allowed = false }; continue }; port, err := strconv.Atoi(arg); if err != nil || port < 1 || port > 65535 { allowed = false } }
 		}
 	case "php":
 		allowed = len(args) >= 2 && args[0] == "-S" && (strings.HasPrefix(args[1], "127.0.0.1:") || strings.HasPrefix(args[1], "localhost:"))
