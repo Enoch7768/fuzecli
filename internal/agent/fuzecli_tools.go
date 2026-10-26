@@ -316,6 +316,22 @@ func validateToolAction(name string, args map[string]any) error {
 		switch args["action"] { case "create": return require("title","body"); case "update": if err:=require("number");err!=nil{return err};if state,ok:=args["state"];ok&&state!="open"&&state!="closed"{return fmt.Errorf("%s.state must be open or closed for update",name)};if _,ok:=args["title"];!ok { if _,ok=args["body"];!ok { if _,ok=args["state"];!ok { if _,ok=args["labels"];!ok { if _,ok=args["assignees"];!ok { return fmt.Errorf("%s.update needs at least one field to change",name) } } } } };case "comment": return require("number","body") }
 	case "github.actions":
 		switch args["action"] { case "list_jobs","rerun_failed": return require("run_id"); case "job_logs": return require("job_id") }
+	case "image.inspect":
+		return require("path")
+	case "image.compare":
+		return require("path_a","path_b")
+	case "browser.open":
+		if err := require("url"); err != nil { return err }; if _, err := tier3BrowserURL(fmt.Sprint(args["url"])); err != nil { return err }
+	case "browser.click":
+		if strings.TrimSpace(fmt.Sprint(args["selector"])) == "" { return fmt.Errorf("%s.selector must not be empty", name) }
+	case "browser.type":
+		if strings.TrimSpace(fmt.Sprint(args["selector"])) == "" { return fmt.Errorf("%s.selector must not be empty", name) }
+	case "browser.select":
+		if strings.TrimSpace(fmt.Sprint(args["selector"])) == "" { return fmt.Errorf("%s.selector must not be empty", name) }
+	case "browser.screenshot", "browser.inspect", "browser.console", "browser.network":
+		return require("target_id")
+	case "deploy.run":
+		return require("provider")
 	}
 	return nil
 }
