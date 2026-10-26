@@ -80,7 +80,7 @@ func (a *App) AttachWorkspace(root string) error {
 	a.Store = s
 	a.Repository = index
 	a.Platform = platform.NewManager(s.Root)
-	tools, err := agent.NewFuzeCLIToolRegistry(agent.ToolRuntime{Root: s.Root, Store: s, Index: index})
+	tools, err := agent.NewFuzeCLIToolRegistry(agent.ToolRuntime{Root: s.Root, Store: s, Index: index, Capabilities: agent.AgentToolCapabilities()})
 	if err != nil {
 		_ = s.Close()
 		a.Store = nil
