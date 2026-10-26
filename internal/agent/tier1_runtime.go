@@ -314,7 +314,7 @@ func (rt ToolRuntime) runTest(ctx context.Context,a map[string]any)(any,error){
 	exe:="";args:=[]string{};timeout:=intArg(a,"timeout_seconds",120)
 	if _,e:=os.Stat(filepath.Join(rt.Root,"go.mod"));e==nil{
 		pkg:="./...";if path!=""{resolved,e:=rt.resolve(path,false);if e!=nil{return nil,e};inf,e:=os.Stat(resolved);if e!=nil{return nil,e};dir:=resolved;if !inf.IsDir(){dir=filepath.Dir(resolved)};rel,e:=filepath.Rel(rt.Root,dir);if e!=nil{return nil,e};pkg="./"+filepath.ToSlash(rel);if rel=="."{pkg="./..."}}
-		exe="go";args=[]string{"test",pkg};if name!=""{args=append(args,"-run","^"+regexp.QuoteMeta(name)+"$")};if suite=="unit"{args=append(args,"-short")}
+		exe="go";args=[]string{"test"};if name!=""{args=append(args,"-run","^"+regexp.QuoteMeta(name)+"$")};if suite=="unit"{args=append(args,"-short")};args=append(args,pkg)
 	}else if _,e:=os.Stat(filepath.Join(rt.Root,"package.json"));e==nil{
 		exe="npm";args=[]string{"test","--"};if path!=""{_,e:=rt.resolve(path,false);if e!=nil{return nil,e};args=append(args,filepath.ToSlash(path))};if name!=""{args=append(args,"-t",name)}
 	}else if path!=""||suite!=""{exe="python";args=[]string{"-m","pytest"};if path!=""{_,e:=rt.resolve(path,false);if e!=nil{return nil,e};args=append(args,filepath.ToSlash(path))};if name!=""{args=append(args,"-k",name)}}else{return nil,errors.New("no supported test runner detected; provide a project manifest or explicit test path")}
