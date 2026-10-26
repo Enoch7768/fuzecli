@@ -186,3 +186,12 @@ func TestTier3BrowserOpenRejectsUnsafeURLBeforeContactingCDP(t *testing.T) {
 		t.Fatalf("unsafe browser URL was not rejected: %#v", result)
 	}
 }
+
+func TestTier3FlyProductionTargetFailsClosed(t *testing.T) {
+	registry, err := NewFuzeCLIToolRegistry(ToolRuntime{Root: t.TempDir()})
+	if err != nil { t.Fatal(err) }
+	result := registry.Execute(context.Background(), ToolCall{ID: "fly-prod", Name: "deploy.run", Arguments: json.RawMessage(`{"provider":"fly","production":true,"dry_run":true}`)}, nil)
+	if result.Status != ToolResultError || !strings.Contains(strings.ToLower(result.Error), "fly.toml") {
+		t.Fatalf("Fly production target should not be guessed: %#v", result)
+	}
+}
