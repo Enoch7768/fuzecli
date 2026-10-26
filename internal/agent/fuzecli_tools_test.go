@@ -274,3 +274,13 @@ func TestEveryDefinedToolHasRuntimeDispatch(t *testing.T) {
 		if !dispatched[def.Name] { t.Errorf("tool %q is defined but has no ToolRuntime.execute dispatch", def.Name) }
 	}
 }
+
+func TestWindowsShimCommandLineQuotesArgumentsAndRejectsInjection(t *testing.T) {
+	line, err := windowsShimCommandLine(`C:\Program Files\nodejs\npm.cmd`, []string{"install", "foo bar"})
+	if err != nil { t.Fatal(err) }
+	want := `""C:\Program Files\nodejs\npm.cmd" "install" "foo bar""`
+	if line != want { t.Fatalf("unexpected Windows command line:\n got: %s\nwant: %s", line, want) }
+	if _, err := windowsShimCommandLine(`C:\nodejs\npm.cmd`, []string{"install", "safe&whoami"}); err == nil {
+		t.Fatal("shell metacharacters must be rejected before invoking a Windows command shim")
+	}
+}
