@@ -4,7 +4,7 @@ Tier 3 completes the planned image, browser, and deployment tools. The full regi
 
 ## Image tools
 
-- `image.inspect` reads supported PNG, JPEG, and GIF image metadata: format, dimensions, pixel count, file size, and modification time.
+- `image.inspect` reads supported PNG, JPEG, and GIF image metadata: format, dimensions, pixel count, the decoder-reported color-model type, file size, and modification time.
 - `image.compare` compares two supported images with a bounded sample of pixel channels. It reports dimensions, sampled pixel count, mean absolute channel difference, and exact-sample match ratio.
 - Image comparison is **not** semantic image understanding. Different encodings, scaling, color profiles, and small image shifts can change the pixel metrics. Each input is limited to 64 MiB and 16 million decoded pixels.
 
@@ -25,7 +25,7 @@ Browser use requires the `network_access` capability. These tools do not bypass 
 
 - `deploy.inspect` lists known deployment manifests and reports whether Vercel, Netlify, Fly, and Railway CLIs are installed. CLI presence does not prove that the project is linked, authenticated, or configured correctly.
 - `deploy.run` supports fixed, provider-specific commands for Vercel, Netlify, Fly, and Railway. It does not accept arbitrary shell commands. `dry_run=true` returns the exact planned argument list and performs no deployment.
-- A real deployment requires both `run_build` and `network_access` capabilities, an explicit approval grant for the exact arguments, the corresponding CLI, and valid provider-side configuration. Production deployments are external, potentially irreversible operations.
+- A real deployment requires both `run_build` and `network_access` capabilities, an explicit approval grant for the exact arguments, the corresponding CLI, and valid provider-side configuration. Vercel and Netlify use their explicit production flags; Railway can target its named production environment. Fly deployment targets the app configured in `fly.toml`, so `production=true` is rejected for Fly rather than pretending the flag selects a safe environment. For Railway with `production=false`, the active linked environment may still be production; verify provider state before approval. Production deployments are external, potentially irreversible operations.
 - Command output is bounded and secret-shaped values are redacted before returning results. Redaction is best-effort, not a guarantee that arbitrary provider output contains no sensitive data.
 
 ## Safety and error handling
