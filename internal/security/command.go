@@ -57,6 +57,7 @@ func Authorize(command Command) Decision {
 			return Decision{Allowed: true, Risk: RiskLow, Reason: "PHP syntax lint is an allowlisted verification command."}
 		}
 	case "python", "python3":
+		if exact(args, "-m", "compileall", "-q", ".") { return Decision{Allowed:true, Risk:RiskMedium, Reason:"Python bytecode compilation over the workspace is an allowlisted build check."} }
 		if len(args) == 2 && args[0] == "-m" && args[1] == "py_compile" {
 			return Decision{Allowed: true, Risk: RiskLow, Reason: "Python compilation is an allowlisted verification command."}
 		}
