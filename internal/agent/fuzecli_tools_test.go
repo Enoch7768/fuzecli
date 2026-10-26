@@ -166,7 +166,10 @@ func TestTier1ReadOnlyDatabaseQuery(t *testing.T) {
 	dbPath := filepath.Join(root, "app.sqlite")
 	db, err := sql.Open("sqlite", "file:"+filepath.ToSlash(dbPath))
 	if err != nil { t.Fatal(err) }
-	if _, err = db.Exec("CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT); INSERT INTO users(name) VALUES('Ada')"); err != nil { t.Fatal(err) }
+	if _, err = db.Exec("CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT)"); err != nil { t.Fatal(err) }
+	if _, err = db.Exec("INSERT INTO users(name) VALUES('Ada')"); err != nil { t.Fatal(err) }
+	if _, err = db.Exec("CREATE TABLE orders(id INTEGER PRIMARY KEY, user_id INTEGER, FOREIGN KEY(user_id) REFERENCES users(id))"); err != nil { t.Fatal(err) }
+	if _, err = db.Exec("CREATE INDEX idx_users_name ON users(name)"); err != nil { t.Fatal(err) }
 	if err = db.Close(); err != nil { t.Fatal(err) }
 	registry, err := NewFuzeCLIToolRegistry(ToolRuntime{Root: root})
 	if err != nil { t.Fatal(err) }
@@ -179,6 +182,7 @@ func TestTier1ReadOnlyDatabaseQuery(t *testing.T) {
 	if got["row_count"] != float64(1) { t.Fatalf("unexpected result: %s", result.Result) }
 	schemaResult := registry.Execute(context.Background(), ToolCall{ID:"schema",Name:"database.schema",Arguments:json.RawMessage(`{"path":"app.sqlite"}`)}, nil)
 	if schemaResult.Status != ToolResultSuccess { t.Fatalf("schema inspection failed: %s", schemaResult.Error) }
+	if !strings.Contains(string(schemaResult.Result), `"foreign_keys"`) || !strings.Contains(string(schemaResult.Result), `"idx_users_name"`) { t.Fatalf("schema result is missing foreign keys or index metadata: %s", schemaResult.Result) }
 }
 
 func TestTier1HTTPRequestIsBoundedAndRedactsSecrets(t *testing.T) {
