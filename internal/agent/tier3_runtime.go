@@ -19,6 +19,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"time"
@@ -568,9 +569,10 @@ func (rt ToolRuntime) deployInspect(a map[string]any) (any, error) {
 			found = append(found, rel)
 		}
 	}
-	providers := map[string]string{"vercel": "vercel", "netlify": "netlify", "fly": "fly", "railway": "railway"}
+	providers := []string{"vercel", "netlify", "fly", "railway"}
 	available := map[string]bool{}
-	for name, exe := range providers {
+	for _, name := range providers {
+		exe := tier3ProviderExecutable(name)
 		_, err := exec.LookPath(exe)
 		available[name] = err == nil
 	}
@@ -613,7 +615,7 @@ func (rt ToolRuntime) deployRun(ctx context.Context, raw json.RawMessage, a map[
 		if production { args = append(args, "--prod") }
 	case "fly":
 		if production { return nil, errors.New("Fly deployment target is selected by the app configured in fly.toml; this tool cannot safely switch it to a separate production target. Set production=false and approve the configured app target explicitly.") }
-		exe = "fly"
+		exe = tier3ProviderExecutable("fly")
 		args = []string{"deploy", "--yes"}
 		if directory != "." { args = append(args, directory) }
 	case "railway":
@@ -671,6 +673,14 @@ func (w *tier3LimitedWriter) Write(p []byte) (int, error) {
 		_, _ = w.builder.Write(p)
 	}
 	return n, nil
+}
+
+func tier3ProviderExecutable(provider string) string {
+	if provider != "fly" { return provider }
+	if _, err := exec.LookPath("fly"); err == nil { return "fly" }
+	if _, err := exec.LookPath("flyctl"); err == nil { return "flyctl" }
+	if runtime.GOOS == "windows" { return "flyctl" }
+	return "fly"
 }
 
 func tier3Exists(root, rel string) bool {
