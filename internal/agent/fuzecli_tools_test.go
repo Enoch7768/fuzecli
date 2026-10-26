@@ -2,6 +2,7 @@ package agent
 
 import (
  "context"
+ "database/sql"
  "encoding/json"
  "os"
  "path/filepath"
