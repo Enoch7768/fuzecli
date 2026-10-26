@@ -10,7 +10,7 @@ Tier 3 completes the planned image, browser, and deployment tools. The full regi
 
 ## Browser tools
 
-Browser tools connect to a local Chrome/Chromium DevTools Protocol endpoint. Set `FUZECLI_BROWSER_CDP_URL` to a local origin such as `http://127.0.0.1:9222`; by default the tool uses that endpoint. The endpoint must resolve to localhost or a loopback IP. Start Chrome/Chromium with remote debugging enabled in a trusted local environment. Do not expose the DevTools port to a network: it grants powerful control over browser tabs and authenticated sessions.
+Browser tools connect to a local Chrome/Chromium DevTools Protocol endpoint. Set `FUZECLI_BROWSER_CDP_URL` to a local origin such as `http://127.0.0.1:9222`; by default the tool uses that endpoint. The endpoint must resolve to localhost or a loopback IP. Start Chrome/Chromium with remote debugging enabled in a trusted local environment, for example with `--remote-debugging-port=9222 --remote-allow-origins=http://localhost` and a dedicated `--user-data-dir` profile. Do not reuse a personal browser profile or expose the DevTools port to a network: it grants powerful control over tabs and authenticated sessions.
 
 - `browser.open` opens a new tab at a valid HTTP(S) URL. The tool rejects non-HTTP(S) schemes and embedded URL credentials.
 - `browser.inspect` returns the page title, URL, readiness state, bounded visible text, and optional selected-element details.
