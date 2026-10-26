@@ -294,7 +294,7 @@ func (rt ToolRuntime) terminalRun(ctx context.Context,a map[string]any)(any,erro
 	decision:=security.Authorize(security.Command{Name:exe,Args:args});if !decision.Allowed{return nil,fmt.Errorf("command blocked by security policy: %s",decision.Reason)}
 	cwd:=rt.Root;if rel:=stringArg(a,"cwd");rel!=""{p,e:=rt.resolve(rel,false);if e!=nil{return nil,e};info,e:=os.Stat(p);if e!=nil||!info.IsDir(){return nil,errors.New("cwd must be an existing workspace directory")};cwd=p}
 	timeout:=time.Duration(intArg(a,"timeout_seconds",60))*time.Second;cctx,cancel:=context.WithTimeout(ctx,timeout);defer cancel()
-	cmd:=exec.CommandContext(cctx,exe,args...);cmd.Dir=cwd;cmd.Env=append(os.Environ(),"GIT_TERMINAL_PROMPT=0");var stdout,stderr limitedBuffer;stdout.limit=64<<10;stderr.limit=64<<10;cmd.Stdout=&stdout;cmd.Stderr=&stderr
+	cmd,cmdErr:=workspaceExecCommand(cctx,exe,args);if cmdErr!=nil{return nil,fmt.Errorf("run command: %w",cmdErr)};cmd.Dir=cwd;cmd.Env=append(os.Environ(),"GIT_TERMINAL_PROMPT=0");var stdout,stderr limitedBuffer;stdout.limit=64<<10;stderr.limit=64<<10;cmd.Stdout=&stdout;cmd.Stderr=&stderr
 	err:=cmd.Run();exit:=0;if err!=nil{var ee *exec.ExitError;if errors.As(err,&ee){exit=ee.ExitCode()}else if cctx.Err()==nil{return nil,fmt.Errorf("run command: %w",err)}else{exit=-1}}
 	return map[string]any{"exit_code":exit,"stdout":stdout.String(),"stderr":stderr.String(),"timed_out":errors.Is(cctx.Err(),context.DeadlineExceeded),"error":errorString(err)},nil
 }
@@ -316,7 +316,7 @@ func (rt ToolRuntime) verifyRun(ctx context.Context,a map[string]any)(any,error)
 		if len(validated)>0&&exe!="go"&&exe!="gofmt"{entry["scope"]="project-wide; the manifest script does not support path-scoped execution"}else if len(validated)>0{entry["scope"]="requested paths"}else{entry["scope"]="project"}
 		if _,e:=exec.LookPath(exe);e!=nil{entry["diagnostic"]=exe+" is not installed";results=append(results,entry);continue}
 		decision:=security.Authorize(security.Command{Name:exe,Args:args});if !decision.Allowed{entry["diagnostic"]="blocked by security policy: "+decision.Reason;results=append(results,entry);continue}
-		cctx,cancel:=context.WithTimeout(ctx,timeout);start:=time.Now();cmd:=exec.CommandContext(cctx,exe,args...);cmd.Dir=rt.Root;var out limitedBuffer;out.limit=256<<10;cmd.Stdout=&out;cmd.Stderr=&out;runErr:=cmd.Run();cancel();entry["duration_ms"]=time.Since(start).Milliseconds();entry["exit_code"]=0;entry["status"]="passed"
+		cctx,cancel:=context.WithTimeout(ctx,timeout);start:=time.Now();cmd,cmdErr:=workspaceExecCommand(cctx,exe,args);if cmdErr!=nil{cancel();entry["status"]="failed";entry["exit_code"]=-1;entry["diagnostic"]=cmdErr.Error();results=append(results,entry);continue};cmd.Dir=rt.Root;var out limitedBuffer;out.limit=256<<10;cmd.Stdout=&out;cmd.Stderr=&out;runErr:=cmd.Run();cancel();entry["duration_ms"]=time.Since(start).Milliseconds();entry["exit_code"]=0;entry["status"]="passed"
 		if runErr!=nil{entry["status"]="failed";var ee *exec.ExitError;if errors.As(runErr,&ee){entry["exit_code"]=ee.ExitCode()}else{entry["exit_code"]=-1};entry["diagnostic"]=out.String()}else if check=="format"&&exe=="gofmt"&&strings.TrimSpace(out.String())!=""{entry["status"]="failed";entry["exit_code"]=1;entry["diagnostic"]=out.String()}else{entry["diagnostic"]=out.String()}
 		results=append(results,entry)
 	}
