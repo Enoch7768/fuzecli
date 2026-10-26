@@ -3,6 +3,8 @@ package agent
 import (
  "context"
  "database/sql"
+ "net/http"
+ "net/http/httptest"
  "encoding/json"
  "os"
  "path/filepath"
@@ -118,6 +120,19 @@ func TestFuzeAIDryRunsDoNotMutateOrExecute(t *testing.T) {
 }
 
 
+func TestTier1ToolNamesArePresent(t *testing.T) {
+	want := []string{
+		"workspace.read_files","workspace.find_references","workspace.apply_patch","workspace.file_info","workspace.tree","workspace.rename",
+		"terminal.run_parallel","terminal.process","terminal.output","environment.inspect","test.list","test.run","debug.analyze",
+		"git.log","git.show","git.branch","git.stash","web.search","web.open","github.search_code","github.read_file","http.request",
+		"database.inspect","database.schema","database.query",
+	}
+	seen := map[string]bool{}
+	for _, d := range FuzeCLIToolDefinitions() { seen[d.Name] = true }
+	for _, name := range want { if !seen[name] { t.Errorf("missing Tier 1 tool %q", name) } }
+	if len(want) != 25 { t.Fatalf("test fixture error: expected 25 Tier 1 names, got %d", len(want)) }
+}
+
 func TestTier1ReadOnlyWorkspaceTools(t *testing.T) {
 	root := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(root, "src"), 0755); err != nil { t.Fatal(err) }
@@ -161,4 +176,20 @@ func TestTier1ReadOnlyDatabaseQuery(t *testing.T) {
 	var got map[string]any
 	if err := json.Unmarshal(result.Result, &got); err != nil { t.Fatal(err) }
 	if got["row_count"] != float64(1) { t.Fatalf("unexpected result: %s", result.Result) }
+	schemaResult := registry.Execute(context.Background(), ToolCall{ID:"schema",Name:"database.schema",Arguments:json.RawMessage(`{"path":"app.sqlite"}`)}, nil)
+	if schemaResult.Status != ToolResultSuccess { t.Fatalf("schema inspection failed: %s", schemaResult.Error) }
+}
+
+func TestTier1HTTPRequestIsBoundedAndRedactsSecrets(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Set-Cookie", "session=private")
+		_, _ = w.Write([]byte(`{"status":"ok","api_key":"secret-value"}`))
+	}))
+	defer server.Close()
+	registry, err := NewFuzeCLIToolRegistry(ToolRuntime{Root:t.TempDir()})
+	if err != nil { t.Fatal(err) }
+	result := registry.Execute(context.Background(), ToolCall{ID:"http",Name:"http.request",Arguments:json.RawMessage(`{"method":"GET","url":"`+server.URL+`","timeout_seconds":3}`)}, nil)
+	if result.Status != ToolResultSuccess { t.Fatalf("local HTTP request failed: %s", result.Error) }
+	if strings.Contains(string(result.Result), "secret-value") { t.Fatalf("response secret was not redacted: %s", result.Result) }
+	if strings.Contains(string(result.Result), "Set-Cookie") { t.Fatalf("sensitive response header leaked: %s", result.Result) }
 }
