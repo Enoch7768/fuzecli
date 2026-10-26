@@ -297,8 +297,8 @@ func (rt ToolRuntime) runTier2Command(ctx context.Context,exe string,args []stri
 	cmd,cmdErr:=workspaceExecCommand(cctx,exe,args);if cmdErr!=nil{return nil,cmdErr};cmd.Dir=workDir
 	cmd.Env=append(os.Environ(),"CI=1","NO_COLOR=1")
 	output,err:=cmd.CombinedOutput();truncated:=len(output)>tier2OutputLimit;if truncated{output=output[:tier2OutputLimit]}
-	result:=map[string]any{"executed":true,"command":append([]string{exe},args...),"exit_code":0,"output":string(output),"truncated":truncated,"timed_out":errors.Is(cctx.Err(),context.DeadlineExceeded)}
-	if err!=nil{var exitErr *exec.ExitError;if errors.As(err,&exitErr){result["exit_code"]=exitErr.ExitCode()}else{result["exit_code"]=-1};result["error"]=err.Error();return result,fmt.Errorf("%s failed: %w",exe,err)}
+	result:=map[string]any{"executed":true,"success":err==nil,"command":append([]string{exe},args...),"exit_code":0,"output":redactHTTPSecrets(string(output)),"truncated":truncated,"timed_out":errors.Is(cctx.Err(),context.DeadlineExceeded)}
+	if err!=nil{var exitErr *exec.ExitError;if errors.As(err,&exitErr){result["exit_code"]=exitErr.ExitCode()}else{result["exit_code"]=-1};result["error"]=redactHTTPSecrets(err.Error());return result,nil}
 	return result,nil
 }
 func tier2StringArrayArg(a map[string]any,key string)[]string{raw,_:=a[key].([]any);out:=make([]string,0,len(raw));for _,v:=range raw{if s,ok:=v.(string);ok{out=append(out,s)}};return out}
