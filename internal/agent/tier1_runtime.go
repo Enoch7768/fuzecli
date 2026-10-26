@@ -26,6 +26,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/Enoch7768/fuzecli/internal/security"
+	"github.com/Enoch7768/fuzecli/internal/workspace"
 	_ "modernc.org/sqlite"
 )
 
@@ -159,6 +160,7 @@ func (rt ToolRuntime) fileInfo(a map[string]any) (any, error) {
 	out["binary"] = binary
 	if binary { out["encoding"] = "binary" } else { out["encoding"] = "UTF-8" }
 	if !binary && info.Size() <= 64<<20 {
+		if _, err := f.Seek(0, io.SeekStart); err != nil { return nil, err }
 		scanner := bufio.NewScanner(f); scanner.Buffer(make([]byte, 64*1024), 2<<20); lines := 0
 		for scanner.Scan() { lines++ }
 		if err := scanner.Err(); err != nil { return nil, fmt.Errorf("count lines: %w", err) }
@@ -267,7 +269,7 @@ func (rt ToolRuntime) manageProcess(ctx context.Context, a map[string]any) (any,
 		return map[string]any{"stopped":true,"process_id":id},nil
 	case "restart":
 		select{case <-p.done:default:if p.cmd.Process!=nil{_ = p.cmd.Process.Kill()};select{case <-p.done:case <-time.After(3*time.Second):return nil,errors.New("process did not stop for restart")}}
-		return rt.manageProcess(ctx,map[string]any{"action":"start","executable":p.executable,"args":p.args,"cwd":filepath.ToSlash(strings.TrimPrefix(p.cwd,rt.Root+string(os.PathSeparator)))})
+		restartCwd:="";if p.cwd!=rt.Root{restartCwd=filepath.ToSlash(strings.TrimPrefix(p.cwd,rt.Root+string(os.PathSeparator)))};return rt.manageProcess(ctx,map[string]any{"action":"start","executable":p.executable,"args":p.args,"cwd":restartCwd})
 	default:return nil,errors.New("unsupported process action")
 	}
 }
@@ -308,7 +310,7 @@ func (rt ToolRuntime) runTest(ctx context.Context,a map[string]any)(any,error){
 		pkg:="./...";if path!=""{resolved,e:=rt.resolve(path,false);if e!=nil{return nil,e};inf,e:=os.Stat(resolved);if e!=nil{return nil,e};dir:=resolved;if !inf.IsDir(){dir=filepath.Dir(resolved)};rel,e:=filepath.Rel(rt.Root,dir);if e!=nil{return nil,e};pkg="./"+filepath.ToSlash(rel);if rel=="."{pkg="./..."}}
 		exe="go";args=[]string{"test",pkg};if name!=""{args=append(args,"-run","^"+regexp.QuoteMeta(name)+"$")};if suite=="unit"{args=append(args,"-short")}
 	}else if _,e:=os.Stat(filepath.Join(rt.Root,"package.json"));e==nil{
-		exe="npm";args=[]string{"test","--"};if path!=""{p,e:=rt.resolve(path,false);if e!=nil{return nil,e};args=append(args,filepath.ToSlash(path))};if name!=""{args=append(args,"-t",name)}
+		exe="npm";args=[]string{"test","--"};if path!=""{_,e:=rt.resolve(path,false);if e!=nil{return nil,e};args=append(args,filepath.ToSlash(path))};if name!=""{args=append(args,"-t",name)}
 	}else if path!=""||suite!=""{exe="python";args=[]string{"-m","pytest"};if path!=""{p,e:=rt.resolve(path,false);if e!=nil{return nil,e};args=append(args,filepath.ToSlash(path))};if name!=""{args=append(args,"-k",name)}}else{return nil,errors.New("no supported test runner detected; provide a project manifest or explicit test path")}
 	if err:=securityCommandAllowed(exe,args);err!=nil{return nil,err}
 	cctx,cancel:=context.WithTimeout(ctx,time.Duration(timeout)*time.Second);defer cancel();cmd:=exec.CommandContext(cctx,exe,args...);cmd.Dir=rt.Root;cmd.Env=append(os.Environ(),"GIT_TERMINAL_PROMPT=0");var stdout,stderr limitedBuffer;stdout.limit=64<<10;stderr.limit=64<<10;start:=time.Now();cmd.Stdout=&stdout;cmd.Stderr=&stderr;err:=cmd.Run();exit:=0;if err!=nil{var ee *exec.ExitError;if errors.As(err,&ee){exit=ee.ExitCode()}else if cctx.Err()!=nil{exit=-1}else{return nil,err}}
@@ -478,7 +480,7 @@ func (rt ToolRuntime) databaseSchema(ctx context.Context,a map[string]any)(any,e
 	if e=rows.Err();e!=nil{return nil,e};return map[string]any{"path":stringArg(a,"path"),"objects":objects,"count":len(objects),"read_only":true},nil
 }
 func (rt ToolRuntime) databaseQuery(ctx context.Context,a map[string]any)(any,error){
-	query:=strings.TrimSpace(stringArg(a,"query"));if strings.Contains(query,";") { trimmed:=strings.TrimSuffix(query,";");if strings.Contains(trimmed,";"){return nil,errors.New("only one SQL statement is allowed")};query=trimmed }
+	query:=strings.TrimSpace(stringArg(a,"query"));if query==""{return nil,errors.New("query must not be empty")};if strings.Contains(query,";") { trimmed:=strings.TrimSuffix(query,";");if strings.Contains(trimmed,";"){return nil,errors.New("only one SQL statement is allowed")};query=trimmed }
 	first:=strings.ToUpper(strings.Fields(query)[0]);if first!="SELECT"&&first!="WITH"&&first!="EXPLAIN"&&first!="PRAGMA"{return nil,errors.New("database.query is read-only; only SELECT, WITH, EXPLAIN, and safe PRAGMA queries are allowed")}
 	if first=="PRAGMA"{lower:=strings.ToLower(strings.TrimSpace(query));allowed:=false;for _,p:=range []string{"pragma table_info(","pragma table_info (","pragma foreign_key_list(","pragma foreign_key_list (","pragma index_list(","pragma index_list (","pragma index_info(","pragma index_info (","pragma database_list","pragma compile_options","pragma integrity_check","pragma quick_check","pragma foreign_keys","pragma user_version","pragma schema_version"}{if strings.HasPrefix(lower,p){allowed=true;break}};if !allowed{return nil,errors.New("this PRAGMA is not in the read-only allowlist")}}
 	db,e:=rt.openSQLite(stringArg(a,"path"));if e!=nil{return nil,e};defer db.Close()
