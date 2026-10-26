@@ -521,5 +521,5 @@ func (rt ToolRuntime) databaseQuery(ctx context.Context,a map[string]any)(any,er
 	if e=rows.Err();e!=nil{return nil,e};return map[string]any{"columns":cols,"rows":out,"row_count":len(out),"truncated":len(out)>=max,"read_only":true},nil
 }
 
-var httpSecretRE = regexp.MustCompile(`(?i)(api[_-]?key|access[_-]?token|refresh[_-]?token|password|secret|authorization)(["']?\\s*[:=]\\s*["']?)[^"'\\s,;&}]+`)
+var httpSecretRE = regexp.MustCompile(`(?i)(api[_-]?key|access[_-]?token|refresh[_-]?token|password|secret|authorization)(["']?\s*[:=]\s*["']?)[^"'\s,;&}]+`)
 func redactHTTPSecrets(s string) string { return httpSecretRE.ReplaceAllString(s, "$1$2[REDACTED]") }
