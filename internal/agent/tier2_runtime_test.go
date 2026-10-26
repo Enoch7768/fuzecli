@@ -84,6 +84,8 @@ func TestTier2InstallAndContainerDryRunsDoNotExecute(t *testing.T) {
 	install:=registry.Execute(context.Background(),ToolCall{ID:"install",Name:"package.install",Arguments:json.RawMessage(`{"manager":"npm","packages":["left-pad"],"dry_run":true}`)},nil)
 	if install.Status!=ToolResultSuccess{t.Fatalf("package install dry run failed: %s",install.Error)}
 	container:=registry.Execute(context.Background(),ToolCall{ID:"container",Name:"container.run",Arguments:json.RawMessage(`{"engine":"docker","image":"alpine:3.20","command":["echo","safe"],"dry_run":true}`)},nil)
+	build:=registry.Execute(context.Background(),ToolCall{ID:"build",Name:"build.run",Arguments:json.RawMessage(`{"target":"go","dry_run":true}`)},nil)
+	if build.Status!=ToolResultSuccess{t.Fatalf("build dry run failed: %s",build.Error)}
 	if container.Status!=ToolResultSuccess{t.Fatalf("container dry run failed: %s",container.Error)}
 }
 
