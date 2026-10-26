@@ -9,6 +9,10 @@ func TestAuthorizeAllowlistedCommands(t *testing.T) {
 		risk Risk
 	}{
 		{"go", []string{"test", "./..."}, RiskLow},
+		{"go", []string{"test", "-run", "^TestRead$", "./internal/agent"}, RiskLow},
+		{"go", []string{"test", "-short", "./..."}, RiskLow},
+		{"npm", []string{"test", "--", "tests/auth.test.ts", "-t", "login"}, RiskMedium},
+		{"python", []string{"-m", "pytest", "tests/test_auth.py", "-k", "login"}, RiskMedium},
 		{"go", []string{"vet", "./..."}, RiskLow},
 		{"gofmt", []string{"-l", "."}, RiskLow},
 		{"npm", []string{"test", "--", "--runInBand"}, RiskLow},
@@ -50,5 +54,28 @@ func TestAuthorizeRejectsShellMetacharacters(t *testing.T) {
 	d := Authorize(Command{Name: "php", Args: []string{"-l", "index.php; echo unsafe"}})
 	if d.Allowed {
 		t.Fatal("expected shell metacharacters to be rejected")
+	}
+}
+
+func TestAuthorizeManagedDevelopmentProcesses(t *testing.T) {
+	for _, command := range []Command{
+		{Name:"npm", Args:[]string{"run","dev"}},
+		{Name:"pnpm", Args:[]string{"run","start"}},
+		{Name:"node", Args:[]string{"server.js"}},
+		{Name:"python", Args:[]string{"server.py"}},
+		{Name:"go", Args:[]string{"run","."}},
+		{Name:"php", Args:[]string{"-S","127.0.0.1:8080","-t","public"}},
+		{Name:"python3", Args:[]string{"-m","http.server","8080","--bind","127.0.0.1"}},
+	} {
+		if decision := AuthorizeManagedProcess(command); !decision.Allowed { t.Errorf("%s %v should be allowlisted: %s",command.Name,command.Args,decision.Reason) }
+	}
+	for _, command := range []Command{
+		{Name:"node", Args:[]string{"../../evil.js"}},
+		{Name:"python", Args:[]string{"-c","import os; os.remove('important')"}},
+		{Name:"go", Args:[]string{"run","../outside.go"}},
+		{Name:"php", Args:[]string{"-S","0.0.0.0:8080"}},
+		{Name:"sh", Args:[]string{"-c","npm run dev"}},
+	} {
+		if decision := AuthorizeManagedProcess(command); decision.Allowed { t.Errorf("%s %v should be blocked",command.Name,command.Args) }
 	}
 }
