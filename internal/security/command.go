@@ -117,11 +117,13 @@ func safeGoPackageCommand(args []string) bool {
 		switch args[i] {
 		case "-short":
 			if command != "test" { return false }; i++
-		case "-run", "-tags":
+		case "-run":
 			if command != "test" || i+1 >= len(args) { return false }
 			value := args[i+1]
-			if value == "" || strings.ContainsAny(value, "\\;&|<>$\x00\r\n") { return false }
-			if args[i] == "-tags" && !validSimpleTagList(value) { return false }
+			if value == "" || len(value) > 512 || strings.ContainsAny(value, "\x00\r\n") { return false }
+			i += 2
+		case "-tags":
+			if command != "test" || i+1 >= len(args) || !validSimpleTagList(args[i+1]) { return false }
 			i += 2
 		default:
 			return false
