@@ -181,7 +181,7 @@ func (rt ToolRuntime) docsGenerate(ctx context.Context,raw json.RawMessage,a map
 	if len(body)>50000{return nil,errors.New("generated documentation exceeds 50 KB")}
 	if _,err:=os.Stat(path);err==nil{return nil,errors.New("docs.generate never overwrites an existing file")}else if !os.IsNotExist(err){return nil,err}
 	if boolArg(a,"dry_run",false){return map[string]any{"executed":false,"path":rel,"bytes":len(body)},nil}
-	if err:=rt.approve(ctx,"docs.generate",raw);err!=nil{return nil,err}
+	if err:=func() error { if hasToolApproval(ctx, "docs.generate", raw) { return nil }; return errors.New("docs.generate requires explicit approval for this exact operation") }();err!=nil{return nil,err}
 	if err:=os.MkdirAll(filepath.Dir(path),0755);err!=nil{return nil,err}
 	f,err:=os.OpenFile(path,os.O_WRONLY|os.O_CREATE|os.O_EXCL,0644);if err!=nil{return nil,err}
 	if _,err=f.WriteString(body+"\n");err!=nil{_ = f.Close();_ = os.Remove(path);return nil,err}
@@ -211,7 +211,7 @@ func (rt ToolRuntime) buildRun(ctx context.Context,raw json.RawMessage,a map[str
 	decision:=security.Authorize(security.Command{Name:exe,Args:args})
 	if !decision.Allowed{return nil,fmt.Errorf("build command blocked by command policy: %s",decision.Reason)}
 	if boolArg(a,"dry_run",false){return map[string]any{"executed":false,"command":append([]string{exe},args...),"reason":"dry run"},nil}
-	if err:=rt.approve(ctx,"build.run",raw);err!=nil{return nil,err}
+	if err:=func() error { if hasToolApproval(ctx, "build.run", raw) { return nil }; return errors.New("build.run requires explicit approval for this exact operation") }();err!=nil{return nil,err}
 	return rt.runTier2Command(ctx,exe,args,".",time.Duration(intArg(a,"timeout_seconds",180))*time.Second)
 }
 
@@ -247,7 +247,7 @@ func (rt ToolRuntime) databaseMigrate(ctx context.Context,raw json.RawMessage,a 
 	sqlBytes,err:=os.ReadFile(sqlPath);if err!=nil{return nil,err};sqlText:=strings.TrimSpace(string(sqlBytes));if sqlText==""{return nil,errors.New("migration SQL is empty")}
 	if strings.ContainsRune(sqlText,0)||regexp.MustCompile(`(?i)\b(PRAGMA|ATTACH|DETACH|VACUUM|LOAD_EXTENSION)\b`).MatchString(sqlText){return nil,errors.New("migration contains a blocked SQLite administrative statement")}
 	if boolArg(a,"dry_run",false){return map[string]any{"executed":false,"database":dbRel,"migration":sqlRel,"bytes":len(sqlText),"statement_count":strings.Count(sqlText,";")+1},nil}
-	if err:=rt.approve(ctx,"database.migrate",raw);err!=nil{return nil,err}
+	if err:=func() error { if hasToolApproval(ctx, "database.migrate", raw) { return nil }; return errors.New("database.migrate requires explicit approval for this exact operation") }();err!=nil{return nil,err}
 	dsn:="file:"+filepath.ToSlash(dbPath)+"?_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)"
 	db,err:=sql.Open("sqlite",dsn);if err!=nil{return nil,err};defer db.Close()
 	db.SetMaxOpenConns(1)
@@ -280,7 +280,7 @@ func (rt ToolRuntime) containerRun(ctx context.Context,raw json.RawMessage,a map
 	args=append(args,image)
 	command:=stringArrayArg(a,"command");args=append(args,command...)
 	if boolArg(a,"dry_run",false){return map[string]any{"executed":false,"command":append([]string{engine},args...),"reason":"dry run; container not started"},nil}
-	if err:=rt.approve(ctx,"container.run",raw);err!=nil{return nil,err}
+	if err:=func() error { if hasToolApproval(ctx, "container.run", raw) { return nil }; return errors.New("container.run requires explicit approval for this exact operation") }();err!=nil{return nil,err}
 	return rt.runTier2Command(ctx,engine,args,".",time.Duration(intArg(a,"timeout_seconds",60))*time.Second)
 }
 
