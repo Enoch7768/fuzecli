@@ -229,6 +229,16 @@ func toolRequiresApproval(name string, raw json.RawMessage) (bool, string) {
 		return action == "rerun_failed", "rerunning GitHub Actions jobs"
 	case "github.auth":
 		return action == "login_start" || action == "disconnect", "changing GitHub authentication state"
+	case "package.install", "package.update":
+		return true, "installing or updating dependencies"
+	case "docs.generate":
+		return true, "creating documentation files"
+	case "build.run":
+		return true, "running a project build"
+	case "database.migrate":
+		return true, "applying a database migration"
+	case "container.run":
+		return true, "running a container"
 	}
 	return false, ""
 }
