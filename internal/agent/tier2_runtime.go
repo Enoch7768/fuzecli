@@ -105,6 +105,7 @@ func (rt ToolRuntime) packageChange(ctx context.Context, name string, raw json.R
 	exe,args,err:=packageCommand(manager,packages,boolArg(a,"dev",false),update)
 	if err!=nil{return nil,err}
 	if boolArg(a,"dry_run",false) {return map[string]any{"executed":false,"manager":manager,"command":append([]string{exe},args...),"reason":"dry run; no files or packages changed"},nil}
+	if err:=rt.Capabilities.Require(security.NetworkAccess); err!=nil { return nil,err }
 	if !hasToolApproval(ctx,name,raw){return nil,fmt.Errorf("%s requires explicit approval for this exact operation",name)}
 	timeout:=time.Duration(intArg(a,"timeout_seconds",180))*time.Second
 	result,err:=rt.runTier2Command(ctx,exe,args,".",timeout)
@@ -150,6 +151,7 @@ func (rt ToolRuntime) packageAudit(ctx context.Context,a map[string]any)(any,err
 	case "php":exe="composer";args=[]string{"audit","--format=json"}
 	case "python":if _,e:=exec.LookPath("pip-audit");e==nil{exe="pip-audit";args=[]string{"--format","json"}}else{return map[string]any{"executed":false,"manager":manager,"available":false,"message":"pip-audit is not installed; no dependency was installed automatically"},nil}
 	default:return nil,fmt.Errorf("unsupported package manager %q",manager)}
+	if err:=rt.Capabilities.Require(security.NetworkAccess); err!=nil { return nil,err }
 	return rt.runTier2Command(ctx,exe,args,".",time.Duration(intArg(a,"timeout_seconds",120))*time.Second)
 }
 
@@ -281,6 +283,7 @@ func (rt ToolRuntime) containerRun(ctx context.Context,raw json.RawMessage,a map
 	args=append(args,image)
 	command:=tier2StringArrayArg(a,"command");args=append(args,command...)
 	if boolArg(a,"dry_run",false){return map[string]any{"executed":false,"command":append([]string{engine},args...),"reason":"dry run; container not started"},nil}
+	if err:=rt.Capabilities.Require(security.NetworkAccess);err!=nil{return nil,err}
 	if err:=func() error { if hasToolApproval(ctx, "container.run", raw) { return nil }; return errors.New("container.run requires explicit approval for this exact operation") }();err!=nil{return nil,err}
 	return rt.runTier2Command(ctx,engine,args,".",time.Duration(intArg(a,"timeout_seconds",60))*time.Second)
 }
