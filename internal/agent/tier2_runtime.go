@@ -217,7 +217,7 @@ func (rt ToolRuntime) buildRun(ctx context.Context,raw json.RawMessage,a map[str
 func (rt ToolRuntime) apiInspect(a map[string]any)(any,error){
 	if err:=rt.Capabilities.Require(security.ReadWorkspace);err!=nil{return nil,err}
 	max:=intArg(a,"max_results",100);specified:=stringArg(a,"path")
-	routeRE:=regexp.MustCompile("(?i)(GET|POST|PUT|PATCH|DELETE|OPTIONS|HEAD)\\s+[\"\'`](/[\"\'` ]*)")
+	routeRE:=regexp.MustCompile(`(?i)(GET|POST|PUT|PATCH|DELETE|OPTIONS|HEAD)\s*[^A-Za-z0-9/]*(/[A-Za-z0-9_./:{}-]*)`)
 	results:=[]map[string]any{};files:=[]string{}
 	if specified!=""{p,e:=rt.resolve(specified,false);if e!=nil{return nil,e};data,e:=os.ReadFile(p);if e!=nil{return nil,e};files=append(files,specified);_ = data}else{
 		for _,name:=range []string{"openapi.json","swagger.json","openapi.yaml","openapi.yml"}{if exists(rt.Root,name){files=append(files,name)}}
