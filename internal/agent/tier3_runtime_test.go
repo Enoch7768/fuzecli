@@ -129,6 +129,8 @@ func TestTier3BrowserSafetyAndApprovalPolicies(t *testing.T) {
 	if _, err := tier3CDPBase(); err == nil {
 		t.Fatal("remote DevTools endpoint must be rejected")
 	}
+	if tier3LoopbackWebSocket("ws://example.com/devtools/page/1") { t.Fatal("remote WebSocket debugger target must be rejected") }
+	if !tier3LoopbackWebSocket("ws://127.0.0.1:9222/devtools/page/1") { t.Fatal("loopback WebSocket debugger target should be accepted") }
 	for _, item := range []struct{name, args string}{
 		{"browser.click", `{"target_id":"x","selector":"button"}`},
 		{"browser.type", `{"target_id":"x","selector":"input","text":"hello"}`},
