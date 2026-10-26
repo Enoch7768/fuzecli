@@ -109,3 +109,14 @@ func TestTier2MutationsRequireRequestScopedApproval(t *testing.T) {
 		if required { t.Errorf("%s dry run must not require mutation approval", item.name) }
 	}
 }
+
+func TestTier2PackageMutationRequiresDedicatedCapability(t *testing.T) {
+	root := t.TempDir()
+	registry, err := NewFuzeCLIToolRegistry(ToolRuntime{Root: root, Capabilities: security.SafeCapabilities()})
+	if err != nil { t.Fatal(err) }
+	call := ToolCall{ID: "install", Name: "package.install", Arguments: json.RawMessage(`{"manager":"npm","packages":["demo"],"dry_run":true}`)}
+	result := registry.Execute(context.Background(), call, nil)
+	if result.Status != ToolResultError || !strings.Contains(result.Error, string(security.InstallDependency)) {
+		t.Fatalf("package install should fail closed without install_dependency capability: %#v", result)
+	}
+}
