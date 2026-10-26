@@ -628,7 +628,7 @@ func (rt ToolRuntime) deployRun(ctx context.Context, raw json.RawMessage, a map[
 	}
 	command := append([]string{exe}, args...)
 	if boolArg(a, "dry_run", false) {
-		return map[string]any{"executed": false, "provider": provider, "command": command, "working_directory": directory, "production": production, "reason": "dry run; no deployment or network request was made"}, nil
+		return map[string]any{"executed": false, "success": false, "provider": provider, "command": command, "working_directory": directory, "production_requested": production, "reason": "dry run; no deployment or network request was made"}, nil
 	}
 	if err := rt.Capabilities.Require(security.RunBuild); err != nil { return nil, err }
 	if err := rt.Capabilities.Require(security.NetworkAccess); err != nil { return nil, err }
@@ -638,7 +638,7 @@ func (rt ToolRuntime) deployRun(ctx context.Context, raw json.RawMessage, a map[
 	runCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	cmd, cmdErr := workspaceExecCommand(runCtx, exe, args)
-	if cmdErr != nil { return map[string]any{"executed": false, "success": false, "provider": provider, "error": cmdErr.Error()}, nil }
+	if cmdErr != nil { return map[string]any{"executed": false, "success": false, "provider": provider, "command": command, "production_requested": production, "error": cmdErr.Error()}, nil }
 	cmd.Dir = rt.Root
 	var stdout, stderr strings.Builder
 	cmd.Stdout = &tier3LimitedWriter{builder: &stdout, limit: 32 << 10}
