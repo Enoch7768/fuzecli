@@ -585,27 +585,32 @@ func (rt ToolRuntime) databaseSchema(ctx context.Context, a map[string]any) (any
 		objects[i].ForeignKeys = foreignKeys
 		idxRows, er := db.QueryContext(ctx, "PRAGMA index_list(`"+safeName+"`)")
 		if er != nil { return nil, er }
-		indexes := []map[string]any{}
+		type indexMeta struct { name, origin string; unique, partial int }
+		indexMetas := []indexMeta{}
 		for idxRows.Next() {
-			var seq, unique, partial int
-			var indexName, origin string
-			if er = idxRows.Scan(&seq, &indexName, &unique, &origin, &partial); er != nil { idxRows.Close(); return nil, er }
-			safeIndex := strings.ReplaceAll(indexName, "`", "``")
+			var meta indexMeta
+			var seq int
+			if er = idxRows.Scan(&seq, &meta.name, &meta.unique, &meta.origin, &meta.partial); er != nil { idxRows.Close(); return nil, er }
+			indexMetas = append(indexMetas, meta)
+		}
+		if er = idxRows.Err(); er != nil { idxRows.Close(); return nil, er }
+		if er = idxRows.Close(); er != nil { return nil, er }
+		indexes := []map[string]any{}
+		for _, meta := range indexMetas {
+			safeIndex := strings.ReplaceAll(meta.name, "`", "``")
 			infoRows, infoErr := db.QueryContext(ctx, "PRAGMA index_info(`"+safeIndex+"`)")
-			if infoErr != nil { idxRows.Close(); return nil, infoErr }
+			if infoErr != nil { return nil, infoErr }
 			indexColumns := []string{}
 			for infoRows.Next() {
 				var seqno, cid int
 				var col sql.NullString
-				if infoErr = infoRows.Scan(&seqno, &cid, &col); infoErr != nil { infoRows.Close(); idxRows.Close(); return nil, infoErr }
+				if infoErr = infoRows.Scan(&seqno, &cid, &col); infoErr != nil { infoRows.Close(); return nil, infoErr }
 				if col.Valid { indexColumns = append(indexColumns, col.String) }
 			}
-			if infoErr = infoRows.Err(); infoErr != nil { infoRows.Close(); idxRows.Close(); return nil, infoErr }
-			if infoErr = infoRows.Close(); infoErr != nil { idxRows.Close(); return nil, infoErr }
-			indexes = append(indexes, map[string]any{"name":indexName,"unique":unique != 0,"origin":origin,"partial":partial != 0,"columns":indexColumns})
+			if infoErr = infoRows.Err(); infoErr != nil { infoRows.Close(); return nil, infoErr }
+			if infoErr = infoRows.Close(); infoErr != nil { return nil, infoErr }
+			indexes = append(indexes, map[string]any{"name":meta.name,"unique":meta.unique != 0,"origin":meta.origin,"partial":meta.partial != 0,"columns":indexColumns})
 		}
-		if er = idxRows.Err(); er != nil { idxRows.Close(); return nil, er }
-		if er = idxRows.Close(); er != nil { return nil, er }
 		objects[i].Indexes = indexes
 	}
 	return map[string]any{"path":stringArg(a,"path"), "objects":objects, "count":len(objects), "read_only":true}, nil
