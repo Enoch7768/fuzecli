@@ -18,7 +18,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -627,13 +626,14 @@ func (rt ToolRuntime) deployRun(ctx context.Context, raw json.RawMessage, a map[
 	cmd.Stdout = &tier3LimitedWriter{builder: &stdout, limit: 32 << 10}
 	cmd.Stderr = &tier3LimitedWriter{builder: &stderr, limit: 32 << 10}
 	err := cmd.Run()
-	result := map[string]any{"executed": true, "provider": provider, "command": command, "exit_code": 0, "stdout": stdout.String(), "stderr": stderr.String(), "production": production}
+	result := map[string]any{"executed": true, "success": true, "provider": provider, "command": command, "exit_code": 0, "stdout": stdout.String(), "stderr": stderr.String(), "production": production}
 	if err != nil {
+		result["success"] = false
 		result["exit_code"] = -1
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) { result["exit_code"] = exitErr.ExitCode() }
 		if runCtx.Err() != nil { result["error"] = runCtx.Err().Error() } else { result["error"] = err.Error() }
-		return result, fmt.Errorf("deployment command failed: %w", err)
+		return result, nil
 	}
 	return result, nil
 }
@@ -658,4 +658,3 @@ func tier3Exists(root, rel string) bool {
 	return err == nil && !info.IsDir()
 }
 
-var tier3EnvNameRE = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
