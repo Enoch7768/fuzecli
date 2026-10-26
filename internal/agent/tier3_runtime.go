@@ -258,11 +258,19 @@ func tier3Target(ctx context.Context, targetID string) (tier3CDPTarget, error) {
 		return tier3CDPTarget{}, err
 	}
 	for _, target := range targets {
-		if target.ID == targetID && target.Type == "page" && strings.HasPrefix(target.WebSocketDebuggerURL, "ws") {
+		if target.ID == targetID && target.Type == "page" && tier3LoopbackWebSocket(target.WebSocketDebuggerURL) {
 			return target, nil
 		}
 	}
 	return tier3CDPTarget{}, fmt.Errorf("Chrome target %q was not found; use browser.open to create a target", targetID)
+}
+
+func tier3LoopbackWebSocket(raw string) bool {
+	u, err := url.Parse(raw)
+	if err != nil || (u.Scheme != "ws" && u.Scheme != "wss") || u.User != nil || u.Hostname() == "" { return false }
+	host := strings.Trim(u.Hostname(), "[]")
+	ip := net.ParseIP(host)
+	return host == "localhost" || (ip != nil && ip.IsLoopback())
 }
 
 func tier3CDPCommand(ctx context.Context, target tier3CDPTarget, method string, params map[string]any) (map[string]any, error) {
