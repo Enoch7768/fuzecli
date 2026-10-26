@@ -635,7 +635,8 @@ func (rt ToolRuntime) deployRun(ctx context.Context, raw json.RawMessage, a map[
 	timeout := time.Duration(intArg(a, "timeout_seconds", 300)) * time.Second
 	runCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	cmd := exec.CommandContext(runCtx, exe, args...)
+	cmd, cmdErr := workspaceExecCommand(runCtx, exe, args)
+	if cmdErr != nil { return map[string]any{"executed": false, "success": false, "provider": provider, "error": cmdErr.Error()}, nil }
 	cmd.Dir = rt.Root
 	var stdout, stderr strings.Builder
 	cmd.Stdout = &tier3LimitedWriter{builder: &stdout, limit: 32 << 10}
