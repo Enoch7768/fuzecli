@@ -33,6 +33,7 @@ func TestTier2ReadOnlyInspectionTools(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root,"package.json"),[]byte(`{"name":"demo","scripts":{"build":"vite build"},"dependencies":{"vite":"^5.0.0"}}`),0644); err != nil { t.Fatal(err) }
 	if err := os.WriteFile(filepath.Join(root,"docs","guide.md"),[]byte("# Guide\nRun the build command before release.\n"),0644); err != nil { t.Fatal(err) }
 	if err := os.WriteFile(filepath.Join(root,"openapi.json"),[]byte(`{"openapi":"3.0.0","paths":{"/health":{"get":{"summary":"Health check"}}}}`),0644); err != nil { t.Fatal(err) }
+	if err := os.WriteFile(filepath.Join(root,"openapi.yaml"),[]byte("openapi: 3.0.0\npaths:\n  /ready:\n    get:\n      summary: Readiness check\n"),0644); err != nil { t.Fatal(err) }
 	registry,err:=NewFuzeCLIToolRegistry(ToolRuntime{Root:root});if err!=nil{t.Fatal(err)}
 	calls:=[]ToolCall{
 		{ID:"pkg",Name:"package.inspect",Arguments:json.RawMessage(`{"manager":"npm"}`)},
@@ -40,7 +41,7 @@ func TestTier2ReadOnlyInspectionTools(t *testing.T) {
 		{ID:"build",Name:"build.inspect",Arguments:json.RawMessage(`{}`)},
 		{ID:"api",Name:"api.inspect",Arguments:json.RawMessage(`{}`)},
 	}
-	for _,call:=range calls{got:=registry.Execute(context.Background(),call,nil);if got.Status!=ToolResultSuccess{t.Errorf("%s failed: %s",call.Name,got.Error)}}
+	for _,call:=range calls{got:=registry.Execute(context.Background(),call,nil);if got.Status!=ToolResultSuccess{t.Errorf("%s failed: %s",call.Name,got.Error)};if call.Name=="api.inspect"&&got.Status==ToolResultSuccess&&!strings.Contains(string(got.Result),"/ready"){t.Errorf("OpenAPI YAML route was not inspected: %s",got.Result)}}
 }
 
 func TestTier2DocsGenerateRequiresApprovalAndNeverOverwrites(t *testing.T) {
