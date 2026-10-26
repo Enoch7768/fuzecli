@@ -577,9 +577,10 @@ func (rt ToolRuntime) databaseSchema(ctx context.Context, a map[string]any) (any
 		foreignKeys := []map[string]any{}
 		for fks.Next() {
 			var id, seq int
-			var targetTable, fromCol, toCol, onUpdate, onDelete, match string
+			var targetTable, fromCol, onUpdate, onDelete, match string
+			var toCol sql.NullString
 			if er = fks.Scan(&id, &seq, &targetTable, &fromCol, &toCol, &onUpdate, &onDelete, &match); er != nil { fks.Close(); return nil, er }
-			foreignKeys = append(foreignKeys, map[string]any{"id":id,"sequence":seq,"table":targetTable,"from":fromCol,"to":toCol,"on_update":onUpdate,"on_delete":onDelete,"match":match})
+			foreignKeys = append(foreignKeys, map[string]any{"id":id,"sequence":seq,"table":targetTable,"from":fromCol,"to":toCol.String,"on_update":onUpdate,"on_delete":onDelete,"match":match})
 		}
 		if er = fks.Err(); er != nil { fks.Close(); return nil, er }
 		if er = fks.Close(); er != nil { return nil, er }
