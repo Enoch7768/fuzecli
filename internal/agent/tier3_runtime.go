@@ -105,22 +105,7 @@ func (rt ToolRuntime) imageInspect(a map[string]any) (any, error) {
 
 
 func tier3ColorModel(model color.Model) string {
-	switch model {
-	case color.RGBAModel:
-		return "RGBA"
-	case color.NRGBAModel:
-		return "NRGBA"
-	case color.GrayModel:
-		return "Gray"
-	case color.Gray16Model:
-		return "Gray16"
-	case color.CMYKModel:
-		return "CMYK"
-	case color.YCbCrModel:
-		return "YCbCr"
-	default:
-		return fmt.Sprintf("%T", model)
-	}
+	return fmt.Sprintf("%T", model)
 }
 
 func (rt ToolRuntime) imageCompare(a map[string]any) (any, error) {
