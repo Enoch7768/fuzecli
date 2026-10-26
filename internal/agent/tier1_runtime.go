@@ -532,9 +532,18 @@ func (rt ToolRuntime) databaseSchema(ctx context.Context, a map[string]any) (any
 	db, err := rt.openSQLite(stringArg(a, "path"))
 	if err != nil { return nil, err }
 	defer db.Close()
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
 	rows, err := db.QueryContext(ctx, "SELECT name, type, sql FROM sqlite_master WHERE type IN ('table','view','index','trigger') AND name NOT LIKE 'sqlite_%' ORDER BY type,name")
 	if err != nil { return nil, err }
-	type dbObject struct { Name string `json:"name"`; Type string `json:"type"`; Definition string `json:"definition"`; Columns []map[string]any `json:"columns,omitempty"` }
+	type dbObject struct {
+		Name string `json:"name"`
+		Type string `json:"type"`
+		Definition string `json:"definition"`
+		Columns []map[string]any `json:"columns,omitempty"`
+		ForeignKeys []map[string]any `json:"foreign_keys,omitempty"`
+		Indexes []map[string]any `json:"indexes,omitempty"`
+	}
 	objects := []dbObject{}
 	for rows.Next() {
 		var name, typ string
@@ -561,6 +570,43 @@ func (rt ToolRuntime) databaseSchema(ctx context.Context, a map[string]any) (any
 		if er = cols.Err(); er != nil { cols.Close(); return nil, er }
 		if er = cols.Close(); er != nil { return nil, er }
 		objects[i].Columns = columns
+		if objects[i].Type != "table" { continue }
+		fks, er := db.QueryContext(ctx, "PRAGMA foreign_key_list(`"+safeName+"`)")
+		if er != nil { return nil, er }
+		foreignKeys := []map[string]any{}
+		for fks.Next() {
+			var id, seq int
+			var targetTable, fromCol, toCol, onUpdate, onDelete, match string
+			if er = fks.Scan(&id, &seq, &targetTable, &fromCol, &toCol, &onUpdate, &onDelete, &match); er != nil { fks.Close(); return nil, er }
+			foreignKeys = append(foreignKeys, map[string]any{"id":id,"sequence":seq,"table":targetTable,"from":fromCol,"to":toCol,"on_update":onUpdate,"on_delete":onDelete,"match":match})
+		}
+		if er = fks.Err(); er != nil { fks.Close(); return nil, er }
+		if er = fks.Close(); er != nil { return nil, er }
+		objects[i].ForeignKeys = foreignKeys
+		idxRows, er := db.QueryContext(ctx, "PRAGMA index_list(`"+safeName+"`)")
+		if er != nil { return nil, er }
+		indexes := []map[string]any{}
+		for idxRows.Next() {
+			var seq, unique, partial int
+			var indexName, origin string
+			if er = idxRows.Scan(&seq, &indexName, &unique, &origin, &partial); er != nil { idxRows.Close(); return nil, er }
+			safeIndex := strings.ReplaceAll(indexName, "`", "``")
+			infoRows, infoErr := db.QueryContext(ctx, "PRAGMA index_info(`"+safeIndex+"`)")
+			if infoErr != nil { idxRows.Close(); return nil, infoErr }
+			indexColumns := []string{}
+			for infoRows.Next() {
+				var seqno, cid int
+				var col sql.NullString
+				if infoErr = infoRows.Scan(&seqno, &cid, &col); infoErr != nil { infoRows.Close(); idxRows.Close(); return nil, infoErr }
+				if col.Valid { indexColumns = append(indexColumns, col.String) }
+			}
+			if infoErr = infoRows.Err(); infoErr != nil { infoRows.Close(); idxRows.Close(); return nil, infoErr }
+			if infoErr = infoRows.Close(); infoErr != nil { idxRows.Close(); return nil, infoErr }
+			indexes = append(indexes, map[string]any{"name":indexName,"unique":unique != 0,"origin":origin,"partial":partial != 0,"columns":indexColumns})
+		}
+		if er = idxRows.Err(); er != nil { idxRows.Close(); return nil, er }
+		if er = idxRows.Close(); er != nil { return nil, er }
+		objects[i].Indexes = indexes
 	}
 	return map[string]any{"path":stringArg(a,"path"), "objects":objects, "count":len(objects), "read_only":true}, nil
 }
