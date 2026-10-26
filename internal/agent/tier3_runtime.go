@@ -626,7 +626,7 @@ func (rt ToolRuntime) deployRun(ctx context.Context, raw json.RawMessage, a map[
 	cmd.Stdout = &tier3LimitedWriter{builder: &stdout, limit: 32 << 10}
 	cmd.Stderr = &tier3LimitedWriter{builder: &stderr, limit: 32 << 10}
 	err := cmd.Run()
-	result := map[string]any{"executed": true, "success": true, "provider": provider, "command": command, "exit_code": 0, "stdout": stdout.String(), "stderr": stderr.String(), "production": production}
+	result := map[string]any{"executed": true, "success": true, "provider": provider, "command": command, "exit_code": 0, "stdout": redactHTTPSecrets(stdout.String()), "stderr": redactHTTPSecrets(stderr.String()), "production": production}
 	if err != nil {
 		result["success"] = false
 		result["exit_code"] = -1
