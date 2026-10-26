@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Enoch7768/fuzecli/internal/security"
 )
 
 func TestFuzeCLIToolRegistryWiresAllDefinitions(t *testing.T) {
@@ -59,4 +61,16 @@ func TestDeleteRequiresExactAuthorizedToolCall(t *testing.T) {
 	approved := registry.Execute(context.Background(), call, func(context.Context, ToolDefinition, json.RawMessage) error { return nil })
 	if approved.Status != ToolResultSuccess { t.Fatalf("approved delete failed: %s", approved.Error) }
 	if _, err := os.Stat(target); !os.IsNotExist(err) { t.Fatalf("approved delete did not remove file, stat err=%v", err) }
+}
+
+func TestAgentToolCapabilitiesEnableAllThreeTierPrerequisites(t *testing.T) {
+	capabilities := AgentToolCapabilities()
+	for _, capability := range []security.Capability{security.ReadWorkspace, security.WriteWorkspace, security.RunTests, security.RunBuild, security.RunGit, security.NetworkAccess, security.InstallDependency} {
+		if !capabilities.Allows(capability) {
+			t.Errorf("agent tool capability %q should be enabled", capability)
+		}
+	}
+	if capabilities.Allows(security.DeleteFile) {
+		t.Fatal("delete capability must remain request-scoped and require explicit path approval")
+	}
 }
