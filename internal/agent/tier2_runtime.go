@@ -89,7 +89,6 @@ func boundedMap(input map[string]any, limit int) map[string]any {
 }
 
 var safePackageToken = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._/+@:-]{0,199}$`)
-var safePythonPackageToken = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,99}([<>=!~]{1,2}[A-Za-z0-9.*+_-]{1,50})?$ `)
 var safeContainerImage = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._/:@-]{0,254}$`)
 
 func (rt ToolRuntime) packageChange(ctx context.Context, name string, raw json.RawMessage, a map[string]any, update bool) (any,error) {
@@ -218,7 +217,7 @@ func (rt ToolRuntime) buildRun(ctx context.Context,raw json.RawMessage,a map[str
 func (rt ToolRuntime) apiInspect(a map[string]any)(any,error){
 	if err:=rt.Capabilities.Require(security.ReadWorkspace);err!=nil{return nil,err}
 	max:=intArg(a,"max_results",100);specified:=stringArg(a,"path")
-	routeRE:=regexp.MustCompile(`(?i)(GET|POST|PUT|PATCH|DELETE|OPTIONS|HEAD)\s+["'`](/[^"'` ]*)`)
+	routeRE:=regexp.MustCompile("(?i)(GET|POST|PUT|PATCH|DELETE|OPTIONS|HEAD)\\s+[\"\'`](/[\"\'` ]*)")
 	results:=[]map[string]any{};files:=[]string{}
 	if specified!=""{p,e:=rt.resolve(specified,false);if e!=nil{return nil,e};data,e:=os.ReadFile(p);if e!=nil{return nil,e};files=append(files,specified);_ = data}else{
 		for _,name:=range []string{"openapi.json","swagger.json","openapi.yaml","openapi.yml"}{if exists(rt.Root,name){files=append(files,name)}}
