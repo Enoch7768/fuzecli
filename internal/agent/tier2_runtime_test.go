@@ -86,3 +86,24 @@ func TestTier2InstallAndContainerDryRunsDoNotExecute(t *testing.T) {
 	container:=registry.Execute(context.Background(),ToolCall{ID:"container",Name:"container.run",Arguments:json.RawMessage(`{"engine":"docker","image":"alpine:3.20","command":["echo","safe"],"dry_run":true}`)},nil)
 	if container.Status!=ToolResultSuccess{t.Fatalf("container dry run failed: %s",container.Error)}
 }
+
+func TestTier2MutationsRequireRequestScopedApproval(t *testing.T) {
+	mutations := []struct{name, args string}{
+		{"package.install", `{"manager":"npm","packages":["demo"]}`},
+		{"package.update", `{"manager":"npm"}`},
+		{"docs.generate", `{"path":"docs/new.md","title":"New","content":"body"}`},
+		{"build.run", `{"target":"go"}`},
+		{"database.migrate", `{"database_path":"app.sqlite","migration_path":"001.sql"}`},
+		{"container.run", `{"image":"alpine:3.20"}`},
+	}
+	for _, item := range mutations {
+		required, _ := RequiresToolApproval(item.name, json.RawMessage(item.args))
+		if !required { t.Errorf("%s must require approval", item.name) }
+		var args map[string]any
+		if err := json.Unmarshal([]byte(item.args), &args); err != nil { t.Fatal(err) }
+		args["dry_run"] = true
+		raw, err := json.Marshal(args); if err != nil { t.Fatal(err) }
+		required, _ = RequiresToolApproval(item.name, raw)
+		if required { t.Errorf("%s dry run must not require mutation approval", item.name) }
+	}
+}
