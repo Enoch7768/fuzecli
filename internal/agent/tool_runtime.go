@@ -14,6 +14,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -38,6 +39,54 @@ type ToolRuntime struct {
 	// Approve must return nil only after an actual user-approved mutation.
 	// A model-supplied argument is never proof of approval.
 	Approve func(context.Context, string, json.RawMessage) error
+}
+
+
+func workspaceExecCommand(ctx context.Context, executable string, args []string) (*exec.Cmd, error) {
+	path, err := exec.LookPath(executable)
+	if err != nil { return nil, err }
+	ext := strings.ToLower(filepath.Ext(path))
+	if runtime.GOOS != "windows" || (ext != ".cmd" && ext != ".bat") {
+		return exec.CommandContext(ctx, path, args...), nil
+	}
+	commandLine, err := windowsShimCommandLine(path, args)
+	if err != nil { return nil, err }
+	comspec := strings.TrimSpace(os.Getenv("COMSPEC"))
+	if comspec == "" { comspec = "cmd.exe" }
+	return exec.CommandContext(ctx, comspec, "/d", "/s", "/c", commandLine), nil
+}
+
+func windowsShimCommandLine(path string, args []string) (string, error) {
+	parts := append([]string{path}, args...)
+	for _, part := range parts {
+		if strings.ContainsAny(part, "&|<>^%!\"\\r\\n") {
+			return "", errors.New("refusing to pass Windows command-shim arguments containing shell metacharacters or quotes")
+		}
+	}
+	line := windowsQuoteArg(path)
+	for _, arg := range args { line += " " + windowsQuoteArg(arg) }
+	return "\"" + line + "\"", nil
+}
+
+func windowsQuoteArg(value string) string {
+	var b strings.Builder
+	b.WriteByte('"')
+	backslashes := 0
+	for _, r := range value {
+		if r == '\\' { backslashes++; continue }
+		if r == '"' {
+			b.WriteString(strings.Repeat("\\\\", backslashes*2+1))
+			b.WriteRune('"')
+			backslashes = 0
+			continue
+		}
+		b.WriteString(strings.Repeat("\\\\", backslashes))
+		backslashes = 0
+		b.WriteRune(r)
+	}
+	b.WriteString(strings.Repeat("\\\\", backslashes*2))
+	b.WriteByte('"')
+	return b.String()
 }
 
 func NewFuzeCLIToolRegistry(runtime ToolRuntime) (*ToolRegistry, error) {
