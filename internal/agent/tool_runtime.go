@@ -94,6 +94,16 @@ func windowsQuoteArg(value string) string {
 	return b.String()
 }
 
+// AgentToolCapabilities enables the capabilities needed by the full three-tier
+// toolset. Mutating operations remain guarded by ToolRegistry approval checks;
+// destructive file deletion is granted only per approved edit request.
+func AgentToolCapabilities() security.CapabilitySet {
+	capabilities := security.SafeCapabilities()
+	capabilities[security.NetworkAccess] = true
+	capabilities[security.InstallDependency] = true
+	return capabilities
+}
+
 func NewFuzeCLIToolRegistry(runtime ToolRuntime) (*ToolRegistry, error) {
 	if strings.TrimSpace(runtime.Root) == "" { return nil, errors.New("workspace root is required") }
 	root, err := filepath.Abs(runtime.Root); if err != nil { return nil, err }; runtime.Root = root
