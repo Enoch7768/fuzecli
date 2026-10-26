@@ -11,7 +11,7 @@ import (
 
 func TestFuzeCLIToolDefinitions(t *testing.T) {
  defs := FuzeCLIToolDefinitions()
- if len(defs) != 20 { t.Fatalf("want 20 tools, got %d", len(defs)) }
+ if len(defs) != 45 { t.Fatalf("want 45 tools after Tier 1, got %d", len(defs)) }
  for _, d := range defs {
   if !json.Valid(d.InputSchema) { t.Errorf("%s has invalid schema", d.Name) }
   var s map[string]any
@@ -114,4 +114,50 @@ func TestFuzeAIDryRunsDoNotMutateOrExecute(t *testing.T) {
 		Arguments: json.RawMessage(`{"operation":"prepare_pull","base_branch":"main","remote":"origin","sync":false}`),
 	}, nil)
 	if syncResult.Status != ToolResultSuccess { t.Fatalf("sync preview should not need GitHub auth: %s", syncResult.Error) }
+}
+
+
+func TestTier1ReadOnlyWorkspaceTools(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "src"), 0755); err != nil { t.Fatal(err) }
+	if err := os.WriteFile(filepath.Join(root, "src", "auth.go"), []byte("package src\n\nfunc authenticateUser() bool { return true }\n"), 0644); err != nil { t.Fatal(err) }
+	registry, err := NewFuzeCLIToolRegistry(ToolRuntime{Root: root})
+	if err != nil { t.Fatal(err) }
+	calls := []ToolCall{
+		{ID:"read-many", Name:"workspace.read_files", Arguments:json.RawMessage(`{"files":[{"path":"src/auth.go"}]}`)},
+		{ID:"references", Name:"workspace.find_references", Arguments:json.RawMessage(`{"symbol":"authenticateUser","max_results":10}`)},
+		{ID:"file-info", Name:"workspace.file_info", Arguments:json.RawMessage(`{"path":"src/auth.go"}`)},
+		{ID:"tree", Name:"workspace.tree", Arguments:json.RawMessage(`{"path":".","max_depth":4,"max_entries":100}`)},
+		{ID:"debug", Name:"debug.analyze", Arguments:json.RawMessage(`{"error":"Connection refused","max_suggestions":5}`)},
+		{ID:"test-list", Name:"test.list", Arguments:json.RawMessage(`{"max_results":20}`)},
+		{ID:"patch-preview", Name:"workspace.apply_patch", Arguments:json.RawMessage(`{"path":"src/auth.go","old_text":"return true","new_text":"return false","dry_run":true}`)},
+		{ID:"rename-preview", Name:"workspace.rename", Arguments:json.RawMessage(`{"source":"src/auth.go","destination":"src/auth2.go","dry_run":true}`)},
+	}
+	for _, call := range calls {
+		t.Run(call.Name, func(t *testing.T) {
+			result := registry.Execute(context.Background(), call, nil)
+			if result.Status != ToolResultSuccess { t.Fatalf("tool failed: %s", result.Error) }
+		})
+	}
+	data, err := os.ReadFile(filepath.Join(root, "src", "auth.go"))
+	if err != nil { t.Fatal(err) }
+	if !strings.Contains(string(data), "return true") { t.Fatal("dry-run changed the source file") }
+}
+
+func TestTier1ReadOnlyDatabaseQuery(t *testing.T) {
+	root := t.TempDir()
+	dbPath := filepath.Join(root, "app.sqlite")
+	db, err := sql.Open("sqlite", "file:"+filepath.ToSlash(dbPath))
+	if err != nil { t.Fatal(err) }
+	if _, err = db.Exec("CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT); INSERT INTO users(name) VALUES('Ada')"); err != nil { t.Fatal(err) }
+	if err = db.Close(); err != nil { t.Fatal(err) }
+	registry, err := NewFuzeCLIToolRegistry(ToolRuntime{Root: root})
+	if err != nil { t.Fatal(err) }
+	result := registry.Execute(context.Background(), ToolCall{ID:"query",Name:"database.query",Arguments:json.RawMessage(`{"path":"app.sqlite","query":"SELECT id, name FROM users","max_rows":10}`)}, nil)
+	if result.Status != ToolResultSuccess { t.Fatalf("read-only query failed: %s", result.Error) }
+	blocked := registry.Execute(context.Background(), ToolCall{ID:"write",Name:"database.query",Arguments:json.RawMessage(`{"path":"app.sqlite","query":"DELETE FROM users"}`)}, nil)
+	if blocked.Status != ToolResultError { t.Fatal("write query was not rejected") }
+	var got map[string]any
+	if err := json.Unmarshal(result.Result, &got); err != nil { t.Fatal(err) }
+	if got["row_count"] != float64(1) { t.Fatalf("unexpected result: %s", result.Result) }
 }
