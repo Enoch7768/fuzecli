@@ -164,7 +164,6 @@ func (rt ToolRuntime) fileInfo(a map[string]any) (any, error) {
 		scanner := bufio.NewScanner(f); scanner.Buffer(make([]byte, 64*1024), 2<<20); lines := 0
 		for scanner.Scan() { lines++ }
 		if err := scanner.Err(); err != nil { return nil, fmt.Errorf("count lines: %w", err) }
-		if info.Size() > 0 && len(sample) > 0 { lines++ }
 		out["line_count"] = lines
 	} else { out["line_count"] = nil }
 	return out, nil
@@ -311,7 +310,7 @@ func (rt ToolRuntime) runTest(ctx context.Context,a map[string]any)(any,error){
 		exe="go";args=[]string{"test",pkg};if name!=""{args=append(args,"-run","^"+regexp.QuoteMeta(name)+"$")};if suite=="unit"{args=append(args,"-short")}
 	}else if _,e:=os.Stat(filepath.Join(rt.Root,"package.json"));e==nil{
 		exe="npm";args=[]string{"test","--"};if path!=""{_,e:=rt.resolve(path,false);if e!=nil{return nil,e};args=append(args,filepath.ToSlash(path))};if name!=""{args=append(args,"-t",name)}
-	}else if path!=""||suite!=""{exe="python";args=[]string{"-m","pytest"};if path!=""{p,e:=rt.resolve(path,false);if e!=nil{return nil,e};args=append(args,filepath.ToSlash(path))};if name!=""{args=append(args,"-k",name)}}else{return nil,errors.New("no supported test runner detected; provide a project manifest or explicit test path")}
+	}else if path!=""||suite!=""{exe="python";args=[]string{"-m","pytest"};if path!=""{_,e:=rt.resolve(path,false);if e!=nil{return nil,e};args=append(args,filepath.ToSlash(path))};if name!=""{args=append(args,"-k",name)}}else{return nil,errors.New("no supported test runner detected; provide a project manifest or explicit test path")}
 	if err:=securityCommandAllowed(exe,args);err!=nil{return nil,err}
 	cctx,cancel:=context.WithTimeout(ctx,time.Duration(timeout)*time.Second);defer cancel();cmd:=exec.CommandContext(cctx,exe,args...);cmd.Dir=rt.Root;cmd.Env=append(os.Environ(),"GIT_TERMINAL_PROMPT=0");var stdout,stderr limitedBuffer;stdout.limit=64<<10;stderr.limit=64<<10;start:=time.Now();cmd.Stdout=&stdout;cmd.Stderr=&stderr;err:=cmd.Run();exit:=0;if err!=nil{var ee *exec.ExitError;if errors.As(err,&ee){exit=ee.ExitCode()}else if cctx.Err()!=nil{exit=-1}else{return nil,err}}
 	return map[string]any{"executed":true,"passed":err==nil,"exit_code":exit,"stdout":stdout.String(),"stderr":stderr.String(),"duration_ms":time.Since(start).Milliseconds(),"timed_out":errors.Is(cctx.Err(),context.DeadlineExceeded),"command":append([]string{exe},args...)},nil
@@ -350,9 +349,10 @@ func (rt ToolRuntime) gitLog(ctx context.Context,a map[string]any)(any,error){
 func (rt ToolRuntime) gitShow(ctx context.Context,a map[string]any)(any,error){
 	rev:=stringArg(a,"revision");if rev==""{rev="HEAD"};if strings.HasPrefix(rev,"-")||!regexp.MustCompile(`^[A-Za-z0-9._/-]+(?:\^\{commit\}|~[0-9]+|\^[0-9]+)?$`).MatchString(rev){return nil,errors.New("invalid Git revision")}
 	verified,e:=runGitOutput(ctx,rt.Root,"rev-parse","--verify",rev+"^{commit}");if e!=nil{return nil,e}
-	args:=[]string{"show","--format=fuller"};if boolArg(a,"stat_only",false){args=append(args,"--stat")}else{args=append(args,"--format=fuller","--patch","-U3")}
+	args:=[]string{"show","--format=fuller"};if boolArg(a,"stat_only",false){args=append(args,"--stat")}else{args=append(args,"--patch","-U3")}
+	args=append(args,strings.TrimSpace(verified))
 	if path:=stringArg(a,"path");path!=""{if _,e:=rt.resolve(path,false);e!=nil{return nil,e};args=append(args,"--",path)}
-	args=append(args,strings.TrimSpace(verified));out,e:=runGitOutput(ctx,rt.Root,args...);if e!=nil{return nil,e}
+	out,e:=runGitOutput(ctx,rt.Root,args...);if e!=nil{return nil,e}
 	return map[string]any{"revision":strings.TrimSpace(verified),"output":truncate(out,256<<10),"truncated":len(out)>256<<10},nil
 }
 func (rt ToolRuntime) gitBranch(ctx context.Context,raw json.RawMessage,a map[string]any)(any,error){
@@ -454,7 +454,7 @@ func (rt ToolRuntime) httpRequest(ctx context.Context,a map[string]any)(any,erro
 	client:=&http.Client{Timeout:timeout,CheckRedirect:func(r *http.Request,via []*http.Request)error{if len(via)>=3{return errors.New("too many redirects")};rh:=strings.ToLower(r.URL.Hostname());if local{return rh=="localhost"||rh=="127.0.0.1"||rh=="::1"};return r.URL.Scheme=="https"&&hostInAllowlist(rh,os.Getenv("FUZECLI_HTTP_ALLOWED_HOSTS"))}}
 	resp,e:=client.Do(req);if e!=nil{return nil,e};defer resp.Body.Close();data,e:=io.ReadAll(io.LimitReader(resp.Body,tier1MaxBody+1));if e!=nil{return nil,e};truncated:=len(data)>tier1MaxBody;if truncated{data=data[:tier1MaxBody]}
 	headers:=map[string]string{};for k,v:=range resp.Header{if strings.EqualFold(k,"Set-Cookie")||strings.EqualFold(k,"Authorization")||strings.EqualFold(k,"Proxy-Authenticate"){continue};headers[k]=strings.Join(v,", ")}
-	return map[string]any{"status":resp.StatusCode,"status_text":resp.Status,"headers":headers,"body":string(data),"truncated":truncated,"url":resp.Request.URL.String()},nil
+	return map[string]any{"status":resp.StatusCode,"status_text":resp.Status,"headers":headers,"body":redactHTTPSecrets(string(data)),"truncated":truncated,"url":resp.Request.URL.String()},nil
 }
 
 func (rt ToolRuntime) databaseInspect(a map[string]any)(any,error){
@@ -489,3 +489,6 @@ func (rt ToolRuntime) databaseQuery(ctx context.Context,a map[string]any)(any,er
 	for rows.Next(){vals:=make([]any,len(cols));ptrs:=make([]any,len(cols));for i:=range vals{ptrs[i]=&vals[i]};if e=rows.Scan(ptrs...);e!=nil{return nil,e};row:=map[string]any{};for i,c:=range cols{switch v:=vals[i].(type){case []byte:row[c]=string(v);default:row[c]=v}};out=append(out,row);if len(out)>=max{break}}
 	if e=rows.Err();e!=nil{return nil,e};return map[string]any{"columns":cols,"rows":out,"row_count":len(out),"truncated":len(out)>=max,"read_only":true},nil
 }
+
+var httpSecretRE = regexp.MustCompile(`(?i)(api[_-]?key|access[_-]?token|refresh[_-]?token|password|secret|authorization)(\s*[:=]\s*)(["']?)[^\s,"';&}]+\3`)
+func redactHTTPSecrets(s string) string { return httpSecretRE.ReplaceAllString(s, "$1$2[REDACTED]") }
