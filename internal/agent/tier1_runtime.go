@@ -100,6 +100,7 @@ func (rt ToolRuntime) findReferences(ctx context.Context, a map[string]any) (any
 }
 
 func (rt ToolRuntime) applyPatch(ctx context.Context, raw json.RawMessage, a map[string]any) (any, error) {
+	if err := rt.Capabilities.Require(security.WriteWorkspace); err != nil { return nil, err }
 	path := stringArg(a, "path")
 	resolved, err := rt.resolve(path, false); if err != nil { return nil, err }
 	info, err := os.Stat(resolved); if err != nil { return nil, err }
@@ -194,6 +195,7 @@ func (rt ToolRuntime) tree(a map[string]any) (any, error) {
 }
 
 func (rt ToolRuntime) rename(ctx context.Context, raw json.RawMessage, a map[string]any) (any, error) {
+	if err := rt.Capabilities.Require(security.WriteWorkspace); err != nil { return nil, err }
 	src, dst := stringArg(a, "source"), stringArg(a, "destination")
 	source, err := rt.resolve(src, true); if err != nil { return nil, err }
 	dest, err := rt.resolve(dst, true); if err != nil { return nil, err }
@@ -356,6 +358,7 @@ func (rt ToolRuntime) gitShow(ctx context.Context,a map[string]any)(any,error){
 	return map[string]any{"revision":strings.TrimSpace(verified),"output":truncate(out,256<<10),"truncated":len(out)>256<<10},nil
 }
 func (rt ToolRuntime) gitBranch(ctx context.Context,raw json.RawMessage,a map[string]any)(any,error){
+	if err := rt.Capabilities.Require(security.RunGit); err != nil { return nil, err }
 	action:=stringArg(a,"action");name:=stringArg(a,"name")
 	if action=="list"{out,e:=runGitOutput(ctx,rt.Root,"branch","--format=%(HEAD)%09%(refname:short)%09%(objectname:short)");if e!=nil{return nil,e};branches:=[]map[string]string{};for _,line:=range strings.Split(strings.TrimSpace(out),"\n"){p:=strings.Split(line,"\t");if len(p)==3{branches=append(branches,map[string]string{"current":strings.TrimSpace(p[0])=="*","name":p[1],"sha":p[2]})}};return map[string]any{"branches":branches},nil}
 	if !validGitRefName(name){return nil,errors.New("name must be a valid Git branch name")}
@@ -371,6 +374,7 @@ func (rt ToolRuntime) gitBranch(ctx context.Context,raw json.RawMessage,a map[st
 func gitStatusClean(root string)(bool,error){out,e:=runGitOutput(context.Background(),root,"status","--porcelain");if e!=nil{return false,e};return strings.TrimSpace(out)=="",nil}
 
 func (rt ToolRuntime) gitStash(ctx context.Context,raw json.RawMessage,a map[string]any)(any,error){
+	if err := rt.Capabilities.Require(security.RunGit); err != nil { return nil, err }
 	action:=stringArg(a,"action");ref:=stringArg(a,"stash_ref");if ref==""{ref="stash@{0}"}
 	if action=="list"{out,e:=runGitOutput(ctx,rt.Root,"stash","list","--format=%gd%x09%gs");if e!=nil{return nil,e};items:=[]map[string]string{};for _,line:=range strings.Split(strings.TrimSpace(out),"\n"){if line==""{continue};p:=strings.SplitN(line,"\t",2);if len(p)==2{items=append(items,map[string]string{"ref":p[0],"message":p[1]})}};return map[string]any{"stashes":items},nil}
 	if action!="push"&&!regexp.MustCompile(`^stash@\{[0-9]+\}$`).MatchString(ref){return nil,errors.New("stash_ref must be like stash@{0}")}
@@ -469,16 +473,43 @@ func (rt ToolRuntime) openSQLite(rel string)(*sql.DB,error){
 	ext:=strings.ToLower(filepath.Ext(path));if ext!=".db"&&ext!=".sqlite"&&ext!=".sqlite3"{return nil,errors.New("only SQLite .db, .sqlite, and .sqlite3 files are supported")}
 	u:=url.URL{Scheme:"file",Path:filepath.ToSlash(path)};dsn:=u.String()+"?mode=ro";db,e:=sql.Open("sqlite",dsn);if e!=nil{return nil,e};db.SetMaxOpenConns(1);db.SetMaxIdleConns(1);ctx,cancel:=context.WithTimeout(context.Background(),3*time.Second);defer cancel();if e=db.PingContext(ctx);e!=nil{db.Close();return nil,e};return db,nil
 }
-func (rt ToolRuntime) databaseSchema(ctx context.Context,a map[string]any)(any,error){
-	db,e:=rt.openSQLite(stringArg(a,"path"));if e!=nil{return nil,e};defer db.Close()
-	rows,e:=db.QueryContext(ctx,"SELECT name, type, sql FROM sqlite_master WHERE type IN ('table','view','index','trigger') AND name NOT LIKE 'sqlite_%' ORDER BY type,name");if e!=nil{return nil,e};defer rows.Close()
-	objects:=[]map[string]any{}
-	for rows.Next(){var name,typ string;var definition sql.NullString;if e=rows.Scan(&name,&typ,&definition);e!=nil{return nil,e};item:=map[string]any{"name":name,"type":typ,"definition":definition.String}
-		if typ=="table"||typ=="view"{safeName:=strings.ReplaceAll(name,"`","``");cols,er:=db.QueryContext(ctx,"PRAGMA table_info(`"+safeName+"`)");if er==nil{columns:=[]map[string]any{};for cols.Next(){var cid,notnull,pk int;var colName,colType string;var def sql.NullString;if er=cols.Scan(&cid,&colName,&colType,&notnull,&def,&pk);er!=nil{break};columns=append(columns,map[string]any{"name":colName,"type":colType,"not_null":notnull!=0,"default":def.String,"primary_key_position":pk})};cols.Close();item["columns"]=columns}}
-		objects=append(objects,item);if len(objects)>=500{return nil,errors.New("schema exceeds 500 objects")}
+func (rt ToolRuntime) databaseSchema(ctx context.Context, a map[string]any) (any, error) {
+	db, err := rt.openSQLite(stringArg(a, "path"))
+	if err != nil { return nil, err }
+	defer db.Close()
+	rows, err := db.QueryContext(ctx, "SELECT name, type, sql FROM sqlite_master WHERE type IN ('table','view','index','trigger') AND name NOT LIKE 'sqlite_%' ORDER BY type,name")
+	if err != nil { return nil, err }
+	type dbObject struct { Name string `json:"name"`; Type string `json:"type"`; Definition string `json:"definition"`; Columns []map[string]any `json:"columns,omitempty"` }
+	objects := []dbObject{}
+	for rows.Next() {
+		var name, typ string
+		var definition sql.NullString
+		if err = rows.Scan(&name, &typ, &definition); err != nil { rows.Close(); return nil, err }
+		objects = append(objects, dbObject{Name:name, Type:typ, Definition:definition.String})
+		if len(objects) >= 500 { rows.Close(); return nil, errors.New("schema exceeds 500 objects") }
 	}
-	if e=rows.Err();e!=nil{return nil,e};return map[string]any{"path":stringArg(a,"path"),"objects":objects,"count":len(objects),"read_only":true},nil
+	if err = rows.Err(); err != nil { rows.Close(); return nil, err }
+	if err = rows.Close(); err != nil { return nil, err }
+	for i := range objects {
+		if objects[i].Type != "table" && objects[i].Type != "view" { continue }
+		safeName := strings.ReplaceAll(objects[i].Name, "`", "``")
+		cols, er := db.QueryContext(ctx, "PRAGMA table_info(`"+safeName+"`)")
+		if er != nil { return nil, er }
+		columns := []map[string]any{}
+		for cols.Next() {
+			var cid, notnull, pk int
+			var colName, colType string
+			var def sql.NullString
+			if er = cols.Scan(&cid, &colName, &colType, &notnull, &def, &pk); er != nil { cols.Close(); return nil, er }
+			columns = append(columns, map[string]any{"name":colName, "type":colType, "not_null":notnull != 0, "default":def.String, "primary_key_position":pk})
+		}
+		if er = cols.Err(); er != nil { cols.Close(); return nil, er }
+		if er = cols.Close(); er != nil { return nil, er }
+		objects[i].Columns = columns
+	}
+	return map[string]any{"path":stringArg(a,"path"), "objects":objects, "count":len(objects), "read_only":true}, nil
 }
+
 func (rt ToolRuntime) databaseQuery(ctx context.Context,a map[string]any)(any,error){
 	query:=strings.TrimSpace(stringArg(a,"query"));if query==""{return nil,errors.New("query must not be empty")};if strings.Contains(query,";") { trimmed:=strings.TrimSuffix(query,";");if strings.Contains(trimmed,";"){return nil,errors.New("only one SQL statement is allowed")};query=trimmed }
 	first:=strings.ToUpper(strings.Fields(query)[0]);if first!="SELECT"&&first!="WITH"&&first!="EXPLAIN"&&first!="PRAGMA"{return nil,errors.New("database.query is read-only; only SELECT, WITH, EXPLAIN, and safe PRAGMA queries are allowed")}
