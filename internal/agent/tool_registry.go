@@ -239,6 +239,16 @@ func toolRequiresApproval(name string, raw json.RawMessage) (bool, string) {
 		return true, "applying a database migration"
 	case "container.run":
 		return true, "running a container"
+	case "browser.click":
+		return true, "clicking a browser page element"
+	case "browser.type":
+		return true, "typing into a browser page element"
+	case "browser.select":
+		return true, "changing a browser page selection"
+	case "browser.screenshot":
+		return args["path"] != nil && args["path"] != "", "saving a browser screenshot into the workspace"
+	case "deploy.run":
+		return true, "deploying the project to an external service"
 	}
 	return false, ""
 }
