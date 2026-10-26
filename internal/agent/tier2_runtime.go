@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -268,7 +269,7 @@ func (rt ToolRuntime) containerRun(ctx context.Context,raw json.RawMessage,a map
 	args:=[]string{"run","--rm","--network","bridge","--read-only","--cap-drop","ALL","--security-opt","no-new-privileges"}
 	for _,port:=range stringArrayArg(a,"ports"){
 		parts:=strings.Split(port,":");if len(parts)!=2{return nil,fmt.Errorf("invalid port mapping %q",port)}
-		var host,container int;if _,e:=fmt.Sscanf(parts[0],"%d",&host);e!=nil{return nil,e};if _,e:=fmt.Sscanf(parts[1],"%d",&container);e!=nil{return nil,e}
+		host,e1:=strconv.Atoi(parts[0]);container,e2:=strconv.Atoi(parts[1]);if e1!=nil||e2!=nil{return nil,fmt.Errorf("invalid numeric port mapping %q",port)}
 		if host<1||host>65535||container<1||container>65535{return nil,fmt.Errorf("port mapping out of range: %q",port)}
 		args=append(args,"-p",fmt.Sprintf("127.0.0.1:%d:%d",host,container))
 	}
