@@ -9,7 +9,7 @@ Tier 2 adds 12 namespaced tools to the 45-tool Tier 1 registry, for **57 total t
 - `package.update` updates named dependencies or the manager's declared dependencies when no package list is supplied.
 - `package.audit` runs supported package-manager audits. Python uses `pip-audit` only if already installed; the tool does not install an auditor automatically. Live audits require `network_access`.
 
-Dependency changes require `run_build`, `install_dependency`, and `network_access` capabilities plus explicit approval. The network capability is checked only for real operations; dry runs remain offline. `install_dependency` is intentionally not enabled by the default safe capability set. Because package managers may run install scripts, treat approval as a code-execution decision. Package names are validated and commands are passed as argument arrays, never through a shell. `dry_run` previews the exact command without execution.
+Dependency changes require `run_build`, `install_dependency`, and `network_access` capabilities plus explicit approval. The network capability is checked only for real operations; dry runs remain offline. `install_dependency` is intentionally not enabled by the default safe capability set. Because package managers may run install scripts, treat approval as a code-execution decision. Package names are validated and native executables receive argument arrays directly. On Windows, `.cmd`/`.bat` shims use a constrained `cmd.exe` wrapper that rejects shell metacharacters and quotes before invocation. `dry_run` previews the exact command without execution.
 
 ## Documentation
 
