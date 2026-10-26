@@ -333,7 +333,7 @@ func (rt ToolRuntime) analyzeDebug(a map[string]any)(any,error){
 	if len(causes)==0{causes=append(causes,"No known error signature matched; the message alone is insufficient to identify a root cause.");next=append(next,"Capture the full error and stack trace, identify the first application-owned frame, and inspect the relevant source and test.") }
 	relevant:=[]any{}
 	if path:=stringArg(a,"path");path!=""{p,e:=rt.resolve(path,false);if e==nil{data,er:=os.ReadFile(p);if er==nil{relevant=append(relevant,map[string]any{"path":path,"excerpt":truncate(string(data),6000)})}}}
-	for _,line:=range strings.Split(errText,"\n"){if len(relevant)>=intArg(a,"max_suggestions",8){break};for _,part:=range regexp.MustCompile(`[A-Za-z0-9_./-]+\.(?:go|py|js|ts|tsx|php|java|rs):[0-9]+`).FindAllString(line,-1){file:=strings.Split(part,":")[0];p,e:=rt.resolve(file,false);if e==nil{data,er:=os.ReadFile(p);if er==nil{relevant=append(relevant,map[string]any{"path":file,"excerpt":truncate(string(data),2500)})}}}}
+	for _,line:=range strings.Split(errText,"\n"){if len(relevant)>=intArg(a,"max_suggestions",8){break};for _,part:=range regexp.MustCompile(`[A-Za-z0-9_./-]+\.(go|py|js|ts|tsx|php|java|rs):[0-9]+`).FindAllString(line,-1){file:=strings.Split(part,":")[0];p,e:=rt.resolve(file,false);if e==nil{data,er:=os.ReadFile(p);if er==nil{relevant=append(relevant,map[string]any{"path":file,"excerpt":truncate(string(data),2500)})}}}}
 	return map[string]any{"probable_causes":uniqueStrings(causes),"recommended_investigation":uniqueStrings(next),"relevant_files":relevant,"performed_changes":false,"confidence":"heuristic"},nil
 }
 func uniqueStrings(in []string)[]string{seen:=map[string]bool{};out:=[]string{};for _,s:=range in{if !seen[s]{seen[s]=true;out=append(out,s)}};return out}
@@ -347,7 +347,7 @@ func (rt ToolRuntime) gitLog(ctx context.Context,a map[string]any)(any,error){
 	return map[string]any{"commits":commits,"count":len(commits)},nil
 }
 func (rt ToolRuntime) gitShow(ctx context.Context,a map[string]any)(any,error){
-	rev:=stringArg(a,"revision");if rev==""{rev="HEAD"};if strings.HasPrefix(rev,"-")||!regexp.MustCompile(`^[A-Za-z0-9._/-]+(?:\^\{commit\}|~[0-9]+|\^[0-9]+)?$`).MatchString(rev){return nil,errors.New("invalid Git revision")}
+	rev:=stringArg(a,"revision");if rev==""{rev="HEAD"};if strings.HasPrefix(rev,"-")||!regexp.MustCompile(`^[A-Za-z0-9._/-]+(\^\{commit\}|~[0-9]+|\^[0-9]+)?$`).MatchString(rev){return nil,errors.New("invalid Git revision")}
 	verified,e:=runGitOutput(ctx,rt.Root,"rev-parse","--verify",rev+"^{commit}");if e!=nil{return nil,e}
 	args:=[]string{"show","--format=fuller"};if boolArg(a,"stat_only",false){args=append(args,"--stat")}else{args=append(args,"--patch","-U3")}
 	args=append(args,strings.TrimSpace(verified))
@@ -406,7 +406,7 @@ func (rt ToolRuntime) webOpen(ctx context.Context,a map[string]any)(any,error){
 	req,e:=http.NewRequestWithContext(ctx,http.MethodGet,u.String(),nil);if e!=nil{return nil,e};req.Header.Set("User-Agent","FuzeCLI/1.0")
 	client:=&http.Client{Timeout:15*time.Second,CheckRedirect:func(r *http.Request,via []*http.Request)error{if len(via)>3||r.URL.Scheme!="https"||!hostInAllowlist(r.URL.Hostname(),os.Getenv("FUZECLI_WEB_ALLOWED_HOSTS")){return errors.New("redirect target is not allowlisted")};return nil}}
 	resp,e:=client.Do(req);if e!=nil{return nil,e};defer resp.Body.Close();body,e:=io.ReadAll(io.LimitReader(resp.Body,2<<20));if e!=nil{return nil,e};if resp.StatusCode<200||resp.StatusCode>=300{return nil,fmt.Errorf("web open returned HTTP %d",resp.StatusCode)}
-	text:=string(body);if strings.Contains(strings.ToLower(resp.Header.Get("Content-Type")),"html"){text=stripHTML(regexp.MustCompile(`(?is)<(script|style|noscript)[^>]*>.*?</\1>`).ReplaceAllString(text," "));text=htmlUnescape(text)}
+	text:=string(body);if strings.Contains(strings.ToLower(resp.Header.Get("Content-Type")),"html"){text=stripHTML(regexp.MustCompile(`(?is)<(script|style|noscript)[^>]*>.*?</(script|style|noscript)>`).ReplaceAllString(text," "));text=htmlUnescape(text)}
 	max:=intArg(a,"max_chars",12000);return map[string]any{"url":resp.Request.URL.String(),"status":resp.StatusCode,"content_type":resp.Header.Get("Content-Type"),"text":truncate(strings.TrimSpace(text),max),"truncated":len(text)>max},nil
 }
 func hostInAllowlist(host,raw string)bool{host=strings.ToLower(strings.TrimSuffix(host,"."));for _,item:=range strings.Split(raw,","){allowed:=strings.ToLower(strings.TrimSpace(item));if allowed!=""&&host==strings.TrimSuffix(allowed,"."){return true}};return false}
