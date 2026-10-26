@@ -93,7 +93,7 @@ func TestTier3ImageInspectAndPixelComparison(t *testing.T) {
 
 	compare := func(a, b string) map[string]any {
 		t.Helper()
-		result := registry.Execute(context.Background(), ToolCall{ID: "compare", Name: "image.compare", Arguments: json.RawMessage([]byte(`{"path_a":` + quoteJSON(a) + `,"path_b":` + quoteJSON(b) + `}`))}, nil)
+		result := registry.Execute(context.Background(), ToolCall{ID: "compare", Name: "image.compare", Arguments: json.RawMessage([]byte(`{"path_a":` + tier3QuoteJSON(a) + `,"path_b":` + tier3QuoteJSON(b) + `}`))}, nil)
 		if result.Status != ToolResultSuccess {
 			t.Fatalf("image.compare failed: %s", result.Error)
 		}
@@ -113,7 +113,7 @@ func TestTier3ImageInspectAndPixelComparison(t *testing.T) {
 	}
 }
 
-func quoteJSON(value string) string {
+func tier3QuoteJSON(value string) string {
 	data, _ := json.Marshal(value)
 	return string(data)
 }
