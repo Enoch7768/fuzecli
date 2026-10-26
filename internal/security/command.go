@@ -2,6 +2,7 @@ package security
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 )
 
@@ -29,7 +30,7 @@ func Authorize(command Command) Decision {
 
 	switch name {
 	case "go":
-		if exact(args, "test", "./...") || exact(args, "vet", "./...") || exact(args, "build", "./...") || exact(args, "test", "-run", "^$", "./...") || safeGoPackageCommand(args) {
+		if exact(args, "test", "./...") || exact(args, "vet", "./...") || exact(args, "build", "./...") || safeGoPackageCommand(args) {
 			return Decision{Allowed: true, Risk: RiskLow, Reason: "Go test and vet are allowlisted verification commands."}
 		}
 	case "gofmt":
@@ -55,10 +56,11 @@ func Authorize(command Command) Decision {
 		if len(args) == 2 && args[0] == "-l" && args[1] != "" && !containsShellMeta(args[1]) {
 			return Decision{Allowed: true, Risk: RiskLow, Reason: "PHP syntax lint is an allowlisted verification command."}
 		}
-	case "python":
+	case "python", "python3":
 		if len(args) == 2 && args[0] == "-m" && args[1] == "py_compile" {
 			return Decision{Allowed: true, Risk: RiskLow, Reason: "Python compilation is an allowlisted verification command."}
 		}
+		if safePythonPytest(args) { return Decision{Allowed:true, Risk:RiskMedium, Reason:"Pytest with workspace-relative paths and bounded filter arguments is allowlisted."} }
 	}
 
 	return Decision{Allowed: false, Risk: RiskMedium, Reason: fmt.Sprintf("command is not allowlisted: %s %s", name, strings.Join(args, " "))}
@@ -81,14 +83,80 @@ func containsShellMeta(value string) bool {
 }
 
 func safeGoPackageCommand(args []string) bool {
-	if len(args)<2{return false}
-	command:=args[0];packages:=args[1:]
-	if command=="test"&&len(args)>=4&&args[1]=="-run"&&args[2]=="^$"{packages=args[3:]}
-	if command!="test"&&command!="vet"&&command!="build"{return false}
-	if len(packages)==0{return false}
-	for _,pkg:=range packages{if !safeRelativePath(pkg)||!strings.HasPrefix(pkg,"./"){return false}}
+	if len(args) < 2 { return false }
+	command := args[0]
+	if command != "test" && command != "vet" && command != "build" { return false }
+	i := 1
+	for i < len(args) && strings.HasPrefix(args[i], "-") {
+		switch args[i] {
+		case "-short":
+			if command != "test" { return false }; i++
+		case "-run", "-tags":
+			if command != "test" || i+1 >= len(args) { return false }
+			value := args[i+1]
+			if value == "" || strings.ContainsAny(value, "\\;&|<>$\x00\r\n") { return false }
+			if args[i] == "-tags" && !validSimpleTagList(value) { return false }
+			i += 2
+		default:
+			return false
+		}
+	}
+	if i >= len(args) { return false }
+	for _, pkg := range args[i:] { if !safeRelativePath(pkg) || !strings.HasPrefix(pkg, "./") { return false } }
 	return true
 }
+
+func validSimpleTagList(value string) bool {
+	for _, part := range strings.Split(value, ",") {
+		if part == "" { return false }
+		for _, r := range part { if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '_' || r == '.') { return false } }
+	}
+	return true
+}
+
+func safePythonPytest(args []string) bool {
+	if len(args) < 2 || args[0] != "-m" || args[1] != "pytest" { return false }
+	for i := 2; i < len(args); i++ {
+		arg := args[i]
+		if arg == "-k" {
+			if i+1 >= len(args) || strings.TrimSpace(args[i+1]) == "" || strings.ContainsAny(args[i+1], "\\;&|<>$\x00\r\n") { return false }
+			i++; continue
+		}
+		if strings.HasPrefix(arg, "-") || !safeRelativePath(arg) { return false }
+	}
+	return true
+}
+
+// AuthorizeManagedProcess is a narrow allowlist for long-running local development
+// servers. The caller must still obtain explicit user approval before starting them.
+func AuthorizeManagedProcess(command Command) Decision {
+	name := strings.ToLower(strings.TrimSpace(command.Name))
+	args := append([]string(nil), command.Args...)
+	allowed := false
+	switch name {
+	case "npm", "pnpm":
+		allowed = exact(args, "run", "dev") || exact(args, "run", "start") || exact(args, "start") || exact(args, "run", "serve")
+	case "bun":
+		allowed = exact(args, "run", "dev") || exact(args, "run", "start")
+	case "go":
+		allowed = len(args) == 2 && args[0] == "run" && safeRelativePath(args[1]) && strings.HasPrefix(args[1], "./") || exact(args, "run", ".")
+	case "node":
+		allowed = len(args) == 1 && safeRelativePath(args[0]) && (strings.HasSuffix(strings.ToLower(args[0]), ".js") || strings.HasSuffix(strings.ToLower(args[0]), ".mjs") || strings.HasSuffix(strings.ToLower(args[0]), ".cjs"))
+	case "python", "python3":
+		if len(args) == 1 && safeRelativePath(args[0]) && strings.HasSuffix(strings.ToLower(args[0]), ".py") { allowed = true }
+		if len(args) == 2 && args[0] == "-m" && args[1] == "http.server" { allowed = true }
+		if len(args) >= 2 && args[0] == "-m" && args[1] == "http.server" {
+			allowed = true
+			for _, arg := range args[2:] { if strings.HasPrefix(arg, "-") { if arg != "--bind" { allowed = false }; continue }; if _, err := strconv.Atoi(arg); err != nil { allowed = false } }
+		}
+	case "php":
+		allowed = len(args) >= 2 && args[0] == "-S" && (strings.HasPrefix(args[1], "127.0.0.1:") || strings.HasPrefix(args[1], "localhost:"))
+		if allowed { for _, arg := range args[2:] { if arg == "-t" { continue }; if !safeRelativePath(arg) { allowed = false } } }
+	}
+	if !allowed { return Decision{Allowed:false, Risk:RiskMedium, Reason:fmt.Sprintf("managed process is not allowlisted: %s %s", name, strings.Join(args, " "))} }
+	return Decision{Allowed:true, Risk:RiskMedium, Reason:"Allowlisted local development process; explicit user approval is still required."}
+}
+
 func safeFormatFileList(args []string) bool {
 	if len(args)<2||args[0]!="-l"{return false}
 	for _,path:=range args[1:]{if !safeRelativePath(path){return false}}
