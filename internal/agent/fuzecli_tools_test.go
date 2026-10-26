@@ -6,6 +6,10 @@ import (
  "net/http"
  "net/http/httptest"
  "encoding/json"
+ "go/ast"
+ "go/parser"
+ "go/token"
+ "strconv"
  "os"
  "path/filepath"
  "strings"
@@ -238,4 +242,35 @@ func TestTier1PatchAndRenameRequireApprovalAndApply(t *testing.T) {
 	if renamed.Status != ToolResultSuccess { t.Fatalf("approved rename failed: %s",renamed.Error) }
 	if _,err=os.Stat(filepath.Join(root,"src","main.txt")); !os.IsNotExist(err) { t.Fatalf("rename left source in place, err=%v",err) }
 	if _,err=os.Stat(filepath.Join(root,"src","renamed.txt")); err != nil { t.Fatalf("rename destination missing: %v",err) }
+}
+
+func TestEveryDefinedToolHasRuntimeDispatch(t *testing.T) {
+	file, err := parser.ParseFile(token.NewFileSet(), "tool_runtime.go", nil, 0)
+	if err != nil { t.Fatalf("parse runtime dispatcher: %v", err) }
+	var execute *ast.FuncDecl
+	for _, decl := range file.Decls {
+		if fn, ok := decl.(*ast.FuncDecl); ok && fn.Name.Name == "execute" { execute = fn; break }
+	}
+	if execute == nil { t.Fatal("ToolRuntime.execute was not found") }
+	dispatched := map[string]bool{}
+	ast.Inspect(execute.Body, func(node ast.Node) bool {
+		sw, ok := node.(*ast.SwitchStmt)
+		if !ok { return true }
+		tag, ok := sw.Tag.(*ast.Ident)
+		if !ok || tag.Name != "name" { return true }
+		for _, stmt := range sw.Body.List {
+			clause, ok := stmt.(*ast.CaseClause)
+			if !ok { continue }
+			for _, expr := range clause.List {
+				lit, ok := expr.(*ast.BasicLit)
+				if !ok || lit.Kind != token.STRING { continue }
+				name, err := strconv.Unquote(lit.Value)
+				if err == nil { dispatched[name] = true }
+			}
+		}
+		return true
+	})
+	for _, def := range FuzeCLIToolDefinitions() {
+		if !dispatched[def.Name] { t.Errorf("tool %q is defined but has no ToolRuntime.execute dispatch", def.Name) }
+	}
 }
