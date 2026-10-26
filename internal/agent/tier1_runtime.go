@@ -64,6 +64,7 @@ func (rt ToolRuntime) executeTier1(ctx context.Context, name string, raw json.Ra
 }
 
 func (rt ToolRuntime) readFiles(a map[string]any) (any, error) {
+	if err := rt.Capabilities.Require(security.ReadWorkspace); err != nil { return nil, err }
 	items, _ := a["files"].([]any)
 	out := make([]map[string]any, 0, len(items))
 	total := 0
@@ -93,6 +94,7 @@ func (rt ToolRuntime) readFiles(a map[string]any) (any, error) {
 }
 
 func (rt ToolRuntime) findReferences(ctx context.Context, a map[string]any) (any, error) {
+	if err := rt.Capabilities.Require(security.ReadWorkspace); err != nil { return nil, err }
 	symbol := stringArg(a, "symbol")
 	result, err := rt.searchCode(ctx, map[string]any{"query": symbol, "paths": a["paths"], "max_results": intArg(a, "max_results", 50), "case_sensitive": boolArg(a, "case_sensitive", true)})
 	if err != nil { return nil, err }
@@ -151,6 +153,7 @@ func languageForTier1(path string) string {
 }
 
 func (rt ToolRuntime) fileInfo(a map[string]any) (any, error) {
+	if err := rt.Capabilities.Require(security.ReadWorkspace); err != nil { return nil, err }
 	rel := stringArg(a, "path"); path, err := rt.resolve(rel, false); if err != nil { return nil, err }
 	info, err := os.Stat(path); if err != nil { return nil, err }
 	out := map[string]any{"path": filepath.ToSlash(rel), "size": info.Size(), "modified_time": info.ModTime().UTC().Format(time.RFC3339Nano), "is_directory": info.IsDir(), "language": languageForTier1(rel), "permissions": info.Mode().Perm().String()}
@@ -171,6 +174,7 @@ func (rt ToolRuntime) fileInfo(a map[string]any) (any, error) {
 }
 
 func (rt ToolRuntime) tree(a map[string]any) (any, error) {
+	if err := rt.Capabilities.Require(security.ReadWorkspace); err != nil { return nil, err }
 	rel := stringArg(a, "path"); if rel == "" { rel = "." }
 	root := rt.Root
 	if rel != "." { var err error; root, err = rt.resolve(rel, false); if err != nil { return nil, err } }
@@ -287,6 +291,7 @@ func (rt ToolRuntime) inspectEnvironment(a map[string]any)(any,error){
 }
 
 func (rt ToolRuntime) listTests(a map[string]any)(any,error){
+	if err := rt.Capabilities.Require(security.ReadWorkspace); err != nil { return nil, err }
 	rel:=stringArg(a,"path");root:=rt.Root;if rel!=""&&rel!="."{p,e:=rt.resolve(rel,false);if e!=nil{return nil,e};root=p}
 	info,e:=os.Stat(root);if e!=nil{return nil,e};if !info.IsDir(){root=filepath.Dir(root)}
 	max:=intArg(a,"max_results",100);type testEntry struct{Path string `json:"path"`;Kind string `json:"kind"`;Command []string `json:"command"`}
@@ -320,6 +325,7 @@ func (rt ToolRuntime) runTest(ctx context.Context,a map[string]any)(any,error){
 func securityCommandAllowed(exe string,args []string)error{d:=security.Authorize(security.Command{Name:exe,Args:args});if !d.Allowed{return fmt.Errorf("command blocked by security policy: %s",d.Reason)};return nil}
 
 func (rt ToolRuntime) analyzeDebug(a map[string]any)(any,error){
+	if err := rt.Capabilities.Require(security.ReadWorkspace); err != nil { return nil, err }
 	errText:=stringArg(a,"error");lower:=strings.ToLower(errText);causes:=[]string{};next:=[]string{}
 	add:=func(needle,cause,step string){if strings.Contains(lower,needle){causes=append(causes,cause);next=append(next,step)}}
 	add("connection refused","The target process is not listening on the requested host/port, or a firewall is rejecting the connection.","Check whether the server process is running, then inspect its startup logs and port.")
@@ -341,6 +347,7 @@ func (rt ToolRuntime) analyzeDebug(a map[string]any)(any,error){
 func uniqueStrings(in []string)[]string{seen:=map[string]bool{};out:=[]string{};for _,s:=range in{if !seen[s]{seen[s]=true;out=append(out,s)}};return out}
 
 func (rt ToolRuntime) gitLog(ctx context.Context,a map[string]any)(any,error){
+	if err := rt.Capabilities.Require(security.RunGit); err != nil { return nil, err }
 	args:=[]string{"log","--format=%H%x09%h%x09%an%x09%aI%x09%s","-n",strconv.Itoa(intArg(a,"limit",20))}
 	if author:=stringArg(a,"author");author!=""{args=append(args,"--author="+author)}
 	if path:=stringArg(a,"path");path!=""{if _,e:=rt.resolve(path,false);e!=nil{return nil,e};args=append(args,"--",path)}
@@ -349,6 +356,7 @@ func (rt ToolRuntime) gitLog(ctx context.Context,a map[string]any)(any,error){
 	return map[string]any{"commits":commits,"count":len(commits)},nil
 }
 func (rt ToolRuntime) gitShow(ctx context.Context,a map[string]any)(any,error){
+	if err := rt.Capabilities.Require(security.RunGit); err != nil { return nil, err }
 	rev:=stringArg(a,"revision");if rev==""{rev="HEAD"};if strings.HasPrefix(rev,"-")||!regexp.MustCompile(`^[A-Za-z0-9._/-]+(\^\{commit\}|~[0-9]+|\^[0-9]+)?$`).MatchString(rev){return nil,errors.New("invalid Git revision")}
 	verified,e:=runGitOutput(ctx,rt.Root,"rev-parse","--verify",rev+"^{commit}");if e!=nil{return nil,e}
 	args:=[]string{"show","--format=fuller"};if boolArg(a,"stat_only",false){args=append(args,"--stat")}else{args=append(args,"--patch","-U3")}
@@ -462,6 +470,7 @@ func (rt ToolRuntime) httpRequest(ctx context.Context,a map[string]any)(any,erro
 }
 
 func (rt ToolRuntime) databaseInspect(a map[string]any)(any,error){
+	if err := rt.Capabilities.Require(security.ReadWorkspace); err != nil { return nil, err }
 	max:=intArg(a,"max_results",30);policy,e:=workspace.LoadIgnorePolicy(rt.Root);if e!=nil{return nil,e};dbs:=[]string{};configKeys:=[]string{"DATABASE_URL","DB_HOST","DB_NAME","DB_DATABASE","SQLITE_PATH","MYSQL_URL","POSTGRES_URL"}
 	entries,e:=os.ReadDir(rt.Root);if e!=nil{return nil,e};_ = entries
 	e=filepath.WalkDir(rt.Root,func(path string,d os.DirEntry,walkErr error)error{if walkErr!=nil{return walkErr};if path==rt.Root{return nil};rel,er:=filepath.Rel(rt.Root,path);if er!=nil{return er};rel=filepath.ToSlash(rel);if d.IsDir()&&(rel==".git"||strings.HasPrefix(rel,".git/")||rel==".aicli"||strings.HasPrefix(rel,".aicli/")||policy.Ignored(rel)){return filepath.SkipDir};if d.IsDir(){return nil};ext:=strings.ToLower(filepath.Ext(rel));if ext==".sqlite"||ext==".sqlite3"||ext==".db"{dbs=append(dbs,rel);if len(dbs)>=max{return errToolWalkLimit}};return nil})
@@ -474,6 +483,7 @@ func (rt ToolRuntime) openSQLite(rel string)(*sql.DB,error){
 	sqlitePath:=filepath.ToSlash(path);if runtime.GOOS=="windows"&&!strings.HasPrefix(sqlitePath,"/"){sqlitePath="/"+sqlitePath};u:=url.URL{Scheme:"file",Path:sqlitePath};dsn:=u.String()+"?mode=ro";db,e:=sql.Open("sqlite",dsn);if e!=nil{return nil,e};db.SetMaxOpenConns(1);db.SetMaxIdleConns(1);ctx,cancel:=context.WithTimeout(context.Background(),3*time.Second);defer cancel();if e=db.PingContext(ctx);e!=nil{db.Close();return nil,e};return db,nil
 }
 func (rt ToolRuntime) databaseSchema(ctx context.Context, a map[string]any) (any, error) {
+	if err := rt.Capabilities.Require(security.ReadWorkspace); err != nil { return nil, err }
 	db, err := rt.openSQLite(stringArg(a, "path"))
 	if err != nil { return nil, err }
 	defer db.Close()
@@ -511,6 +521,7 @@ func (rt ToolRuntime) databaseSchema(ctx context.Context, a map[string]any) (any
 }
 
 func (rt ToolRuntime) databaseQuery(ctx context.Context,a map[string]any)(any,error){
+	if err := rt.Capabilities.Require(security.ReadWorkspace); err != nil { return nil, err }
 	query:=strings.TrimSpace(stringArg(a,"query"));if query==""{return nil,errors.New("query must not be empty")};if strings.Contains(query,";") { trimmed:=strings.TrimSuffix(query,";");if strings.Contains(trimmed,";"){return nil,errors.New("only one SQL statement is allowed")};query=trimmed }
 	first:=strings.ToUpper(strings.Fields(query)[0]);if first!="SELECT"&&first!="WITH"&&first!="EXPLAIN"&&first!="PRAGMA"{return nil,errors.New("database.query is read-only; only SELECT, WITH, EXPLAIN, and safe PRAGMA queries are allowed")}
 	if first=="PRAGMA"{lower:=strings.ToLower(strings.TrimSpace(query));allowed:=false;for _,p:=range []string{"pragma table_info(","pragma table_info (","pragma foreign_key_list(","pragma foreign_key_list (","pragma index_list(","pragma index_list (","pragma index_info(","pragma index_info (","pragma database_list","pragma compile_options","pragma integrity_check","pragma quick_check","pragma foreign_keys","pragma user_version","pragma schema_version"}{if strings.HasPrefix(lower,p){allowed=true;break}};if !allowed{return nil,errors.New("this PRAGMA is not in the read-only allowlist")}}
