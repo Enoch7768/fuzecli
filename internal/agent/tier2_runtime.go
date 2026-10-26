@@ -93,7 +93,7 @@ var safePackageToken = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._/+@:-]{0,199}
 var safeContainerImage = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._/:@-]{0,254}$`)
 
 func (rt ToolRuntime) packageChange(ctx context.Context, name string, raw json.RawMessage, a map[string]any, update bool) (any,error) {
-	if err:=rt.Capabilities.Require(security.InstallDependency); err!=nil {return nil,err}
+	if err:=rt.Capabilities.Require(security.RunBuild); err!=nil {return nil,err}
 	manager:=stringArg(a,"manager")
 	packages:=stringArrayArg(a,"packages")
 	for _,p:=range packages {
