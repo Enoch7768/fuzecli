@@ -23,6 +23,7 @@ func TestAuthorizeAllowlistedCommands(t *testing.T) {
 		{"npx", []string{"--yes", "tsc", "--noEmit"}, RiskMedium},
 		{"php", []string{"-l", "index.php"}, RiskLow},
 		{"python", []string{"-m", "py_compile"}, RiskLow},
+		{"python", []string{"-m", "compileall", "-q", "."}, RiskMedium},
 	}
 
 	for _, tt := range tests {
