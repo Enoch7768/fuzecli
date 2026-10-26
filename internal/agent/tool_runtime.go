@@ -78,6 +78,7 @@ func (rt ToolRuntime) execute(ctx context.Context, name string, raw json.RawMess
 	case "context.get": return rt.contextGet(a)
 	case "context.checkpoint": return rt.checkpoint(a)
 	case "package.inspect", "package.install", "package.update", "package.audit", "docs.search", "docs.generate", "build.inspect", "build.run", "api.inspect", "database.migrate", "container.inspect", "container.run": return rt.executeTier2(ctx, name, raw, a)
+	case "image.inspect", "image.compare", "browser.open", "browser.click", "browser.type", "browser.select", "browser.screenshot", "browser.inspect", "browser.console", "browser.network", "deploy.inspect", "deploy.run": return rt.executeTier3(ctx, name, raw, a)
 	case "workspace.read_files", "workspace.find_references", "workspace.apply_patch", "workspace.file_info", "workspace.tree", "workspace.rename", "terminal.run_parallel", "terminal.process", "terminal.output", "environment.inspect", "test.list", "test.run", "debug.analyze", "git.log", "git.show", "git.branch", "git.stash", "web.search", "web.open", "github.search_code", "github.read_file", "http.request", "database.inspect", "database.schema", "database.query": return rt.executeTier1(ctx, name, raw, a)
 	default: return nil, fmt.Errorf("tool handler not implemented: %s", name)
 	}
