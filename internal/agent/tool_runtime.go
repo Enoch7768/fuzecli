@@ -59,12 +59,14 @@ func workspaceExecCommand(ctx context.Context, executable string, args []string)
 func windowsShimCommandLine(path string, args []string) (string, error) {
 	parts := append([]string{path}, args...)
 	for _, part := range parts {
-		if strings.ContainsAny(part, "&|<>^%!\"\\r\\n") {
+		if strings.ContainsAny(part, "&|<>^%!\"\r\n") {
 			return "", errors.New("refusing to pass Windows command-shim arguments containing shell metacharacters or quotes")
 		}
 	}
 	line := windowsQuoteArg(path)
-	for _, arg := range args { line += " " + windowsQuoteArg(arg) }
+	for _, arg := range args {
+		line += " " + windowsQuoteArg(arg)
+	}
 	return "\"" + line + "\"", nil
 }
 
@@ -73,18 +75,21 @@ func windowsQuoteArg(value string) string {
 	b.WriteByte('"')
 	backslashes := 0
 	for _, r := range value {
-		if r == '\\' { backslashes++; continue }
+		if r == '\\' {
+			backslashes++
+			continue
+		}
 		if r == '"' {
-			b.WriteString(strings.Repeat("\\\\", backslashes*2+1))
+			b.WriteString(strings.Repeat("\\", backslashes*2+1))
 			b.WriteRune('"')
 			backslashes = 0
 			continue
 		}
-		b.WriteString(strings.Repeat("\\\\", backslashes))
+		b.WriteString(strings.Repeat("\\", backslashes))
 		backslashes = 0
 		b.WriteRune(r)
 	}
-	b.WriteString(strings.Repeat("\\\\", backslashes*2))
+	b.WriteString(strings.Repeat("\\", backslashes*2))
 	b.WriteByte('"')
 	return b.String()
 }
