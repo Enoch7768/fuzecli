@@ -307,21 +307,66 @@ func (rt ToolRuntime) listTests(a map[string]any)(any,error){
 	return map[string]any{"tests":out,"count":len(out),"truncated":truncated},nil
 }
 
-func (rt ToolRuntime) runTest(ctx context.Context,a map[string]any)(any,error){
-	if boolArg(a,"dry_run",false){return map[string]any{"dry_run":true,"executed":false,"path":stringArg(a,"path"),"name":stringArg(a,"name"),"suite":stringArg(a,"suite")},nil}
-	if err:=rt.Capabilities.Require(security.RunTests);err!=nil{return nil,err}
-	path,name,suite:=stringArg(a,"path"),stringArg(a,"name"),stringArg(a,"suite")
-	exe:="";args:=[]string{};timeout:=intArg(a,"timeout_seconds",120)
-	if _,e:=os.Stat(filepath.Join(rt.Root,"go.mod"));e==nil{
-		pkg:="./...";if path!=""{resolved,e:=rt.resolve(path,false);if e!=nil{return nil,e};inf,e:=os.Stat(resolved);if e!=nil{return nil,e};dir:=resolved;if !inf.IsDir(){dir=filepath.Dir(resolved)};rel,e:=filepath.Rel(rt.Root,dir);if e!=nil{return nil,e};pkg="./"+filepath.ToSlash(rel);if rel=="."{pkg="./..."}}
-		exe="go";args=[]string{"test"};if name!=""{args=append(args,"-run","^"+regexp.QuoteMeta(name)+"$")};if suite=="unit"{args=append(args,"-short")};args=append(args,pkg)
-	}else if _,e:=os.Stat(filepath.Join(rt.Root,"package.json"));e==nil{
-		exe="npm";args=[]string{"test","--"};if path!=""{_,e:=rt.resolve(path,false);if e!=nil{return nil,e};args=append(args,filepath.ToSlash(path))};if name!=""{args=append(args,"-t",name)}
-	}else if path!=""||suite!=""{exe="python";args=[]string{"-m","pytest"};if path!=""{_,e:=rt.resolve(path,false);if e!=nil{return nil,e};args=append(args,filepath.ToSlash(path))};if name!=""{args=append(args,"-k",name)}}else{return nil,errors.New("no supported test runner detected; provide a project manifest or explicit test path")}
-	if err:=securityCommandAllowed(exe,args);err!=nil{return nil,err}
-	cctx,cancel:=context.WithTimeout(ctx,time.Duration(timeout)*time.Second);defer cancel();cmd:=exec.CommandContext(cctx,exe,args...);cmd.Dir=rt.Root;cmd.Env=append(os.Environ(),"GIT_TERMINAL_PROMPT=0");var stdout,stderr limitedBuffer;stdout.limit=64<<10;stderr.limit=64<<10;start:=time.Now();cmd.Stdout=&stdout;cmd.Stderr=&stderr;err:=cmd.Run();exit:=0;if err!=nil{var ee *exec.ExitError;if errors.As(err,&ee){exit=ee.ExitCode()}else if cctx.Err()!=nil{exit=-1}else{return nil,err}}
-	return map[string]any{"executed":true,"passed":err==nil,"exit_code":exit,"stdout":stdout.String(),"stderr":stderr.String(),"duration_ms":time.Since(start).Milliseconds(),"timed_out":errors.Is(cctx.Err(),context.DeadlineExceeded),"command":append([]string{exe},args...)},nil
+func (rt ToolRuntime) runTest(ctx context.Context, a map[string]any) (any, error) {
+	if boolArg(a, "dry_run", false) {
+		return map[string]any{"dry_run":true, "executed":false, "path":stringArg(a,"path"), "name":stringArg(a,"name"), "suite":stringArg(a,"suite")}, nil
+	}
+	if err := rt.Capabilities.Require(security.RunTests); err != nil { return nil, err }
+	path, name, suite := stringArg(a,"path"), stringArg(a,"name"), stringArg(a,"suite")
+	timeout := intArg(a,"timeout_seconds",120)
+	exe, args := "", []string{}
+	if _, err := os.Stat(filepath.Join(rt.Root,"go.mod")); err == nil {
+		pkg := "./..."
+		if path != "" {
+			resolved, err := rt.resolve(path,false); if err != nil { return nil, err }
+			info, err := os.Stat(resolved); if err != nil { return nil, err }
+			dir := resolved; if !info.IsDir() { dir = filepath.Dir(resolved) }
+			rel, err := filepath.Rel(rt.Root,dir); if err != nil { return nil, err }
+			pkg = "./"+filepath.ToSlash(rel); if rel == "." { pkg = "./..." }
+		}
+		if (suite=="e2e" || suite=="component") && path=="" { return nil, fmt.Errorf("Go has no universal %s suite convention; provide a specific test path",suite) }
+		exe = "go"; args = []string{"test"}
+		if name != "" { args = append(args,"-run","^"+regexp.QuoteMeta(name)+"$") }
+		if suite == "unit" { args = append(args,"-short") }
+		if suite == "integration" { args = append(args,"-tags","integration") }
+		args = append(args,pkg)
+	} else if _, err := os.Stat(filepath.Join(rt.Root,"package.json")); err == nil {
+		exe = "npm"
+		script := ""
+		if suite != "" && suite != "all" {
+			data, readErr := os.ReadFile(filepath.Join(rt.Root,"package.json"))
+			if readErr == nil {
+				var manifest struct { Scripts map[string]string `json:"scripts"` }
+				if json.Unmarshal(data,&manifest) == nil && manifest.Scripts["test:"+suite] != "" { script = "test:"+suite }
+			}
+			if script == "" && path == "" && name == "" { return nil, fmt.Errorf("package.json does not declare a test:%s script",suite) }
+		}
+		if script != "" { args = []string{"run",script,"--"} } else { args = []string{"test","--"} }
+		if path != "" { if _,err := rt.resolve(path,false); err != nil { return nil, err }; args = append(args,filepath.ToSlash(path)) }
+		if name != "" { args = append(args,"-t",name) }
+	} else {
+		if path == "" && suite == "" { return nil, errors.New("no supported test runner detected; provide a project manifest or explicit test path") }
+		exe = "python"
+		if _, err := exec.LookPath(exe); err != nil { exe = "python3" }
+		args = []string{"-m","pytest"}
+		if path == "" && suite != "" && suite != "all" {
+			candidate := filepath.Join("tests",suite)
+			if _,err := os.Stat(filepath.Join(rt.Root,candidate)); os.IsNotExist(err) { candidate = filepath.Join("test",suite) }
+			if _,err := os.Stat(filepath.Join(rt.Root,candidate)); err != nil { return nil, fmt.Errorf("could not find a Python test directory for suite %q; provide path",suite) }
+			path = filepath.ToSlash(candidate)
+		}
+		if path != "" { if _,err := rt.resolve(path,false); err != nil { return nil, err }; args = append(args,filepath.ToSlash(path)) }
+		if name != "" { args = append(args,"-k",name) }
+	}
+	if err := securityCommandAllowed(exe,args); err != nil { return nil, err }
+	cctx, cancel := context.WithTimeout(ctx,time.Duration(timeout)*time.Second); defer cancel()
+	cmd := exec.CommandContext(cctx,exe,args...); cmd.Dir = rt.Root; cmd.Env = append(os.Environ(),"GIT_TERMINAL_PROMPT=0")
+	var stdout,stderr limitedBuffer; stdout.limit = 64<<10; stderr.limit = 64<<10; start := time.Now(); cmd.Stdout = &stdout; cmd.Stderr = &stderr
+	err := cmd.Run(); exit := 0
+	if err != nil { var ee *exec.ExitError; if errors.As(err,&ee) { exit = ee.ExitCode() } else if cctx.Err() != nil { exit = -1 } else { return nil, err } }
+	return map[string]any{"executed":true,"passed":err==nil,"exit_code":exit,"stdout":stdout.String(),"stderr":stderr.String(),"duration_ms":time.Since(start).Milliseconds(),"timed_out":errors.Is(cctx.Err(),context.DeadlineExceeded),"command":append([]string{exe},args...)}, nil
 }
+
 func securityCommandAllowed(exe string,args []string)error{d:=security.Authorize(security.Command{Name:exe,Args:args});if !d.Allowed{return fmt.Errorf("command blocked by security policy: %s",d.Reason)};return nil}
 
 func (rt ToolRuntime) analyzeDebug(a map[string]any)(any,error){
