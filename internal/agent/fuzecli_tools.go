@@ -256,6 +256,28 @@ func validateToolAction(name string, args map[string]any) error {
 	case "workspace.apply_edits":
 		items, _ := args["files"].([]any)
 		for i, raw := range items { f, _ := raw.(map[string]any); action, _ := f["action"].(string); content, exists := f["content"]; switch action { case "create","modify": if !exists || content == nil { return fmt.Errorf("%s.files[%d].content is required for %s",name,i,action) }; case "delete": if exists { return fmt.Errorf("%s.files[%d].content must be absent for delete",name,i) } } }
+
+	case "workspace.read_files":
+		items, _ := args["files"].([]any)
+		for i, raw := range items { f, _ := raw.(map[string]any); start, hasStart := f["start_line"]; end, hasEnd := f["end_line"]; if hasStart && hasEnd { a, _ := start.(json.Number).Int64(); b, _ := end.(json.Number).Int64(); if b < a { return fmt.Errorf("%s.files[%d].end_line must be greater than or equal to start_line", name, i) } } }
+	case "workspace.apply_patch":
+		if strings.TrimSpace(fmt.Sprint(args["old_text"])) == "" { return fmt.Errorf("%s.old_text must not be empty", name) }
+	case "terminal.process":
+		switch args["action"] { case "start": return require("executable","args"); case "status","stop","restart": return require("process_id") }
+	case "test.run":
+		if _,ok:=args["path"];!ok { if _,ok:=args["name"];!ok { if _,ok:=args["suite"];!ok { return fmt.Errorf("%s needs at least one of path, name, or suite",name) } } }
+	case "git.branch":
+		switch args["action"] { case "create": return require("name"); case "switch","delete": return require("name") }
+	case "git.stash":
+		if args["action"]=="push" { return nil }; if args["action"]=="list" { return nil }
+	case "github.search_code":
+		if repo,ok:=args["repository"];ok && !validRepositoryIdentifier(fmt.Sprint(repo)) { return fmt.Errorf("%s.repository must be owner/name",name) }
+	case "github.read_file":
+		if !validRepositoryIdentifier(fmt.Sprint(args["repository"])) { return fmt.Errorf("%s.repository must be owner/name",name) }
+	case "http.request":
+		if method:=fmt.Sprint(args["method"]); method=="GET"||method=="HEAD" { if _,ok:=args["body"];ok { return fmt.Errorf("%s.body is not allowed for %s",name,method) } }
+	case "database.query":
+		if strings.TrimSpace(fmt.Sprint(args["query"]))=="" { return fmt.Errorf("%s.query must not be empty",name) }
 	case "git.commit":
 		if !boolArg(args, "dry_run", false) { return require("paths") }
 	case "github.repositories":
