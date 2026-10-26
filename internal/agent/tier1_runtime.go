@@ -329,6 +329,7 @@ func (rt ToolRuntime) runTest(ctx context.Context, a map[string]any) (any, error
 		if name != "" { args = append(args,"-run","^"+regexp.QuoteMeta(name)+"$") }
 		if suite == "unit" { args = append(args,"-short") }
 		if suite == "integration" { args = append(args,"-tags","integration") }
+		if (suite == "e2e" || suite == "component") && path == "" { return nil, fmt.Errorf("Go has no universal %s suite convention; provide a specific test path", suite) }
 		args = append(args,pkg)
 	} else if _, err := os.Stat(filepath.Join(rt.Root,"package.json")); err == nil {
 		exe = "npm"
