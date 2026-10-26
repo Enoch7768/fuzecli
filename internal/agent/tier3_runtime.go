@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"image"
+	"image/color"
 	_ "image/gif"
 	_ "image/jpeg"
 	_ "image/png"
@@ -97,9 +98,29 @@ func (rt ToolRuntime) imageInspect(a map[string]any) (any, error) {
 	}
 	return map[string]any{
 		"path": filepath.ToSlash(rel), "format": strings.ToLower(format),
-		"width": cfg.Width, "height": cfg.Height, "pixels": int64(cfg.Width) * int64(cfg.Height),
+		"width": cfg.Width, "height": cfg.Height, "pixels": int64(cfg.Width) * int64(cfg.Height), "color_model": tier3ColorModel(cfg.ColorModel),
 		"size_bytes": info.Size(), "mod_time": info.ModTime().UTC().Format(time.RFC3339),
 	}, nil
+}
+
+
+func tier3ColorModel(model color.Model) string {
+	switch model {
+	case color.RGBAModel:
+		return "RGBA"
+	case color.NRGBAModel:
+		return "NRGBA"
+	case color.GrayModel:
+		return "Gray"
+	case color.Gray16Model:
+		return "Gray16"
+	case color.CMYKModel:
+		return "CMYK"
+	case color.YCbCrModel:
+		return "YCbCr"
+	default:
+		return fmt.Sprintf("%T", model)
+	}
 }
 
 func (rt ToolRuntime) imageCompare(a map[string]any) (any, error) {
@@ -327,9 +348,10 @@ func tier3JSString(value string) string {
 	return string(data)
 }
 
-func tier3InstallConsoleCapture(ctx context.Context, target tier3CDPTarget) {
+func tier3InstallConsoleCapture(ctx context.Context, target tier3CDPTarget) bool {
 	const expression = `(()=>{if(window.__fuzecliConsoleBuffer)return true;const b=[];Object.defineProperty(window,'__fuzecliConsoleBuffer',{value:b,configurable:true});for(const k of ['log','info','warn','error','debug']){const old=console[k].bind(console);console[k]=(...a)=>{try{b.push({type:k,time:new Date().toISOString(),message:a.map(x=>{try{return typeof x==='string'?x:JSON.stringify(x)}catch(e){return String(x)}}).join(' ').slice(0,2000)});if(b.length>500)b.shift()}catch(e){}old(...a)}}return true})()`
-	_, _ = tier3Eval(ctx, target, expression)
+	_, err := tier3Eval(ctx, target, expression)
+	return err == nil
 }
 
 func (rt ToolRuntime) browserOpen(ctx context.Context, a map[string]any) (any, error) {
@@ -359,9 +381,9 @@ func (rt ToolRuntime) browserOpen(ctx context.Context, a map[string]any) (any, e
 	if err != nil {
 		return nil, err
 	}
-	_, _ = tier3CDPCommand(ctx, target, "Page.enable", nil)
-	_, _ = tier3CDPCommand(ctx, target, "Runtime.enable", nil)
-	tier3InstallConsoleCapture(ctx, target)
+	if _, err := tier3CDPCommand(ctx, target, "Page.enable", nil); err != nil { return nil, err }
+	if _, err := tier3CDPCommand(ctx, target, "Runtime.enable", nil); err != nil { return nil, err }
+	consoleCapture := tier3InstallConsoleCapture(ctx, target)
 	wait := time.Duration(intArg(a, "wait_ms", 500)) * time.Millisecond
 	if wait > 0 {
 		timer := time.NewTimer(wait)
@@ -373,7 +395,7 @@ func (rt ToolRuntime) browserOpen(ctx context.Context, a map[string]any) (any, e
 		}
 	}
 	info, _ := tier3Eval(ctx, target, `({title:document.title,url:location.href,readyState:document.readyState})`)
-	return map[string]any{"target_id": target.ID, "url": pageURL, "page": info, "console_capture": "instrumented after initial navigation; earlier messages may be missing"}, nil
+	return map[string]any{"target_id": target.ID, "url": pageURL, "page": info, "console_capture_installed": consoleCapture, "console_capture_note": "Instrumentation starts after initial navigation; earlier messages may be missing."}, nil
 }
 
 func (rt ToolRuntime) browserClick(ctx context.Context, a map[string]any) (any, error) {
