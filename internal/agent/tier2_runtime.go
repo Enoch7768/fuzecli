@@ -58,8 +58,8 @@ func (rt ToolRuntime) packageInspect(a map[string]any) (any, error) {
 				for _, key := range []string{"dependencies","devDependencies","require","require-dev"} {
 					if m, ok := doc[key].(map[string]any); ok { for k,v := range m { deps[k] = v } }
 				}
-				entry["dependencies"] = boundedMap(deps, maxItems)
-				if scripts, ok := doc["scripts"].(map[string]any); ok { entry["scripts"] = boundedMap(scripts, 100) }
+				entry["dependencies"] = tier2BoundedMap(deps, maxItems)
+				if scripts, ok := doc["scripts"].(map[string]any); ok { entry["scripts"] = tier2BoundedMap(scripts, 100) }
 			}
 		case "go.mod":
 			lines := strings.Split(string(data), "\n"); deps := []string{}
@@ -84,7 +84,7 @@ func manifestMatchesManager(path, manager string) bool {
 	}
 	return true
 }
-func boundedMap(input map[string]any, limit int) map[string]any {
+func tier2BoundedMap(input map[string]any, limit int) map[string]any {
 	keys:=make([]string,0,len(input)); for k:=range input {keys=append(keys,k)}; sort.Strings(keys)
 	out:=map[string]any{}; for i,k:=range keys {if i>=limit {break};out[k]=input[k]}; return out
 }
@@ -95,7 +95,7 @@ var safeContainerImage = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._/:@-]{0,254
 func (rt ToolRuntime) packageChange(ctx context.Context, name string, raw json.RawMessage, a map[string]any, update bool) (any,error) {
 	if err:=rt.Capabilities.Require(security.RunBuild); err!=nil {return nil,err}
 	manager:=stringArg(a,"manager")
-	packages:=stringArrayArg(a,"packages")
+	packages:=tier2StringArrayArg(a,"packages")
 	for _,p:=range packages {
 		if strings.HasPrefix(p,"-") || strings.ContainsAny(p,"\x00\r\n;|&$") {return nil,fmt.Errorf("unsafe package specifier %q",p)}
 		if manager=="python" { if !regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,99}([<>=!~]{1,2}[A-Za-z0-9.*+_-]{1,50})?$`).MatchString(p) {return nil,fmt.Errorf("unsupported Python package specifier %q",p)} } else if !safePackageToken.MatchString(p) {return nil,fmt.Errorf("unsupported package specifier %q",p)}
@@ -139,7 +139,7 @@ func packageCommand(manager string, packages []string, dev, update bool) (string
 func (rt ToolRuntime) packageAudit(ctx context.Context,a map[string]any)(any,error) {
 	if err:=rt.Capabilities.Require(security.RunBuild);err!=nil{return nil,err}
 	manager:=stringArg(a,"manager");if manager==""||manager=="auto" {
-		if exists(rt.Root,"go.mod"){manager="go"}else if exists(rt.Root,"package.json"){manager="npm"}else if exists(rt.Root,"composer.json"){manager="php"}else if exists(rt.Root,"requirements.txt")||exists(rt.Root,"pyproject.toml"){manager="python"}else{return nil,errors.New("no supported dependency manifest found")}
+		if tier2Exists(rt.Root,"go.mod"){manager="go"}else if tier2Exists(rt.Root,"package.json"){manager="npm"}else if tier2Exists(rt.Root,"composer.json"){manager="php"}else if tier2Exists(rt.Root,"requirements.txt")||tier2Exists(rt.Root,"pyproject.toml"){manager="python"}else{return nil,errors.New("no supported dependency manifest found")}
 	}
 	var exe string;var args []string
 	switch manager {case "go":if _,e:=exec.LookPath("govulncheck");e==nil{exe="govulncheck";args=[]string{"./..."} }else{return map[string]any{"executed":false,"available":false,"manager":manager,"message":"govulncheck is not installed; go mod verify checks module integrity, not known vulnerabilities"},nil}
@@ -155,7 +155,7 @@ func (rt ToolRuntime) packageAudit(ctx context.Context,a map[string]any)(any,err
 func (rt ToolRuntime) docsSearch(a map[string]any)(any,error) {
 	if err:=rt.Capabilities.Require(security.ReadWorkspace);err!=nil{return nil,err}
 	query:=strings.ToLower(stringArg(a,"query"));limit:=intArg(a,"max_results",30)
-	paths:=stringArrayArg(a,"paths");allowed:=map[string]bool{}
+	paths:=tier2StringArrayArg(a,"paths");allowed:=map[string]bool{}
 	for _,p:=range paths{resolved,e:=rt.resolve(p,false);if e!=nil{return nil,e};info,e:=os.Stat(resolved);if e!=nil{return nil,e};if info.IsDir(){return nil,fmt.Errorf("docs.search paths must be files, not directories: %s",p)};allowed[filepath.ToSlash(filepath.Clean(p))]=true}
 	results:=[]map[string]any{}
 	err:=filepath.WalkDir(rt.Root,func(path string,d os.DirEntry,e error)error{
@@ -164,13 +164,13 @@ func (rt ToolRuntime) docsSearch(a map[string]any)(any,error) {
 		if len(allowed)>0&&!allowed[rel]{return nil}
 		lower:=strings.ToLower(rel);if !(strings.HasSuffix(lower,".md")||strings.HasSuffix(lower,".mdx")||strings.HasSuffix(lower,".rst")||strings.HasSuffix(lower,".txt")) {return nil}
 		resolved,er:=rt.resolve(rel,false);if er!=nil{return nil};data,er:=os.ReadFile(resolved);if er!=nil||len(data)>1<<20{return nil}
-		for i,line:=range strings.Split(string(data),"\n"){if strings.Contains(strings.ToLower(line),query){results=append(results,map[string]any{"path":rel,"line":i+1,"text":truncateString(strings.TrimSpace(line),500)});if len(results)>=limit{return errToolWalkLimit}}}
+		for i,line:=range strings.Split(string(data),"\n"){if strings.Contains(strings.ToLower(line),query){results=append(results,map[string]any{"path":rel,"line":i+1,"text":tier2TruncateString(strings.TrimSpace(line),500)});if len(results)>=limit{return errToolWalkLimit}}}
 		return nil
 	})
 	if err!=nil&&!errors.Is(err,errToolWalkLimit){return nil,err}
 	return map[string]any{"query":query,"results":results,"count":len(results),"truncated":errors.Is(err,errToolWalkLimit)},nil
 }
-func truncateString(s string,n int)string{if len(s)>n{return s[:n]+"…"};return s}
+func tier2TruncateString(s string,n int)string{if len(s)>n{return s[:n]+"…"};return s}
 
 func (rt ToolRuntime) docsGenerate(ctx context.Context,raw json.RawMessage,a map[string]any)(any,error){
 	if err:=rt.Capabilities.Require(security.WriteWorkspace);err!=nil{return nil,err}
@@ -195,18 +195,18 @@ func (rt ToolRuntime) buildInspect(a map[string]any)(any,error){
 	for _,rel:=range []string{"go.mod","Makefile","CMakeLists.txt","Cargo.toml","package.json","pyproject.toml","requirements.txt","composer.json","Dockerfile","docker-compose.yml","compose.yaml","vite.config.js","vite.config.ts","tsconfig.json"}{
 		p,e:=rt.resolve(rel,false);if e!=nil{continue};data,e:=os.ReadFile(p);if e!=nil{continue}
 		item:=map[string]any{"path":rel,"bytes":len(data)}
-		if rel=="package.json"{var doc map[string]any;if json.Unmarshal(data,&doc)==nil{item["scripts"]=boundedMap(asAnyMap(doc["scripts"]),max);item["package_manager"]=doc["packageManager"]}}
+		if rel=="package.json"{var doc map[string]any;if json.Unmarshal(data,&doc)==nil{item["scripts"]=tier2BoundedMap(tier2AsAnyMap(doc["scripts"]),max);item["package_manager"]=doc["packageManager"]}}
 		items=append(items,item)
 	}
 	tools:=map[string]bool{};for _,name:=range []string{"go","npm","pnpm","yarn","bun","python","php","composer","docker","podman","make","cargo"}{if _,e:=exec.LookPath(name);e==nil{tools[name]=true}}
 	return map[string]any{"manifests":items,"available_tools":tools,"count":len(items)},nil
 }
-func asAnyMap(v any)map[string]any{m,_:=v.(map[string]any);if m==nil{return map[string]any{}};return m}
+func tier2AsAnyMap(v any)map[string]any{m,_:=v.(map[string]any);if m==nil{return map[string]any{}};return m}
 
 func (rt ToolRuntime) buildRun(ctx context.Context,raw json.RawMessage,a map[string]any)(any,error){
 	if err:=rt.Capabilities.Require(security.RunBuild);err!=nil{return nil,err}
-	target:=stringArg(a,"target");if target==""||target=="auto"{if exists(rt.Root,"go.mod"){target="go"}else if exists(rt.Root,"package.json"){target="npm"}else if exists(rt.Root,"composer.json"){target="php"}else if exists(rt.Root,"pyproject.toml"){target="python"}else{return nil,errors.New("could not detect a supported build system")}}
-	args:=stringArrayArg(a,"args");var exe string
+	target:=stringArg(a,"target");if target==""||target=="auto"{if tier2Exists(rt.Root,"go.mod"){target="go"}else if tier2Exists(rt.Root,"package.json"){target="npm"}else if tier2Exists(rt.Root,"composer.json"){target="php"}else if tier2Exists(rt.Root,"pyproject.toml"){target="python"}else{return nil,errors.New("could not detect a supported build system")}}
+	args:=tier2StringArrayArg(a,"args");var exe string
 	if len(args)==0{switch target{case "go":exe="go";args=[]string{"build","./..."};case "npm":exe="npm";args=[]string{"run","build"};case "pnpm":exe="pnpm";args=[]string{"run","build"};case "yarn":exe="yarn";args=[]string{"build"};case "bun":exe="bun";args=[]string{"run","build"};case "python":exe="python";args=[]string{"-m","compileall","-q","."};case "php":return map[string]any{"executed":false,"message":"PHP projects do not have a universal build command; pass an explicitly supported verification argument only after configuring a project script."},nil}}else{switch target{case "go":exe="go";case "npm","pnpm","yarn","bun":exe=target;case "python":exe="python";case "php":exe="php";default:return nil,fmt.Errorf("unsupported build target %q",target)}}
 	decision:=security.Authorize(security.Command{Name:exe,Args:args})
 	if !decision.Allowed{return nil,fmt.Errorf("build command blocked by command policy: %s",decision.Reason)}
@@ -271,14 +271,14 @@ func (rt ToolRuntime) containerRun(ctx context.Context,raw json.RawMessage,a map
 	engine:=stringArg(a,"engine");if engine==""{engine="docker"};image:=stringArg(a,"image")
 	if !safeContainerImage.MatchString(image)||strings.Contains(image,".."){return nil,errors.New("container image name contains unsupported characters")}
 	args:=[]string{"run","--rm","--network","bridge","--read-only","--cap-drop","ALL","--security-opt","no-new-privileges"}
-	for _,port:=range stringArrayArg(a,"ports"){
+	for _,port:=range tier2StringArrayArg(a,"ports"){
 		parts:=strings.Split(port,":");if len(parts)!=2{return nil,fmt.Errorf("invalid port mapping %q",port)}
 		host,e1:=strconv.Atoi(parts[0]);container,e2:=strconv.Atoi(parts[1]);if e1!=nil||e2!=nil{return nil,fmt.Errorf("invalid numeric port mapping %q",port)}
 		if host<1||host>65535||container<1||container>65535{return nil,fmt.Errorf("port mapping out of range: %q",port)}
 		args=append(args,"-p",fmt.Sprintf("127.0.0.1:%d:%d",host,container))
 	}
 	args=append(args,image)
-	command:=stringArrayArg(a,"command");args=append(args,command...)
+	command:=tier2StringArrayArg(a,"command");args=append(args,command...)
 	if boolArg(a,"dry_run",false){return map[string]any{"executed":false,"command":append([]string{engine},args...),"reason":"dry run; container not started"},nil}
 	if err:=func() error { if hasToolApproval(ctx, "container.run", raw) { return nil }; return errors.New("container.run requires explicit approval for this exact operation") }();err!=nil{return nil,err}
 	return rt.runTier2Command(ctx,engine,args,".",time.Duration(intArg(a,"timeout_seconds",60))*time.Second)
@@ -297,8 +297,8 @@ func (rt ToolRuntime) runTier2Command(ctx context.Context,exe string,args []stri
 	if err!=nil{var exitErr *exec.ExitError;if errors.As(err,&exitErr){result["exit_code"]=exitErr.ExitCode()}else{result["exit_code"]=-1};result["error"]=err.Error();return result,fmt.Errorf("%s failed: %w",exe,err)}
 	return result,nil
 }
-func stringArrayArg(a map[string]any,key string)[]string{raw,_:=a[key].([]any);out:=make([]string,0,len(raw));for _,v:=range raw{if s,ok:=v.(string);ok{out=append(out,s)}};return out}
-func exists(root,rel string)bool{info,err:=os.Stat(filepath.Join(root,filepath.FromSlash(rel)));return err==nil&&!info.IsDir()}
+func tier2StringArrayArg(a map[string]any,key string)[]string{raw,_:=a[key].([]any);out:=make([]string,0,len(raw));for _,v:=range raw{if s,ok:=v.(string);ok{out=append(out,s)}};return out}
+func tier2Exists(root,rel string)bool{info,err:=os.Stat(filepath.Join(root,filepath.FromSlash(rel)));return err==nil&&!info.IsDir()}
 
 
 func parseOpenAPIYAML(source string, data []byte, limit int) []map[string]any {
