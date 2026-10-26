@@ -604,9 +604,9 @@ func (rt ToolRuntime) deployRun(ctx context.Context, raw json.RawMessage, a map[
 		args = []string{"deploy", "--dir", directory, "--message", "FuzeCLI deployment"}
 		if production { args = append(args, "--prod") }
 	case "fly":
+		if production { return nil, errors.New("Fly deployment target is selected by the app configured in fly.toml; this tool cannot safely switch it to a separate production target. Set production=false and approve the configured app target explicitly.") }
 		exe = "fly"
 		args = []string{"deploy", "--yes"}
-		if production { args = append(args, "--strategy", "rolling") }
 		if directory != "." { args = append(args, directory) }
 	case "railway":
 		exe = "railway"
@@ -633,7 +633,11 @@ func (rt ToolRuntime) deployRun(ctx context.Context, raw json.RawMessage, a map[
 	cmd.Stdout = &tier3LimitedWriter{builder: &stdout, limit: 32 << 10}
 	cmd.Stderr = &tier3LimitedWriter{builder: &stderr, limit: 32 << 10}
 	err := cmd.Run()
-	result := map[string]any{"executed": true, "success": true, "provider": provider, "command": command, "exit_code": 0, "stdout": redactHTTPSecrets(stdout.String()), "stderr": redactHTTPSecrets(stderr.String()), "production": production}
+	targetNote := "target is determined by the provider CLI project/environment configuration; verify it before approving"
+	if provider == "vercel" || provider == "netlify" { if production { targetNote = "production target explicitly selected" } else { targetNote = "preview/non-production deployment requested" } }
+	if provider == "railway" && production { targetNote = "Railway environment explicitly set to production" }
+	if provider == "fly" { targetNote = "Fly app target is determined by fly.toml and linked CLI state; production status is not inferred" }
+	result := map[string]any{"executed": true, "success": true, "provider": provider, "command": command, "exit_code": 0, "stdout": redactHTTPSecrets(stdout.String()), "stderr": redactHTTPSecrets(stderr.String()), "production_requested": production, "target_note": targetNote}
 	if err != nil {
 		result["success"] = false
 		result["exit_code"] = -1
