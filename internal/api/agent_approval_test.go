@@ -3,7 +3,10 @@ package api
 import (
 	"encoding/json"
 	"reflect"
+	"strings"
 	"testing"
+
+	"github.com/Enoch7768/fuzecli/internal/agent"
 )
 
 func TestToolDeletionPathsRequireExplicitPathApproval(t *testing.T) {
@@ -44,4 +47,26 @@ func TestToolRequestContainsOnlyDeletes(t *testing.T) {
 			t.Errorf("non-delete-only request accepted: %s", raw)
 		}
 	}
+}
+
+func TestApprovalAllowlistCoversEveryMutationTool(t *testing.T) {
+	allowed := supportedApprovalToolNames()
+	for _, name := range []string{
+		"workspace.apply_edits", "workspace.apply_patch", "workspace.rename",
+		"terminal.run", "terminal.run_parallel", "terminal.process", "test.run",
+		"git.commit", "git.branch", "git.stash", "http.request",
+		"github.branches", "github.sync", "github.pull_requests", "github.issues", "github.actions", "github.auth",
+		"package.install", "package.update", "docs.generate", "build.run", "database.migrate", "container.run",
+		"browser.click", "browser.type", "browser.select", "browser.screenshot", "deploy.run",
+	} {
+		if !allowed[name] {
+			t.Errorf("approval flow does not accept mutation tool %q", name)
+		}
+	}
+	for name := range allowed {
+		if strings.TrimSpace(name) == "" {
+			t.Fatal("approval allowlist contains an empty tool name")
+		}
+	}
+	_ = agent.ToolProtocolVersion
 }
