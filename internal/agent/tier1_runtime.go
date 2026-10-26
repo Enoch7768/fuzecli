@@ -471,7 +471,7 @@ func (rt ToolRuntime) databaseInspect(a map[string]any)(any,error){
 func (rt ToolRuntime) openSQLite(rel string)(*sql.DB,error){
 	path,e:=rt.resolve(rel,false);if e!=nil{return nil,e};inf,e:=os.Stat(path);if e!=nil{return nil,e};if !inf.Mode().IsRegular(){return nil,errors.New("database path must be a regular file")}
 	ext:=strings.ToLower(filepath.Ext(path));if ext!=".db"&&ext!=".sqlite"&&ext!=".sqlite3"{return nil,errors.New("only SQLite .db, .sqlite, and .sqlite3 files are supported")}
-	u:=url.URL{Scheme:"file",Path:filepath.ToSlash(path)};dsn:=u.String()+"?mode=ro";db,e:=sql.Open("sqlite",dsn);if e!=nil{return nil,e};db.SetMaxOpenConns(1);db.SetMaxIdleConns(1);ctx,cancel:=context.WithTimeout(context.Background(),3*time.Second);defer cancel();if e=db.PingContext(ctx);e!=nil{db.Close();return nil,e};return db,nil
+	sqlitePath:=filepath.ToSlash(path);if runtime.GOOS=="windows"&&!strings.HasPrefix(sqlitePath,"/"){sqlitePath="/"+sqlitePath};u:=url.URL{Scheme:"file",Path:sqlitePath};dsn:=u.String()+"?mode=ro";db,e:=sql.Open("sqlite",dsn);if e!=nil{return nil,e};db.SetMaxOpenConns(1);db.SetMaxIdleConns(1);ctx,cancel:=context.WithTimeout(context.Background(),3*time.Second);defer cancel();if e=db.PingContext(ctx);e!=nil{db.Close();return nil,e};return db,nil
 }
 func (rt ToolRuntime) databaseSchema(ctx context.Context, a map[string]any) (any, error) {
 	db, err := rt.openSQLite(stringArg(a, "path"))
