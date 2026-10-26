@@ -43,7 +43,7 @@ func (rt ToolRuntime) executeTier1(ctx context.Context, name string, raw json.Ra
 	case "terminal.run_parallel": return rt.runParallel(ctx, a)
 	case "terminal.process": return rt.manageProcess(ctx, a)
 	case "terminal.output": return rt.processOutput(a)
-	case "environment.inspect": return inspectEnvironment(a)
+	case "environment.inspect": return rt.inspectEnvironment(a)
 	case "test.list": return rt.listTests(a)
 	case "test.run": return rt.runTest(ctx, a)
 	case "debug.analyze": return rt.analyzeDebug(a)
@@ -274,17 +274,17 @@ func (rt ToolRuntime) manageProcess(ctx context.Context, a map[string]any) (any,
 	default:return nil,errors.New("unsupported process action")
 	}
 }
-func (rt ToolRuntime) processOutput(a map[string]any)(any,error){id:=stringArg(a,"process_id");m:=managerFor(rt.Root);m.mu.Lock();p:=m.items[id];m.mu.Unlock();if p==nil{return nil,fmt.Errorf("managed process %q was not found in this running FuzeCLI session",id)};max:=intArg(a,"max_bytes",16384);return map[string]any{"process_id":id,"stdout":p.stdout.String(max),"stderr":p.stderr.String(max),"truncated":true},nil}
+func (rt ToolRuntime) processOutput(a map[string]any)(any,error){id:=stringArg(a,"process_id");m:=managerFor(rt.Root);m.mu.Lock();p:=m.items[id];m.mu.Unlock();if p==nil{return nil,fmt.Errorf("managed process %q was not found in this running FuzeCLI session",id)};max:=intArg(a,"max_bytes",16384);stdout,stderr:=p.stdout.String(max),p.stderr.String(max);return map[string]any{"process_id":id,"stdout":stdout,"stderr":stderr,"truncated":len(stdout)>=max||len(stderr)>=max},nil}
 
-func inspectEnvironment(a map[string]any)(any,error){
-	out:=map[string]any{"os":runtime.GOOS,"architecture":runtime.GOARCH,"go_runtime":runtime.Version(),"cpu_count":runtime.NumCPU(),"working_directory":mustGetwd(),"capabilities":[]string{"workspace_read","workspace_write","authorized_process_execution"}}
+func (rt ToolRuntime) inspectEnvironment(a map[string]any)(any,error){
+	capabilities:=[]string{};for capability,allowed:=range rt.Capabilities{if allowed{capabilities=append(capabilities,string(capability))}};sort.Strings(capabilities)
+	out:=map[string]any{"os":runtime.GOOS,"architecture":runtime.GOARCH,"go_runtime":runtime.Version(),"cpu_count":runtime.NumCPU(),"working_directory":rt.Root,"capabilities":capabilities}
 	commands:=[]string{"go","node","npm","python","python3","php","cargo","rustc","java","javac","docker","git","sqlite3","pytest","uv","pip","pip3","composer","make"}
 	available:=map[string]any{}
 	for _,name:=range commands{path,err:=exec.LookPath(name);if err!=nil{continue};entry:=map[string]any{"path":path};if boolArg(a,"check_versions",true){args:=[]string{"--version"};if name=="go"{args=[]string{"version"}};ctx,cancel:=context.WithTimeout(context.Background(),2*time.Second);cmd:=exec.CommandContext(ctx,name,args...);b,e:=cmd.CombinedOutput();cancel();if e==nil{entry["version"]=truncate(strings.TrimSpace(string(b)),500)}else{entry["version_error"]=truncate(e.Error(),200)}};available[name]=entry}
 	out["runtimes"]=available
 	return out,nil
 }
-func mustGetwd() string { wd,err:=os.Getwd();if err!=nil{return ""};return wd }
 
 func (rt ToolRuntime) listTests(a map[string]any)(any,error){
 	rel:=stringArg(a,"path");root:=rt.Root;if rel!=""&&rel!="."{p,e:=rt.resolve(rel,false);if e!=nil{return nil,e};root=p}
@@ -421,7 +421,7 @@ func htmlUnescape(s string)string{r:=strings.NewReplacer("&amp;","&","&quot;",`"
 func githubRequest(ctx context.Context,cToken,method,path string,out any)error{
 	if strings.TrimSpace(cToken)==""{
 		if _,e:=exec.LookPath("gh");e!=nil{return errors.New("GitHub is not authenticated")}
-		args:=[]string{"api","--hostname","github.com","--method",method,path};cmd:=exec.CommandContext(ctx,"gh",args...);b,e:=cmd.Output();if e!=nil{var ee *exec.ExitError;if errors.As(e,&ee)&&len(ee.Stderr)>0{return fmt.Errorf("GitHub CLI request failed: %s",truncate(string(ee.Stderr),1000))};return e};if out!=nil{return json.Unmarshal(b,out)};return nil
+		args:=[]string{"api","--hostname","github.com","--method",method,strings.TrimPrefix(path,"/")};cmd:=exec.CommandContext(ctx,"gh",args...);b,e:=cmd.Output();if e!=nil{var ee *exec.ExitError;if errors.As(e,&ee)&&len(ee.Stderr)>0{return fmt.Errorf("GitHub CLI request failed: %s",truncate(string(ee.Stderr),1000))};return e};if out!=nil{return json.Unmarshal(b,out)};return nil
 	}
 	req,e:=http.NewRequestWithContext(ctx,method,"https://api.github.com"+path,nil);if e!=nil{return e};req.Header.Set("Accept","application/vnd.github+json");req.Header.Set("X-GitHub-Api-Version","2022-11-28");req.Header.Set("Authorization","Bearer "+cToken)
 	client:=&http.Client{Timeout:15*time.Second};resp,e:=client.Do(req);if e!=nil{return e};defer resp.Body.Close();b,e:=io.ReadAll(io.LimitReader(resp.Body,1<<20));if e!=nil{return e};if resp.StatusCode<200||resp.StatusCode>=300{return fmt.Errorf("GitHub API returned HTTP %d: %s",resp.StatusCode,truncate(string(b),1000))};if out!=nil{return json.Unmarshal(b,out)};return nil
