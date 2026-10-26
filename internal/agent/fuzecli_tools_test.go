@@ -215,3 +215,27 @@ func TestTier1ReadToolsRespectCapabilities(t *testing.T) {
 		if strings.Contains(result.Error, "handler not implemented") { t.Errorf("%s did not dispatch to a handler: %s", call.Name, result.Error) }
 	}
 }
+
+func TestTier1PatchAndRenameRequireApprovalAndApply(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root,"src"),0755); err != nil { t.Fatal(err) }
+	file := filepath.Join(root,"src","main.txt")
+	if err := os.WriteFile(file,[]byte("before value\n"),0644); err != nil { t.Fatal(err) }
+	registry, err := NewFuzeCLIToolRegistry(ToolRuntime{Root:root})
+	if err != nil { t.Fatal(err) }
+	patch := ToolCall{ID:"patch",Name:"workspace.apply_patch",Arguments:json.RawMessage(`{"path":"src/main.txt","old_text":"before value","new_text":"after value"}`)}
+	denied := registry.Execute(context.Background(),patch,nil)
+	if denied.Status != ToolResultError || !strings.Contains(denied.Error,"approval") { t.Fatalf("patch should require approval: %#v",denied) }
+	data, err := os.ReadFile(file); if err != nil { t.Fatal(err) }
+	if string(data)!="before value\n" { t.Fatal("unapproved patch changed the file") }
+	approve := func(context.Context, ToolDefinition, json.RawMessage) error { return nil }
+	applied := registry.Execute(context.Background(),patch,approve)
+	if applied.Status != ToolResultSuccess { t.Fatalf("approved patch failed: %s",applied.Error) }
+	data, err = os.ReadFile(file); if err != nil { t.Fatal(err) }
+	if string(data)!="after value\n" { t.Fatalf("patch content mismatch: %q",data) }
+	rename := ToolCall{ID:"rename",Name:"workspace.rename",Arguments:json.RawMessage(`{"source":"src/main.txt","destination":"src/renamed.txt"}`)}
+	renamed := registry.Execute(context.Background(),rename,approve)
+	if renamed.Status != ToolResultSuccess { t.Fatalf("approved rename failed: %s",renamed.Error) }
+	if _,err=os.Stat(filepath.Join(root,"src","main.txt")); !os.IsNotExist(err) { t.Fatalf("rename left source in place, err=%v",err) }
+	if _,err=os.Stat(filepath.Join(root,"src","renamed.txt")); err != nil { t.Fatalf("rename destination missing: %v",err) }
+}
