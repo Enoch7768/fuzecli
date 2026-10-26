@@ -2,11 +2,10 @@ package api
 
 import (
 	"encoding/json"
-
-	"github.com/Enoch7768/fuzecli/internal/agent"
 	"reflect"
 	"testing"
 
+	"github.com/Enoch7768/fuzecli/internal/agent"
 )
 
 func TestToolDeletionPathsRequireExplicitPathApproval(t *testing.T) {
