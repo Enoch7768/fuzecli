@@ -294,7 +294,7 @@ func (rt ToolRuntime) runTier2Command(ctx context.Context,exe string,args []stri
 	workDir:=rt.Root
 	if cwd!="."&&cwd!=""{resolved,err:=rt.resolve(cwd,false);if err!=nil{return nil,err};info,err:=os.Stat(resolved);if err!=nil{return nil,err};if !info.IsDir(){return nil,errors.New("command working directory is not a directory")};workDir=resolved}
 	cctx,cancel:=context.WithTimeout(ctx,timeout);defer cancel()
-	cmd:=exec.CommandContext(cctx,exe,args...);cmd.Dir=workDir
+	cmd,cmdErr:=workspaceExecCommand(cctx,exe,args);if cmdErr!=nil{return nil,cmdErr};cmd.Dir=workDir
 	cmd.Env=append(os.Environ(),"CI=1","NO_COLOR=1")
 	output,err:=cmd.CombinedOutput();truncated:=len(output)>tier2OutputLimit;if truncated{output=output[:tier2OutputLimit]}
 	result:=map[string]any{"executed":true,"command":append([]string{exe},args...),"exit_code":0,"output":string(output),"truncated":truncated,"timed_out":errors.Is(cctx.Err(),context.DeadlineExceeded)}
