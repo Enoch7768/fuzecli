@@ -142,7 +142,7 @@ func (rt ToolRuntime) packageAudit(ctx context.Context,a map[string]any)(any,err
 		if exists(rt.Root,"go.mod"){manager="go"}else if exists(rt.Root,"package.json"){manager="npm"}else if exists(rt.Root,"composer.json"){manager="php"}else if exists(rt.Root,"requirements.txt")||exists(rt.Root,"pyproject.toml"){manager="python"}else{return nil,errors.New("no supported dependency manifest found")}
 	}
 	var exe string;var args []string
-	switch manager {case "go":exe="go";args=[]string{"mod","verify"}
+	switch manager {case "go":if _,e:=exec.LookPath("govulncheck");e==nil{exe="govulncheck";args=[]string{"./..."} }else{return map[string]any{"executed":false,"available":false,"manager":manager,"message":"govulncheck is not installed; go mod verify checks module integrity, not known vulnerabilities"},nil}
 	case "npm":exe="npm";args=[]string{"audit","--json"}
 	case "pnpm":exe="pnpm";args=[]string{"audit","--json"}
 	case "yarn":exe="yarn";args=[]string{"audit","--json"}
