@@ -9,7 +9,7 @@ Tier 2 adds 12 namespaced tools to the 45-tool Tier 1 registry, for **57 total t
 - `package.update` updates named dependencies or the manager's declared dependencies when no package list is supplied.
 - `package.audit` runs supported package-manager audits. Python uses `pip-audit` only if already installed; the tool does not install an auditor automatically.
 
-Dependency changes require both the `install_dependency` capability and explicit approval. Package names are validated and commands are passed as argument arrays, never through a shell. `dry_run` previews the exact command without execution.
+Dependency changes require the existing `run_build` capability and explicit approval. Because package managers may run install scripts, treat approval as a code-execution decision. Package names are validated and commands are passed as argument arrays, never through a shell. `dry_run` previews the exact command without execution.
 
 ## Documentation
 
@@ -38,7 +38,7 @@ Dependency changes require both the `install_dependency` capability and explicit
 ## Safety and honest reporting
 
 - A model argument is never approval. If no request-scoped approval handler exists, a mutating tool fails closed.
-- Package installation/update needs the separate `install_dependency` capability, which is not enabled by the default safe capability set.
+- Package installation/update requires `run_build` plus explicit approval. The model cannot bypass the request-scoped approval check.
 - Build/container commands are direct process invocations, not shell strings. Process timeouts and output limits are enforced.
 - Read-only inspections do not change project files. A dry run reports a plan, not a successful execution.
 - Tool results report the actual command exit code/output or the reason execution was unavailable. Remote registries, package audit services, and container daemons require their own network and local environment availability.
