@@ -31,7 +31,7 @@ Browser use requires the `network_access` capability. These tools do not bypass 
 ## Safety and error handling
 
 - Mutating browser actions and deployments require request-scoped approval; model arguments alone never count as approval.
-- Tool commands are invoked as argument arrays, never via a shell string.
+- Provider commands are fixed argument arrays, not user-supplied shell strings. Native executables are invoked directly; Windows `.cmd`/`.bat` shims use a constrained wrapper that rejects shell metacharacters and quotes.
 - Browser DevTools access is restricted to loopback endpoints to avoid turning a configured remote endpoint into an SSRF path.
 - Unsupported image formats, unavailable browser endpoints, missing deployment CLIs, invalid selectors, rejected permissions, and command failures return explicit errors or structured failure results. A dry-run response always states that execution did not occur.
 
