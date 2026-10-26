@@ -39,7 +39,7 @@ Dependency changes require `run_build`, `install_dependency`, and `network_acces
 
 - A model argument is never approval. If no request-scoped approval handler exists, a mutating tool fails closed.
 - Package installation/update requires `run_build`, `install_dependency`, `network_access`, and explicit request-scoped approval. The model cannot bypass the approval check.
-- Build/container commands are direct process invocations, not shell strings. Process timeouts and output limits are enforced.
+- Build/container commands use direct process invocation where native executables are available; Windows command shims use the same constrained wrapper and reject unsafe arguments. Process timeouts and output limits are enforced.
 - Read-only inspections do not change project files. A dry run reports a plan, not a successful execution.
 - Tool results report the actual command exit code/output or the reason execution was unavailable. Remote registries, package audit services, and container daemons require their own network and local environment availability.
 
