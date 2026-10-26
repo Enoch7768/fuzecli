@@ -227,6 +227,11 @@ func (rt ToolRuntime) apiInspect(a map[string]any)(any,error){
 	for _,rel:=range files{p,e:=rt.resolve(rel,false);if e!=nil{continue};data,e:=os.ReadFile(p);if e!=nil||len(data)>2<<20{continue}
 		if strings.Contains(strings.ToLower(filepath.Base(rel)),"openapi")||strings.Contains(strings.ToLower(filepath.Base(rel)),"swagger"){
 			var doc map[string]any;if json.Unmarshal(data,&doc)==nil{if paths,ok:=doc["paths"].(map[string]any);ok{for path,rawMethods:=range paths{methods,ok:=rawMethods.(map[string]any);if !ok{continue};for method,detail:=range methods{if strings.EqualFold(method,"parameters")||strings.EqualFold(method,"servers"){continue};summary:="";if m,ok:=detail.(map[string]any);ok{summary=fmt.Sprint(m["summary"]);if summary=="<nil>"{summary=""}};results=append(results,map[string]any{"path":path,"method":strings.ToUpper(method),"summary":summary,"source":rel});if len(results)>=max{return map[string]any{"routes":results,"count":len(results),"truncated":true},nil}}}}}
+			if !json.Valid(data) {
+				parsed := parseOpenAPIYAML(rel, data, max-len(results))
+				results = append(results, parsed...)
+				if len(results) >= max { return map[string]any{"routes":results[:max],"count":max,"truncated":true}, nil }
+			}
 		}
 		for lineNo,line:=range strings.Split(string(data),"\n"){for _,match:=range routeRE.FindAllStringSubmatch(line,-1){results=append(results,map[string]any{"method":strings.ToUpper(match[1]),"path":match[2],"source":rel,"line":lineNo+1});if len(results)>=max{return map[string]any{"routes":results,"count":len(results),"truncated":true},nil}}}
 	}
@@ -295,3 +300,23 @@ func (rt ToolRuntime) runTier2Command(ctx context.Context,exe string,args []stri
 }
 func stringArrayArg(a map[string]any,key string)[]string{raw,_:=a[key].([]any);out:=make([]string,0,len(raw));for _,v:=range raw{if s,ok:=v.(string);ok{out=append(out,s)}};return out}
 func exists(root,rel string)bool{info,err:=os.Stat(filepath.Join(root,filepath.FromSlash(rel)));return err==nil&&!info.IsDir()}
+
+
+func parseOpenAPIYAML(source string, data []byte, limit int) []map[string]any {
+	if limit <= 0 { return nil }
+	pathRE := regexp.MustCompile(`^\s{2}(/[^:]+):\s*(?:#.*)?$`)
+	methodRE := regexp.MustCompile(`^\s{4}(get|post|put|patch|delete|options|head):\s*(?:#.*)?$`)
+	summaryRE := regexp.MustCompile(`^\s{6}summary:\s*(.+?)\s*$`)
+	var currentPath string
+	var out []map[string]any
+	for lineNo, line := range strings.Split(string(data), "\n") {
+		if match := pathRE.FindStringSubmatch(line); len(match) == 2 { currentPath = strings.TrimSpace(match[1]); continue }
+		if match := methodRE.FindStringSubmatch(line); len(match) == 2 && currentPath != "" {
+			out = append(out, map[string]any{"path": currentPath, "method": strings.ToUpper(match[1]), "source": source, "line": lineNo+1})
+			if len(out) >= limit { return out }
+			continue
+		}
+		if match := summaryRE.FindStringSubmatch(line); len(match) == 2 && len(out) > 0 { out[len(out)-1]["summary"] = strings.Trim(strings.TrimSpace(match[1]), "\"\x27") }
+	}
+	return out
+}
