@@ -251,7 +251,7 @@ func (rt ToolRuntime) manageProcess(ctx context.Context, a map[string]any) (any,
 	if action=="start" {
 		exe:=stringArg(a,"executable"); args:=stringArray(a["args"])
 		if err:=rt.Capabilities.Require(security.RunBuild);err!=nil{return nil,err}
-		decision:=security.Authorize(security.Command{Name:exe,Args:args});if !decision.Allowed{return nil,fmt.Errorf("command blocked by security policy: %s",decision.Reason)}
+		decision:=security.AuthorizeManagedProcess(security.Command{Name:exe,Args:args});if !decision.Allowed{return nil,fmt.Errorf("managed process blocked by security policy: %s",decision.Reason)}
 		cwd:=rt.Root;if rel:=stringArg(a,"cwd");rel!=""{p,e:=rt.resolve(rel,false);if e!=nil{return nil,e};inf,e:=os.Stat(p);if e!=nil||!inf.IsDir(){return nil,errors.New("cwd must be an existing workspace directory")};cwd=p}
 		m.mu.Lock();m.seq++;id=fmt.Sprintf("proc-%x-%x",time.Now().UnixNano(),m.seq);m.mu.Unlock()
 		p:=&managedProcess{id:id,executable:exe,args:args,cwd:cwd,started:time.Now().UTC(),done:make(chan struct{}),stdout:&tier1Log{limit:128<<10},stderr:&tier1Log{limit:128<<10}}
