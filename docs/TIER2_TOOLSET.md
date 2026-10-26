@@ -7,9 +7,9 @@ Tier 2 adds 12 namespaced tools to the 45-tool Tier 1 registry, for **57 total t
 - `package.inspect` detects common Go, JavaScript/TypeScript, Python, and PHP manifests. It returns bounded metadata and declared dependency lists where supported.
 - `package.install` installs explicitly named dependencies with a supported package manager.
 - `package.update` updates named dependencies or the manager's declared dependencies when no package list is supplied.
-- `package.audit` runs supported package-manager audits. Python uses `pip-audit` only if already installed; the tool does not install an auditor automatically.
+- `package.audit` runs supported package-manager audits. Python uses `pip-audit` only if already installed; the tool does not install an auditor automatically. Live audits require `network_access`.
 
-Dependency changes require both `run_build` and `install_dependency` capabilities plus explicit approval. `install_dependency` is intentionally not enabled by the default safe capability set. Because package managers may run install scripts, treat approval as a code-execution decision. Package names are validated and commands are passed as argument arrays, never through a shell. `dry_run` previews the exact command without execution.
+Dependency changes require `run_build`, `install_dependency`, and `network_access` capabilities plus explicit approval. The network capability is checked only for real operations; dry runs remain offline. `install_dependency` is intentionally not enabled by the default safe capability set. Because package managers may run install scripts, treat approval as a code-execution decision. Package names are validated and commands are passed as argument arrays, never through a shell. `dry_run` previews the exact command without execution.
 
 ## Documentation
 
@@ -33,12 +33,12 @@ Dependency changes require both `run_build` and `install_dependency` capabilitie
 
 - `container.inspect` checks Docker/Podman availability and can list containers or images without modifying them.
 - `container.run` starts a disposable container. It requires explicit approval, drops Linux capabilities, enables `no-new-privileges`, uses a read-only root filesystem, does not accept host mounts or privileged mode, and binds published ports to loopback only. Container execution is still code execution: only run trusted images and commands.
-- Container tools require the existing `run_build` capability and a working Docker/Podman installation and daemon.
+- Container execution requires `run_build` and `network_access` capabilities, explicit approval, and a working Docker/Podman installation and daemon. Dry runs do not contact the daemon.
 
 ## Safety and honest reporting
 
 - A model argument is never approval. If no request-scoped approval handler exists, a mutating tool fails closed.
-- Package installation/update requires `run_build`, `install_dependency`, and explicit request-scoped approval. The model cannot bypass the approval check.
+- Package installation/update requires `run_build`, `install_dependency`, `network_access`, and explicit request-scoped approval. The model cannot bypass the approval check.
 - Build/container commands are direct process invocations, not shell strings. Process timeouts and output limits are enforced.
 - Read-only inspections do not change project files. A dry run reports a plan, not a successful execution.
 - Tool results report the actual command exit code/output or the reason execution was unavailable. Remote registries, package audit services, and container daemons require their own network and local environment availability.
