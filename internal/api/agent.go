@@ -51,8 +51,8 @@ func (s *Server) agentRun(w http.ResponseWriter, r *http.Request) {
 	var trailing any
 	if err:=decoder.Decode(&trailing);err!=io.EOF {writeError(w,http.StatusBadRequest,"request must contain one JSON object");return}
 	if strings.TrimSpace(req.Prompt)=="" {writeError(w,http.StatusBadRequest,"prompt is required");return}
-	if len(req.Files)>50||len(req.ApprovedTools)>20||len(req.ApprovedDeletions)>100 {writeError(w,http.StatusBadRequest,"too many files or approvals");return}
-	allowedApprovalNames:=map[string]bool{"workspace.apply_edits":true,"terminal.run":true,"git.commit":true,"github.branches":true,"github.sync":true,"github.pull_requests":true,"github.issues":true,"github.actions":true,"github.auth":true}
+	if len(req.Files)>50||len(req.ApprovedTools)>32||len(req.ApprovedDeletions)>100 {writeError(w,http.StatusBadRequest,"too many files or approvals");return}
+	allowedApprovalNames := supportedApprovalToolNames()
 	approved:=map[string]bool{}
 	approvedDeletions:=map[string]bool{}
 	for _,value:=range req.ApprovedDeletions {clean:=canonicalWorkspacePath(value);if clean==""||clean=="."||strings.HasPrefix(clean,"/")||clean==".."||strings.HasPrefix(clean,"../"){writeError(w,http.StatusBadRequest,"approved_deletions contains an invalid workspace path");return};approvedDeletions[clean]=true}
@@ -109,6 +109,39 @@ func (s *Server) agentRun(w http.ResponseWriter, r *http.Request) {
 	_ = a.Store.AddMessage(provider.Message{Role:"assistant",Content:result.Response})
 	s.service.emitEvent(StudioEvent{RequestID:requestID,Type:"generation.completed",Phase:"complete",Message:"Agent finished",Provider:providerName,Model:model,Percent:100})
 	writeJSON(w,http.StatusOK,agentRunResponse{Content:result.Response,Steps:result.Steps,ToolCalls:result.ToolCalls,Provider:providerName,Model:model,WrittenFiles:written,Applied:len(written)>0,PendingApprovals:uniqueStrings(pendingApprovals)})
+}
+
+func supportedApprovalToolNames() map[string]bool {
+	return map[string]bool{
+		"workspace.apply_edits": true,
+		"workspace.apply_patch": true,
+		"workspace.rename": true,
+		"terminal.run": true,
+		"terminal.run_parallel": true,
+		"terminal.process": true,
+		"test.run": true,
+		"git.commit": true,
+		"git.branch": true,
+		"git.stash": true,
+		"http.request": true,
+		"github.branches": true,
+		"github.sync": true,
+		"github.pull_requests": true,
+		"github.issues": true,
+		"github.actions": true,
+		"github.auth": true,
+		"package.install": true,
+		"package.update": true,
+		"docs.generate": true,
+		"build.run": true,
+		"database.migrate": true,
+		"container.run": true,
+		"browser.click": true,
+		"browser.type": true,
+		"browser.select": true,
+		"browser.screenshot": true,
+		"deploy.run": true,
+	}
 }
 
 func uniqueStrings(values []string) []string {
