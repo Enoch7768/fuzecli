@@ -228,7 +228,7 @@ func (rt ToolRuntime) runParallel(ctx context.Context, a map[string]any) (any, e
 			cwd := rt.Root
 			if rel := stringArg(item,"cwd"); rel != "" { p,err:=rt.resolve(rel,false); if err!=nil { out[i].Error=err.Error(); return }; inf,err:=os.Stat(p); if err!=nil||!inf.IsDir(){out[i].Error="cwd must be an existing workspace directory";return}; cwd=p }
 			timeout:=time.Duration(intArg(item,"timeout_seconds",60))*time.Second; cctx,cancel:=context.WithTimeout(ctx,timeout); defer cancel()
-			cmd:=exec.CommandContext(cctx,exe,args...); cmd.Dir=cwd; cmd.Env=append(os.Environ(),"GIT_TERMINAL_PROMPT=0")
+			cmd,cmdErr:=workspaceExecCommand(cctx,exe,args); if cmdErr!=nil { out[i].Error=cmdErr.Error(); cancel(); return }; cmd.Dir=cwd; cmd.Env=append(os.Environ(),"GIT_TERMINAL_PROMPT=0")
 			var stdout,stderr limitedBuffer; stdout.limit=32<<10; stderr.limit=32<<10; cmd.Stdout=&stdout; cmd.Stderr=&stderr
 			err:=cmd.Run(); out[i].Stdout=stdout.String(); out[i].Stderr=stderr.String(); out[i].TimedOut=errors.Is(cctx.Err(),context.DeadlineExceeded)
 			if err==nil {out[i].ExitCode=0} else {var ee *exec.ExitError; if errors.As(err,&ee){out[i].ExitCode=ee.ExitCode()} else {out[i].Error=err.Error()}}
@@ -255,7 +255,7 @@ func (rt ToolRuntime) manageProcess(ctx context.Context, a map[string]any) (any,
 		cwd:=rt.Root;if rel:=stringArg(a,"cwd");rel!=""{p,e:=rt.resolve(rel,false);if e!=nil{return nil,e};inf,e:=os.Stat(p);if e!=nil||!inf.IsDir(){return nil,errors.New("cwd must be an existing workspace directory")};cwd=p}
 		m.mu.Lock();m.seq++;id=fmt.Sprintf("proc-%x-%x",time.Now().UnixNano(),m.seq);m.mu.Unlock()
 		p:=&managedProcess{id:id,executable:exe,args:args,cwd:cwd,started:time.Now().UTC(),done:make(chan struct{}),stdout:&tier1Log{limit:128<<10},stderr:&tier1Log{limit:128<<10}}
-		p.cmd=exec.CommandContext(context.Background(),exe,args...);p.cmd.Dir=cwd;p.cmd.Env=append(os.Environ(),"GIT_TERMINAL_PROMPT=0");p.cmd.Stdout=p.stdout;p.cmd.Stderr=p.stderr
+		processCmd,cmdErr:=workspaceExecCommand(context.Background(),exe,args);if cmdErr!=nil{return nil,cmdErr};p.cmd=processCmd;p.cmd.Dir=cwd;p.cmd.Env=append(os.Environ(),"GIT_TERMINAL_PROMPT=0");p.cmd.Stdout=p.stdout;p.cmd.Stderr=p.stderr
 		if err:=p.cmd.Start();err!=nil{return nil,err}
 		m.mu.Lock();m.items[id]=p;m.mu.Unlock()
 		go func(){err:=p.cmd.Wait();p.mu.Lock();if p.cmd.ProcessState!=nil {code:=p.cmd.ProcessState.ExitCode();p.exitCode=&code};if err!=nil{p.err=err.Error()};p.mu.Unlock();close(p.done)}()
@@ -285,7 +285,7 @@ func (rt ToolRuntime) inspectEnvironment(a map[string]any)(any,error){
 	out:=map[string]any{"os":runtime.GOOS,"architecture":runtime.GOARCH,"go_runtime":runtime.Version(),"cpu_count":runtime.NumCPU(),"working_directory":rt.Root,"capabilities":capabilities}
 	commands:=[]string{"go","node","npm","python","python3","php","cargo","rustc","java","javac","docker","git","sqlite3","pytest","uv","pip","pip3","composer","make"}
 	available:=map[string]any{}
-	for _,name:=range commands{path,err:=exec.LookPath(name);if err!=nil{continue};entry:=map[string]any{"path":path};if boolArg(a,"check_versions",true){args:=[]string{"--version"};if name=="go"{args=[]string{"version"}};ctx,cancel:=context.WithTimeout(context.Background(),2*time.Second);cmd:=exec.CommandContext(ctx,name,args...);b,e:=cmd.CombinedOutput();cancel();if e==nil{entry["version"]=truncate(strings.TrimSpace(string(b)),500)}else{entry["version_error"]=truncate(e.Error(),200)}};available[name]=entry}
+	for _,name:=range commands{path,err:=exec.LookPath(name);if err!=nil{continue};entry:=map[string]any{"path":path};if boolArg(a,"check_versions",true){args:=[]string{"--version"};if name=="go"{args=[]string{"version"}};ctx,cancel:=context.WithTimeout(context.Background(),2*time.Second);cmd,cmdErr:=workspaceExecCommand(ctx,name,args);if cmdErr!=nil{cancel();entry["version_error"]=truncate(cmdErr.Error(),200);available[name]=entry;continue};b,e:=cmd.CombinedOutput();cancel();if e==nil{entry["version"]=truncate(strings.TrimSpace(string(b)),500)}else{entry["version_error"]=truncate(e.Error(),200)}};available[name]=entry}
 	out["runtimes"]=available
 	return out,nil
 }
@@ -361,7 +361,7 @@ func (rt ToolRuntime) runTest(ctx context.Context, a map[string]any) (any, error
 	}
 	if err := securityCommandAllowed(exe,args); err != nil { return nil, err }
 	cctx, cancel := context.WithTimeout(ctx,time.Duration(timeout)*time.Second); defer cancel()
-	cmd := exec.CommandContext(cctx,exe,args...); cmd.Dir = rt.Root; cmd.Env = append(os.Environ(),"GIT_TERMINAL_PROMPT=0")
+	cmd,cmdErr := workspaceExecCommand(cctx,exe,args); if cmdErr!=nil { return nil, fmt.Errorf("run command: %w",cmdErr) }; cmd.Dir = rt.Root; cmd.Env = append(os.Environ(),"GIT_TERMINAL_PROMPT=0")
 	var stdout,stderr limitedBuffer; stdout.limit = 64<<10; stderr.limit = 64<<10; start := time.Now(); cmd.Stdout = &stdout; cmd.Stderr = &stderr
 	err := cmd.Run(); exit := 0
 	if err != nil { var ee *exec.ExitError; if errors.As(err,&ee) { exit = ee.ExitCode() } else if cctx.Err() != nil { exit = -1 } else { return nil, err } }
