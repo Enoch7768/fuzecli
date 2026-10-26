@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Enoch7768/fuzecli/internal/security"
 )
@@ -118,5 +119,15 @@ func TestTier2PackageMutationRequiresDedicatedCapability(t *testing.T) {
 	result := registry.Execute(context.Background(), call, nil)
 	if result.Status != ToolResultError || !strings.Contains(result.Error, string(security.InstallDependency)) {
 		t.Fatalf("package install should fail closed without install_dependency capability: %#v", result)
+	}
+}
+
+func TestTier2CommandFailurePreservesStructuredOutput(t *testing.T) {
+	rt := ToolRuntime{Root: t.TempDir(), Capabilities: security.SafeCapabilities()}
+	result, err := rt.runTier2Command(context.Background(), "go", []string{"version", "--invalid-flag"}, ".", 10*time.Second)
+	if err != nil { t.Fatalf("nonzero exit should be returned as structured tool output: %v", err) }
+	if result["success"] != false { t.Fatalf("expected structured failure, got %#v", result) }
+	if result["exit_code"] == nil || result["output"] == nil || result["error"] == nil {
+		t.Fatalf("nonzero command output was not preserved: %#v", result)
 	}
 }
