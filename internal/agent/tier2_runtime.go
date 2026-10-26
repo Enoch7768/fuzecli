@@ -104,7 +104,7 @@ func (rt ToolRuntime) packageChange(ctx context.Context, name string, raw json.R
 	exe,args,err:=packageCommand(manager,packages,boolArg(a,"dev",false),update)
 	if err!=nil{return nil,err}
 	if boolArg(a,"dry_run",false) {return map[string]any{"executed":false,"manager":manager,"command":append([]string{exe},args...),"reason":"dry run; no files or packages changed"},nil}
-	if err:=rt.approve(ctx,name,raw);err!=nil{return nil,err}
+	if !hasToolApproval(ctx,name,raw){return nil,fmt.Errorf("%s requires explicit approval for this exact operation",name)}
 	timeout:=time.Duration(intArg(a,"timeout_seconds",180))*time.Second
 	result,err:=rt.runTier2Command(ctx,exe,args,".",timeout)
 	if err!=nil{return result,err}
