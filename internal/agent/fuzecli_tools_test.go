@@ -10,6 +10,7 @@ import (
  "path/filepath"
  "strings"
  "testing"
+ "github.com/Enoch7768/fuzecli/internal/security"
 )
 
 func TestFuzeCLIToolDefinitions(t *testing.T) {
@@ -192,4 +193,21 @@ func TestTier1HTTPRequestIsBoundedAndRedactsSecrets(t *testing.T) {
 	if result.Status != ToolResultSuccess { t.Fatalf("local HTTP request failed: %s", result.Error) }
 	if strings.Contains(string(result.Result), "secret-value") { t.Fatalf("response secret was not redacted: %s", result.Result) }
 	if strings.Contains(string(result.Result), "Set-Cookie") { t.Fatalf("sensitive response header leaked: %s", result.Result) }
+}
+
+func TestTier1ReadToolsRespectCapabilities(t *testing.T) {
+	root := t.TempDir()
+	registry, err := NewFuzeCLIToolRegistry(ToolRuntime{Root:root, Capabilities:security.CapabilitySet{security.RunBuild:true}})
+	if err != nil { t.Fatal(err) }
+	calls := []ToolCall{
+		{ID:"read-many",Name:"workspace.read_files",Arguments:json.RawMessage(`{"files":[{"path":"README.md"}]}`)},
+		{ID:"db-inspect",Name:"database.inspect",Arguments:json.RawMessage(`{}`)},
+		{ID:"git-log",Name:"git.log",Arguments:json.RawMessage(`{}`)},
+		{ID:"web-search",Name:"web.search",Arguments:json.RawMessage(`{"query":"Go documentation"}`)},
+	}
+	for _, call := range calls {
+		result := registry.Execute(context.Background(), call, nil)
+		if result.Status != ToolResultError { t.Errorf("%s should be denied without its capability", call.Name) }
+		if strings.Contains(result.Error, "handler not implemented") { t.Errorf("%s did not dispatch to a handler: %s", call.Name, result.Error) }
+	}
 }
