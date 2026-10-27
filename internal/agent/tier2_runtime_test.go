@@ -15,7 +15,7 @@ import (
 
 func TestTier2ToolDefinitionsAreStrictAndRegistered(t *testing.T) {
 	defs := FuzeCLIToolDefinitions()
-	if len(defs) != 69 { t.Fatalf("want 69 total tools after Tier 3, got %d", len(defs)) }
+	if len(defs) != 91 { t.Fatalf("want 91 total tools across Tiers 1-4, got %d", len(defs)) }
 	want := []string{"package.inspect","package.install","package.update","package.audit","docs.search","docs.generate","build.inspect","build.run","api.inspect","database.migrate","container.inspect","container.run"}
 	seen := map[string]bool{}
 	for _, d := range defs {
