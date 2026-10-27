@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -36,7 +37,13 @@ func TestTier4MemoryProfileToolsPersistSafely(t *testing.T) {
 	statePath := filepath.Join(root, ".aicli", "agent_state.json")
 	info, err := os.Stat(statePath)
 	if err != nil { t.Fatalf("state was not persisted: %v", err) }
-	if info.Mode().Perm()&0077 != 0 { t.Fatalf("state file should not be group/world accessible: %v", info.Mode().Perm()) }
+	// Unix permission bits are enforceable and meaningful on Unix-like systems.
+	// Windows reports broad POSIX mode bits regardless of chmod; Windows access
+	// is controlled by filesystem ACLs instead, so this bitmask assertion is not
+	// portable there.
+	if runtime.GOOS != "windows" && info.Mode().Perm()&0077 != 0 {
+		t.Fatalf("state file should not be group/world accessible: %v", info.Mode().Perm())
+	}
 
 	forgetPreview := run("forget-preview", "memory.forget", `{"memory_ids":["`+id+`"],"dry_run":true,"confirm":false}`, false)
 	if forgetPreview.Status != ToolResultSuccess || !strings.Contains(string(forgetPreview.Result), "would_forget") { t.Fatalf("forget preview failed: %#v", forgetPreview) }
