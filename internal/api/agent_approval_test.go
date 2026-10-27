@@ -79,6 +79,8 @@ func TestApprovalAllowlistCoversEveryMutationTool(t *testing.T) {
 		"browser.select": `{}`,
 		"browser.screenshot": `{"path":"screenshot.png"}`,
 		"deploy.run": `{}`,
+		"memory.forget": `{"memory_ids":["a","b","c","d","e","f"],"dry_run":false,"confirm":true}`,
+		"profile.reset": `{"dry_run":false,"confirm":true}`,
 	}
 	for name, raw := range cases {
 		if required, _ := agent.RequiresToolApproval(name, json.RawMessage(raw)); !required {
