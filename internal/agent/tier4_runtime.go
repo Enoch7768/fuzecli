@@ -18,6 +18,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/Enoch7768/fuzecli/internal/security"
 )
 
 type tier4State struct {
