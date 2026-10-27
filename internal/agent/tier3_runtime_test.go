@@ -17,8 +17,8 @@ import (
 
 func TestTier3ToolDefinitionsAreStrictAndRegistered(t *testing.T) {
 	defs := FuzeCLIToolDefinitions()
-	if len(defs) != 69 {
-		t.Fatalf("want 69 total tools after Tier 3, got %d", len(defs))
+	if len(defs) != 91 {
+		t.Fatalf("want 91 total tools across Tiers 1-4, got %d", len(defs))
 	}
 	want := []string{
 		"image.inspect", "image.compare", "browser.open", "browser.click", "browser.type", "browser.select",
