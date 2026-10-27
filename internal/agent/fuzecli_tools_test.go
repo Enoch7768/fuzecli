@@ -19,7 +19,7 @@ import (
 
 func TestFuzeCLIToolDefinitions(t *testing.T) {
  defs := FuzeCLIToolDefinitions()
- if len(defs) != 69 { t.Fatalf("want 69 tools after Tier 3, got %d", len(defs)) }
+ if len(defs) != 91 { t.Fatalf("want 91 tools across Tiers 1–3 and research/personalization, got %d", len(defs)) }
  for _, d := range defs {
   if !json.Valid(d.InputSchema) { t.Errorf("%s has invalid schema", d.Name) }
   var s map[string]any
