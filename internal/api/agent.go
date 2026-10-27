@@ -141,6 +141,8 @@ func supportedApprovalToolNames() map[string]bool {
 		"browser.select": true,
 		"browser.screenshot": true,
 		"deploy.run": true,
+		"memory.forget": true,
+		"profile.reset": true,
 	}
 }
 
