@@ -49,8 +49,15 @@ func (rt ToolRuntime) saveTier4State(s tier4State) error {
 	if err := os.MkdirAll(dir, 0700); err != nil { return err }
 	b, err := json.MarshalIndent(s, "", "  "); if err != nil { return err }
 	tmp := rt.tier4StatePath()+".tmp"
+	// WriteFile's mode only applies when creating a file; if a stale temp file
+	// already exists, its old permissions are preserved. Explicitly enforce the
+	// private mode before publishing it as the state file.
 	if err := os.WriteFile(tmp, b, 0600); err != nil { return err }
+	if err := os.Chmod(tmp, 0600); err != nil { _ = os.Remove(tmp); return err }
 	if err := os.Rename(tmp, rt.tier4StatePath()); err != nil { _ = os.Remove(tmp); return err }
+	// Re-apply after rename so an existing state file can never retain broader
+	// permissions on platforms where rename semantics or prior files differ.
+	if err := os.Chmod(rt.tier4StatePath(), 0600); err != nil { return err }
 	return nil
 }
 
