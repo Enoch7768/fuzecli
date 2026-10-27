@@ -249,6 +249,14 @@ func toolRequiresApproval(name string, raw json.RawMessage) (bool, string) {
 		return args["path"] != nil && args["path"] != "", "saving a browser screenshot into the workspace"
 	case "deploy.run":
 		return true, "deploying the project to an external service"
+	case "memory.forget":
+		ids, _ := args["memory_ids"].([]any)
+		if args["dry_run"] == true { return false, "" }
+		if len(ids) > 0 && len(ids) <= 5 { return false, "" }
+		return true, "batch memory deletion"
+	case "profile.reset":
+		if args["dry_run"] != false { return false, "" }
+		return true, "erasing saved profile data"
 	}
 	return false, ""
 }
