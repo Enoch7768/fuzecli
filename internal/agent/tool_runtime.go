@@ -121,6 +121,7 @@ func (rt ToolRuntime) execute(ctx context.Context, name string, raw json.RawMess
 	var a map[string]any
 	if err := json.Unmarshal(raw, &a); err != nil { return nil, err }
 	switch name {
+	case "web.search_google", "web.search_bing", "web.search_multi", "web.search_news", "web.search_searxng", "web.wikipedia", "web.stackexchange", "web.scholar", "research.learn_topic", "weather.current", "weather.forecast", "language.detect", "memory.remember", "memory.recall", "memory.list", "memory.update", "memory.forget", "profile.get", "profile.update", "profile.reset", "interaction.search", "feedback.record": return rt.executeTier4(ctx, name, raw, a)
 	case "workspace.list_files": return rt.listFiles(a)
 	case "workspace.read_file": return rt.readFile(a)
 	case "workspace.search_code": return rt.searchCode(ctx, a)
