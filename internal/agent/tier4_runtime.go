@@ -71,7 +71,7 @@ func tier4HTTP(ctx context.Context, rawURL string, headers map[string]string) ([
 }
 
 func tier4HTMLText(s string) string {
-	re := regexp.MustCompile(`(?is)<(script|style|noscript|svg)[^>]*>.*?</\1>`)
+	re := regexp.MustCompile(`(?is)<script[^>]*>.*?</script>|<style[^>]*>.*?</style>|<noscript[^>]*>.*?</noscript>|<svg[^>]*>.*?</svg>`)
 	s = re.ReplaceAllString(s, " ")
 	re = regexp.MustCompile(`(?s)<[^>]+>`)
 	s = re.ReplaceAllString(s, " ")
@@ -120,7 +120,11 @@ func (rt ToolRuntime) tier4SearchOne(ctx context.Context, engine string, a map[s
 func validPublicWebURL(s string) bool { u,e:=url.Parse(s);if e!=nil||(u.Scheme!="https"&&u.Scheme!="http")||u.Hostname()==""{return false};h:=strings.ToLower(u.Hostname());return h!="localhost"&&!strings.HasSuffix(h,".localhost")&&(net.ParseIP(h)==nil||(!net.ParseIP(h).IsPrivate()&&!net.ParseIP(h).IsLoopback())) }
 
 func (rt ToolRuntime) executeTier4(ctx context.Context,name string,raw json.RawMessage,a map[string]any)(any,error){
-	switch name {\n\tcase "web.search_google", "web.search_bing", "web.search_multi", "web.search_news", "web.search_searxng", "web.wikipedia", "web.stackexchange", "web.scholar", "research.learn_topic", "weather.current", "weather.forecast":\n\t\tif err := rt.Capabilities.Require(security.NetworkAccess); err != nil { return nil, err }\n\t}\n\tswitch name {
+	switch name {
+	case "web.search_google", "web.search_bing", "web.search_multi", "web.search_news", "web.search_searxng", "web.wikipedia", "web.stackexchange", "web.scholar", "research.learn_topic", "weather.current", "weather.forecast":
+		if err := rt.Capabilities.Require(security.NetworkAccess); err != nil { return nil, err }
+	}
+	switch name {
 	case "web.search_google": a["max_results"]=intArg(a,"max_results",5);items,err:=rt.tier4SearchOne(ctx,"google",a);if err!=nil{return map[string]any{"query":a["query"],"results":[]tier4SearchItem{},"count":0,"available":false,"source":"google_html","message":err.Error()},nil};return map[string]any{"query":a["query"],"results":items,"count":len(items),"available":len(items)>0,"source":"google_html"},nil
 	case "web.search_bing": items,err:=rt.tier4SearchOne(ctx,"bing",a);if err!=nil{return map[string]any{"query":a["query"],"results":[]tier4SearchItem{},"count":0,"available":false,"source":"bing_html","message":err.Error()},nil};return map[string]any{"query":a["query"],"results":items,"count":len(items),"available":len(items)>0,"source":"bing_html"},nil
 	case "web.search_multi": return rt.tier4SearchMulti(ctx,a)
