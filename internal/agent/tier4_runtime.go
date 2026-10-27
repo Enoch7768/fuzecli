@@ -140,7 +140,7 @@ func (rt ToolRuntime) executeTier4(ctx context.Context,name string,raw json.RawM
 	case "memory.recall": return rt.tier4Recall(a)
 	case "memory.list": return rt.tier4ListMemories(a)
 	case "memory.update": return rt.tier4UpdateMemory(a)
-	case "memory.forget": return rt.tier4Forget(a)
+	case "memory.forget": return rt.tier4Forget(ctx,raw,a)
 	case "profile.get": return rt.tier4ProfileGet(a)
 	case "profile.update": return rt.tier4ProfileUpdate(a)
 	case "profile.reset": return rt.tier4ProfileReset(a)
@@ -252,10 +252,10 @@ func (rt ToolRuntime) tier4Recall(a map[string]any)(any,error){
 func (rt ToolRuntime) tier4UpdateMemory(a map[string]any)(any,error){
 	s,err:=rt.loadTier4State();if err!=nil{return nil,err};id:=stringArg(a,"memory_id");for _,m:=range s.Memories{if m["memory_id"]!=id{continue};if v,ok:=a["confidence"];ok{m["confidence"]=v};if v,ok:=a["tags"];ok{m["tags"]=v};if v,ok:=a["status"];ok{m["status"]=v};if v,ok:=a["superseded_by"];ok{m["superseded_by"]=v};m["updated_at"]=time.Now().UTC().Format(time.RFC3339);if err:=rt.saveTier4State(s);err!=nil{return nil,err};return map[string]any{"updated":true,"memory_id":id},nil};return nil,fmt.Errorf("memory %q was not found",id)
 }
-func (rt ToolRuntime) tier4Forget(a map[string]any)(any,error){
+func (rt ToolRuntime) tier4Forget(ctx context.Context,raw json.RawMessage,a map[string]any)(any,error){
 	s,err:=rt.loadTier4State();if err!=nil{return nil,err};ids:=stringArray(a["memory_ids"]);selected:=map[string]bool{};for _,id:=range ids{selected[id]=true};cutoff:=time.Now().Add(-time.Duration(intArg(a,"older_than_days",0))*24*time.Hour);matches:=[]map[string]any{}
 	for _,m:=range s.Memories{ok:=len(ids)==0||selected[fmt.Sprint(m["memory_id"])];if scope:=stringArg(a,"scope");scope!=""&&m["scope"]!=scope{ok=false};if kind:=stringArg(a,"kind");kind!=""&&m["kind"]!=kind{ok=false};if days:=intArg(a,"older_than_days",0);days>0{t,_:=time.Parse(time.RFC3339,fmt.Sprint(m["created_at"]));if t.After(cutoff){ok=false}};if !containsAll(stringArray(m["tags"]),stringArray(a["tags"])){ok=false};if ok{matches=append(matches,m)}}
-	dry:=boolArg(a,"dry_run",true);if !dry&&!boolArg(a,"confirm",false){return nil,errors.New("permanent memory deletion requires confirm=true")};if !dry&&len(ids)==0&&len(matches)>5{return nil,errors.New("batch memory deletion over five items requires explicit approval")}
+	dry:=boolArg(a,"dry_run",true);if !dry&&!boolArg(a,"confirm",false){return nil,errors.New("permanent memory deletion requires confirm=true")};if !dry&&len(matches)>5&&!hasToolApproval(ctx,"memory.forget",raw){return nil,errors.New("batch memory deletion over five items requires explicit approval")}
 	if dry{return map[string]any{"dry_run":true,"would_forget":len(matches),"memory_ids":memoryIDs(matches),"message":"Preview only; no memories deleted."},nil}
 	remove:=map[string]bool{};for _,m:=range matches{remove[fmt.Sprint(m["memory_id"])]=true};kept:=s.Memories[:0];for _,m:=range s.Memories{if !remove[fmt.Sprint(m["memory_id"])]{kept=append(kept,m)}};s.Memories=kept;if err:=rt.saveTier4State(s);err!=nil{return nil,err};return map[string]any{"forgotten":memoryIDs(matches),"count":len(matches),"dry_run":false},nil
 }
