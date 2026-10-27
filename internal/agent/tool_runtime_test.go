@@ -16,7 +16,7 @@ func TestFuzeCLIToolRegistryWiresAllDefinitions(t *testing.T) {
 	if err:=os.WriteFile(filepath.Join(root,"hello.txt"),[]byte("hello FuzeCLI\nsecond line\n"),0600);err!=nil{t.Fatal(err)}
 	registry,err:=NewFuzeCLIToolRegistry(ToolRuntime{Root:root})
 	if err!=nil{t.Fatal(err)}
-	if got:=len(registry.Definitions());got!=69{t.Fatalf("registered %d tools, want 69 across Tiers 1–3",got)}
+	if got:=len(registry.Definitions());got!=91{t.Fatalf("registered %d tools, want 91 across all tool tiers",got)}
 	read:=registry.Execute(context.Background(),ToolCall{ID:"read-1",Name:"workspace.read_file",Arguments:json.RawMessage(`{"path":"hello.txt","start_line":2}`)},nil)
 	if read.Status!=ToolResultSuccess{t.Fatalf("read failed: %s",read.Error)}
 	if !strings.Contains(string(read.Result), "second line"){t.Fatalf("read result missing requested line: %s",read.Result)}
